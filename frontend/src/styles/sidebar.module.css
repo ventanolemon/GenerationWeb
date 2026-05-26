@@ -1,0 +1,54 @@
+.subjectPicker {
+  margin-bottom: 1rem;
+}
+
+.label {
+  display: block;
+  font-size: 0.85rem;
+  color: #666;
+  margin-bottom: 0.25rem;
+}
+
+.select {
+  width: 100%;
+  padding: 0.35rem;
+  font: inherit;
+  border: 1px solid #888;
+  border-radius: 4px;
+}
+
+.partitionList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.partitionItem {
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  margin-bottom: 0.2rem;
+}
+.partitionItem:hover {
+  background: #f0f0f0;
+}
+
+.partitionSelected {
+  background: #e3eaff;
+  border-color: #aab4d8;
+}
+
+.partitionDisabled {
+  color: #aaa;
+  cursor: not-allowed;
+}
+.partitionDisabled:hover {
+  background: transparent;
+}
+
+.empty {
+  color: #888;
+  font-style: italic;
+  padding: 0.5rem;
+}

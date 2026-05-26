@@ -1,0 +1,166 @@
+.blockList > * + * {
+  margin-top: 0.5rem;
+}
+
+.text {
+  margin: 0;
+  white-space: pre-line;
+}
+
+.unknownBlock {
+  padding: 0.4rem 0.6rem;
+  background: #fff4d6;
+  color: #836400;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+/* Formula */
+.formula {
+  display: inline-block;
+  vertical-align: middle;
+  max-width: 100%;
+}
+.formulaFallback {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  background: #f4f4f4;
+  padding: 0.1em 0.4em;
+  border-radius: 3px;
+}
+
+/* Image */
+.imageFigure {
+  margin: 0;
+  text-align: center;
+}
+.image {
+  max-width: 100%;
+  height: auto;
+}
+.imageCaption {
+  margin-top: 0.4rem;
+  color: #666;
+  font-size: 0.9rem;
+  font-style: italic;
+}
+.imagePlaceholder {
+  padding: 1rem;
+  background: #f4f4f4;
+  color: #888;
+  text-align: center;
+  border-radius: 4px;
+}
+
+/* Code */
+.codeBlock {
+  background: #2b2b2b;
+  color: #e6e6e6;
+  padding: 0.7rem 0.9rem;
+  border-radius: 4px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.9rem;
+  overflow-x: auto;
+  position: relative;
+}
+.codeBlock::before {
+  content: attr(data-language);
+  position: absolute;
+  top: 0.3rem;
+  right: 0.6rem;
+  font-size: 0.7rem;
+  color: #888;
+  text-transform: uppercase;
+}
+
+/* Table */
+.table {
+  border-collapse: collapse;
+}
+.table th,
+.table td {
+  border: 1px solid #ccc;
+  padding: 0.3em 0.6em;
+}
+.table thead th {
+  background: #f4f4f4;
+}
+
+/* Fill-in-blank */
+.fillInBlank {
+  line-height: 2;
+  font-size: 1.05rem;
+}
+.fillInSegment {
+  display: inline;
+}
+.blankInput {
+  display: inline-block;
+  margin: 0 0.15em;
+  padding: 0.1em 0.4em;
+  font: inherit;
+  border: 1px solid #888;
+  border-radius: 3px;
+  background: #fff;
+  transition: background-color 0.15s, color 0.15s;
+}
+.blankInputOk {
+  background: #d8f0d8;
+  color: #1a4d1a;
+  border-color: #67a567;
+}
+.blankInputBad {
+  background: #f4d8d8;
+  color: #5a1a1a;
+  border-color: #c08080;
+}
+
+/* WordCorrection */
+.wordCorrection {
+  font-family: inherit;
+}
+.wordHeader {
+  margin-bottom: 0.2rem;
+}
+.markerOk {
+  color: #2a7a2a;
+  font-weight: bold;
+}
+.markerTolerant {
+  color: #a07a1a;
+  font-weight: bold;
+}
+.markerBad {
+  color: #aa2a2a;
+  font-weight: bold;
+}
+.translation {
+  color: #555;
+}
+.wordRow {
+  margin-left: 1.2rem;
+  font-size: 0.95rem;
+}
+.wordLabel {
+  color: #888;
+}
+.userAnswerOk {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color: #2a7a2a;
+}
+.expected {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color: #2a5a8a;
+}
+.diffSpan {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+.diffEqual {
+  color: #2a7a2a;
+}
+.diffWrong {
+  color: #aa2a2a;
+  text-decoration: underline;
+}
+.diffMissing {
+  color: #999;
+}

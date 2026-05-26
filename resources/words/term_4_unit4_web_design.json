@@ -1,0 +1,78 @@
+{
+  "unit": 4,
+  "title": "Web Design",
+  "vocabulary": [
+    {
+      "term": "backend development",
+      "translation": "разработка серверных компонентов приложения"
+    },
+    {
+      "term": "CSS",
+      "translation": "каскадные таблицы стилей"
+    },
+    {
+      "term": "frontend development",
+      "translation": "разработка клиентской части"
+    },
+    {
+      "term": "HTML",
+      "translation": "язык гипертекстовой разметки"
+    },
+    {
+      "term": "hyperlink",
+      "translation": "гиперссылка"
+    },
+    {
+      "term": "JavaScript",
+      "translation": "JavaScript"
+    },
+    {
+      "term": "layout",
+      "translation": "расположение, макет (сайта)"
+    },
+    {
+      "term": "markup tags",
+      "translation": "теги разметки"
+    },
+    {
+      "term": "to rank high",
+      "translation": "занимать высокое место в рейтинге"
+    },
+    {
+      "term": "SEO",
+      "translation": "поисковая оптимизация"
+    },
+    {
+      "term": "template",
+      "translation": "шаблон"
+    },
+    {
+      "term": "URL",
+      "translation": "адрес веб-страницы"
+    },
+    {
+      "term": "website builder",
+      "translation": "конструктор веб-сайтов"
+    },
+    {
+      "term": "WYSIWYG",
+      "translation": "что видишь, то и получаешь"
+    },
+    {
+      "term": "responsive design",
+      "translation": "отзывчивый дизайн"
+    },
+    {
+      "term": "user interface",
+      "translation": "пользовательский интерфейс"
+    },
+    {
+      "term": "web page",
+      "translation": "веб-страница"
+    },
+    {
+      "term": "content management system",
+      "translation": "система управления контентом"
+    }
+  ]
+}

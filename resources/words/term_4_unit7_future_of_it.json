@@ -1,0 +1,70 @@
+{
+  "unit": 7,
+  "title": "The Future of IT",
+  "vocabulary": [
+    {
+      "term": "Artificial Intelligence",
+      "translation": "искусственный интеллект"
+    },
+    {
+      "term": "artificial neural network",
+      "translation": "искусственная нейронная сеть, ИНС"
+    },
+    {
+      "term": "augmented reality",
+      "translation": "дополненная реальность"
+    },
+    {
+      "term": "backpropagation",
+      "translation": "алгоритм обратного распространения ошибки"
+    },
+    {
+      "term": "biometrics",
+      "translation": "биометрия"
+    },
+    {
+      "term": "Internet of Things",
+      "translation": "интернет вещей"
+    },
+    {
+      "term": "machine learning",
+      "translation": "машинное обучение"
+    },
+    {
+      "term": "raw data",
+      "translation": "необработанные данные"
+    },
+    {
+      "term": "smart home",
+      "translation": "умный дом"
+    },
+    {
+      "term": "virtual reality",
+      "translation": "виртуальная реальность"
+    },
+    {
+      "term": "neural network",
+      "translation": "нейронная сеть"
+    },
+    {
+      "term": "deep learning",
+      "translation": "глубокое обучение"
+    },
+    {
+      "term": "algorithm",
+      "translation": "алгоритм"
+    },
+    {
+      "term": "big data",
+      "translation": "большие данные"
+    },
+    {
+      "term": "cloud computing",
+      "translation": "облачные вычисления"
+    },
+    {
+      "term": "automation",
+      "translation": "автоматизация"
+    }
+  ]
+}

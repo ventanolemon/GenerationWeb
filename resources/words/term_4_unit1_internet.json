@@ -1,0 +1,86 @@
+{
+  "unit": 1,
+  "title": "The Internet",
+  "vocabulary": [
+    {
+      "term": "ADSL",
+      "translation": "асимметричная цифровая абонентская линия"
+    },
+    {
+      "term": "backbone",
+      "translation": "магистральный кабель"
+    },
+    {
+      "term": "bandwidth",
+      "translation": "пропускная способность (ширина полосы пропускания)"
+    },
+    {
+      "term": "broadband access",
+      "translation": "широкополосный доступ"
+    },
+    {
+      "term": "cellular connection",
+      "translation": "сотовая связь"
+    },
+    {
+      "term": "coaxial cable",
+      "translation": "коаксиальный кабель"
+    },
+    {
+      "term": "copper twisted-pair cable",
+      "translation": "медный кабель витая пара"
+    },
+    {
+      "term": "dedicated line",
+      "translation": "выделенная линия"
+    },
+    {
+      "term": "dial-up access",
+      "translation": "коммутируемый доступ"
+    },
+    {
+      "term": "distortion of a signal",
+      "translation": "искажение сигнала (расхождение)"
+    },
+    {
+      "term": "DSL",
+      "translation": "цифровая абонентская линия"
+    },
+    {
+      "term": "fiber-optic cable",
+      "translation": "оптоволоконный кабель"
+    },
+    {
+      "term": "frequency",
+      "translation": "частота"
+    },
+    {
+      "term": "satellite connection",
+      "translation": "спутниковое соединение"
+    },
+    {
+      "term": "SDSL",
+      "translation": "симметричная цифровая абонентская линия"
+    },
+    {
+      "term": "transceiver",
+      "translation": "приемопередатчик"
+    },
+    {
+      "term": "packet switching",
+      "translation": "пакетная коммутация (передача данных)"
+    },
+    {
+      "term": "circuit switching",
+      "translation": "коммутация каналов"
+    },
+    {
+      "term": "TCP/IP",
+      "translation": "протокол управления передачей/интернет-протокол"
+    },
+    {
+      "term": "World Wide Web",
+      "translation": "всемирная паутина"
+    }
+  ]
+}

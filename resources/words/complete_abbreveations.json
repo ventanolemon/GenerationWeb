@@ -1,0 +1,405 @@
+{
+  "title": "Essential English for IT Students. Abbreviations & Acronyms",
+  "description": "Complete list of IT abbreviations (term = full English form, translation = abbreviation)",
+  "total_terms": 99,
+  "units": [
+    {
+      "unit": 1,
+      "title": "IT Abbreviations and Acronyms",
+      "vocabulary": [
+        {
+          "term": "Two-Factor Authentication",
+          "translation": "2FA"
+        },
+        {
+          "term": "Asymmetric Digital Subscriber Line",
+          "translation": "ADSL"
+        },
+        {
+          "term": "Artificial Intelligence",
+          "translation": "AI"
+        },
+        {
+          "term": "Arithmetic Logic Unit",
+          "translation": "ALU"
+        },
+        {
+          "term": "Artificial Neural Network",
+          "translation": "ANN"
+        },
+        {
+          "term": "Augmented Reality",
+          "translation": "AR"
+        },
+        {
+          "term": "American Standard Code for Information Interchange",
+          "translation": "ASCII"
+        },
+        {
+          "term": "Beginner's All-purpose Symbolic Instruction Code",
+          "translation": "BASIC"
+        },
+        {
+          "term": "Blu-ray disc",
+          "translation": "BD"
+        },
+        {
+          "term": "Basic Input/Output System",
+          "translation": "BIOS"
+        },
+        {
+          "term": "Completely Automated Public Turing test to tell Computers and Humans Apart",
+          "translation": "CAPTCHA"
+        },
+        {
+          "term": "Compact Disc Recordable",
+          "translation": "CD-R"
+        },
+        {
+          "term": "Compact Disc Read-Only Memory",
+          "translation": "CD-ROM"
+        },
+        {
+          "term": "Compact Disc Rewritable",
+          "translation": "CD-RW"
+        },
+        {
+          "term": "Computer-Generated Image",
+          "translation": "CGI"
+        },
+        {
+          "term": "Command Line Interface",
+          "translation": "CLI"
+        },
+        {
+          "term": "Convolutional Neural Network",
+          "translation": "CNN"
+        },
+        {
+          "term": "Central Processing Unit",
+          "translation": "CPU"
+        },
+        {
+          "term": "Cascading Style Sheets",
+          "translation": "CSS"
+        },
+        {
+          "term": "Distributed Denial of Service",
+          "translation": "DDoS"
+        },
+        {
+          "term": "Double Data Rate 4",
+          "translation": "DDR4"
+        },
+        {
+          "term": "Domain Name System",
+          "translation": "DNS"
+        },
+        {
+          "term": "Denial of Service",
+          "translation": "DoS"
+        },
+        {
+          "term": "Dynamic Random Access Memory",
+          "translation": "DRAM"
+        },
+        {
+          "term": "Digital Subscriber Line",
+          "translation": "DSL"
+        },
+        {
+          "term": "Digital Versatile Disc",
+          "translation": "DVD"
+        },
+        {
+          "term": "Electrically Erasable Programmable Read-Only Memory",
+          "translation": "EEPROM"
+        },
+        {
+          "term": "Electronic Numerical Integrator and Computer",
+          "translation": "ENIAC"
+        },
+        {
+          "term": "Erasable Programmable Read-Only Memory",
+          "translation": "EPROM"
+        },
+        {
+          "term": "Floating Gate Transistors",
+          "translation": "FGT"
+        },
+        {
+          "term": "FORmula TRANslator",
+          "translation": "FORTRAN"
+        },
+        {
+          "term": "File Transfer Protocol",
+          "translation": "FTP"
+        },
+        {
+          "term": "Gigabyte",
+          "translation": "GB"
+        },
+        {
+          "term": "Gigahertz",
+          "translation": "GHz"
+        },
+        {
+          "term": "Global System for Mobile Communications",
+          "translation": "GSM"
+        },
+        {
+          "term": "Graphical User Interface",
+          "translation": "GUI"
+        },
+        {
+          "term": "Hard Disk Drive",
+          "translation": "HDD"
+        },
+        {
+          "term": "Human-Like Artificial Intelligence; Human-Level Artificial Intelligence",
+          "translation": "HLAI"
+        },
+        {
+          "term": "Hyper Text Markup Language",
+          "translation": "HTML"
+        },
+        {
+          "term": "Hyper Text Transfer Protocol",
+          "translation": "HTTP"
+        },
+        {
+          "term": "International Business Machines",
+          "translation": "IBM"
+        },
+        {
+          "term": "Internet Corporation for Assigned Names and Numbers",
+          "translation": "ICANN"
+        },
+        {
+          "term": "the Internet of Things",
+          "translation": "IoT"
+        },
+        {
+          "term": "Instruction Register",
+          "translation": "IR"
+        },
+        {
+          "term": "Integrated Services Digital Network",
+          "translation": "ISDN"
+        },
+        {
+          "term": "Internet Service Provider",
+          "translation": "ISP"
+        },
+        {
+          "term": "JavaScript",
+          "translation": "JS"
+        },
+        {
+          "term": "Java Virtual Machine",
+          "translation": "JVM"
+        },
+        {
+          "term": "Kilobyte",
+          "translation": "KB"
+        },
+        {
+          "term": "Local Area Network",
+          "translation": "LAN"
+        },
+        {
+          "term": "Liquid Crystal Display",
+          "translation": "LCD"
+        },
+        {
+          "term": "Media Access Control address",
+          "translation": "MAC address"
+        },
+        {
+          "term": "Metropolitan Area Network",
+          "translation": "MAN"
+        },
+        {
+          "term": "Multi-Factor Authentication",
+          "translation": "MFA"
+        },
+        {
+          "term": "Machine Learning",
+          "translation": "ML"
+        },
+        {
+          "term": "Masked Read-Only Memory",
+          "translation": "MROM"
+        },
+        {
+          "term": "Microsoft Word",
+          "translation": "MS Word"
+        },
+        {
+          "term": "Microsoft Disk Operating System",
+          "translation": "MS-DOS"
+        },
+        {
+          "term": "Not AND Flash",
+          "translation": "NAND Flash"
+        },
+        {
+          "term": "Neural Networks",
+          "translation": "NN"
+        },
+        {
+          "term": "Not OR Flash",
+          "translation": "NOR Flash"
+        },
+        {
+          "term": "Object-Oriented Programming",
+          "translation": "OOP"
+        },
+        {
+          "term": "Operating System",
+          "translation": "OS"
+        },
+        {
+          "term": "Open System Interconnection",
+          "translation": "OSI"
+        },
+        {
+          "term": "Personal Area Network",
+          "translation": "PAN"
+        },
+        {
+          "term": "Personal Computer",
+          "translation": "PC"
+        },
+        {
+          "term": "Hypertext Preprocessor",
+          "translation": "PHP"
+        },
+        {
+          "term": "Programmable Read-Only Memory",
+          "translation": "PROM"
+        },
+        {
+          "term": "Random Access Memory",
+          "translation": "RAM"
+        },
+        {
+          "term": "Recurrent Neural Network",
+          "translation": "RNN"
+        },
+        {
+          "term": "Read-Only Memory",
+          "translation": "ROM"
+        },
+        {
+          "term": "Synchronous Dynamic Random Access Memory",
+          "translation": "SDRAM"
+        },
+        {
+          "term": "Symmetric Digital Subscriber Line",
+          "translation": "SDSL"
+        },
+        {
+          "term": "Search Engine Optimization",
+          "translation": "SEO"
+        },
+        {
+          "term": "Simultaneous Multi-threading Technology",
+          "translation": "SMT"
+        },
+        {
+          "term": "Simple Mail Transfer Protocol",
+          "translation": "SMTP"
+        },
+        {
+          "term": "Structured Query Language",
+          "translation": "SQL"
+        },
+        {
+          "term": "Static Random Access Memory",
+          "translation": "SRAM"
+        },
+        {
+          "term": "Solid State Drive",
+          "translation": "SSD"
+        },
+        {
+          "term": "Secure Sockets Layer",
+          "translation": "SSL"
+        },
+        {
+          "term": "Terabyte",
+          "translation": "TB"
+        },
+        {
+          "term": "the Transmission Control Protocol and the Internet Protocol",
+          "translation": "TCP/IP"
+        },
+        {
+          "term": "User Datagram Protocol",
+          "translation": "UDP"
+        },
+        {
+          "term": "Unique Identifiers",
+          "translation": "UIDs"
+        },
+        {
+          "term": "Universal Automatic Computer",
+          "translation": "UNIVAC I"
+        },
+        {
+          "term": "Uniform Resource Locator",
+          "translation": "URL"
+        },
+        {
+          "term": "Universal Serial Bus",
+          "translation": "USB"
+        },
+        {
+          "term": "Very High Bit Rate DSL",
+          "translation": "VDSL"
+        },
+        {
+          "term": "Virtual Reality",
+          "translation": "VR"
+        },
+        {
+          "term": "Web Application Protection Firewall",
+          "translation": "WAF"
+        },
+        {
+          "term": "Wide Area Network",
+          "translation": "WAN"
+        },
+        {
+          "term": "Wireless Fidelity",
+          "translation": "Wi-Fi"
+        },
+        {
+          "term": "Worldwide Interoperability for Microwave Access",
+          "translation": "WiMAX"
+        },
+        {
+          "term": "Windows Icons Menus Pointer",
+          "translation": "WIMP"
+        },
+        {
+          "term": "Wireless Local Area Network",
+          "translation": "WLAN"
+        },
+        {
+          "term": "World Wide Web",
+          "translation": "WWW"
+        },
+        {
+          "term": "What You See Is What You Get",
+          "translation": "WYSIWYG"
+        },
+        {
+          "term": "Yet Another iNDEXer",
+          "translation": "Yandex"
+        }
+      ]
+    }
+  ]
+}

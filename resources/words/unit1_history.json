@@ -1,0 +1,38 @@
+{
+  "unit": 1,
+  "title": "History of Computers",
+  "vocabulary": [
+    {
+      "term": "calculations",
+      "translation": "вычисления"
+    },
+    {
+      "term": "digital",
+      "translation": "цифровой"
+    },
+    {
+      "term": "energy consumption",
+      "translation": "энергопотребление"
+    },
+    {
+      "term": "integrated circuit",
+      "translation": "микросхема, интегральная схема"
+    },
+    {
+      "term": "performance",
+      "translation": "производительность"
+    },
+    {
+      "term": "semiconductor",
+      "translation": "полупроводник"
+    },
+    {
+      "term": "silicon",
+      "translation": "кремний"
+    },
+    {
+      "term": "vacuum tube",
+      "translation": "электронная лампа"
+    }
+  ]
+}

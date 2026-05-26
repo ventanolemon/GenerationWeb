@@ -1,0 +1,155 @@
+.view h2 {
+  margin-top: 0;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.error {
+  padding: 0.5rem 0.75rem;
+  background: #fee;
+  color: #900;
+  border-radius: 4px;
+  margin-bottom: 0.8rem;
+}
+
+.content {
+  background: #fff;
+  border-radius: 6px;
+  padding: 1.2rem 1.4rem;
+  border: 1px solid #e0e0e0;
+}
+
+/* TableTaskView */
+
+.tableView {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  border: 1px solid #ddd;
+}
+.tableView th,
+.tableView td {
+  border: 1px solid #e0e0e0;
+  padding: 0.6rem 0.8rem;
+  vertical-align: top;
+  text-align: left;
+}
+.tableView thead th {
+  background: #f4f4f4;
+  font-weight: 600;
+}
+.numCol {
+  width: 3rem;
+  text-align: center;
+}
+.actionsCol {
+  width: 3rem;
+}
+.deleteBtn {
+  background: #fff;
+  border: 1px solid #d99;
+  color: #c33;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  line-height: 26px;
+  text-align: center;
+  cursor: pointer;
+}
+.deleteBtn:hover {
+  background: #fee;
+}
+
+/* TestExportView */
+
+.tabBar {
+  display: flex;
+  gap: 0.3rem;
+  border-bottom: 1px solid #ddd;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+.tab {
+  border: 1px solid transparent;
+  border-bottom: none;
+  background: transparent;
+  padding: 0.4rem 0.9rem;
+  border-radius: 4px 4px 0 0;
+  cursor: pointer;
+}
+.tab:hover {
+  background: #f0f0f0;
+}
+.tabActive {
+  background: #fff;
+  border-color: #ddd;
+  color: #224;
+  font-weight: 600;
+}
+.tabContent {
+  background: #fff;
+  border: 1px solid #ddd;
+  border-top: none;
+  padding: 1rem 1.3rem;
+}
+
+/* InteractiveTaskView */
+
+.scoreLine {
+  margin-bottom: 0.7rem;
+  color: #555;
+}
+.smallBtn {
+  padding: 0.15em 0.7em;
+  font-size: 0.85em;
+  margin-left: 0.5rem;
+}
+
+.history {
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 0.8rem;
+  max-height: 320px;
+  overflow-y: auto;
+  margin-bottom: 1rem;
+}
+.historyItem {
+  padding: 0.4rem 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+.historyItem:last-child {
+  border-bottom: none;
+}
+
+.prompt {
+  background: #fafafa;
+  padding: 0.8rem 1rem;
+  border-radius: 6px;
+  margin-bottom: 0.8rem;
+}
+
+.inputRow {
+  display: flex;
+  gap: 0.5rem;
+}
+.answerInput {
+  flex: 1;
+  padding: 0.4em 0.7em;
+  font: inherit;
+}
+
+.finishedBanner {
+  padding: 1rem;
+  background: #e8f4ff;
+  color: #224;
+  border-radius: 6px;
+  font-weight: 600;
+}

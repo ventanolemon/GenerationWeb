@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>WebLayer</RootNamespace>
+    <AssemblyName>WebLayer</AssemblyName>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Microsoft.Extensions.Http.Polly — для retry-политики при походе в
+      FastAPI. Если генератор-сервис на старте ещё не успел синхронизировать
+      БД, мы хотим переждать пару секунд, а не падать с 500 на фронт.
+    -->
+    <PackageReference Include="Microsoft.Extensions.Http.Polly" Version="8.0.19" />
+  </ItemGroup>
+
+</Project>

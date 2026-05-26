@@ -1,0 +1,42 @@
+{
+  "unit": 7,
+  "title": "Networks",
+  "vocabulary": [
+    {
+      "term": "bus topology",
+      "translation": "топология общая шина"
+    },
+    {
+      "term": "LAN",
+      "translation": "локальная сеть"
+    },
+    {
+      "term": "MAN",
+      "translation": "городская сеть"
+    },
+    {
+      "term": "mesh topology",
+      "translation": "топология сетки, ячеистая топология, многосвязная сеть"
+    },
+    {
+      "term": "network backbone",
+      "translation": "сетевая магистраль"
+    },
+    {
+      "term": "peer-to-peer network",
+      "translation": "одноранговая сеть"
+    },
+    {
+      "term": "ring topology",
+      "translation": "кольцевая топология"
+    },
+    {
+      "term": "WAN",
+      "translation": "глобальная сеть"
+    },
+    {
+      "term": "wireless access point",
+      "translation": "беспроводная точка доступа"
+    }
+  ]
+}

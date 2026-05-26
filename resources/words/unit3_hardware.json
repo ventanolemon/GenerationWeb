@@ -1,0 +1,110 @@
+{
+  "unit": 3,
+  "title": "Computer Hardware",
+  "vocabulary": [
+    {
+      "term": "ALU",
+      "translation": "арифметико-логическое устройство"
+    },
+    {
+      "term": "BIOS",
+      "translation": "базовая система ввода/вывода"
+    },
+    {
+      "term": "bus",
+      "translation": "шина"
+    },
+    {
+      "term": "clock speed",
+      "translation": "тактовая частота"
+    },
+    {
+      "term": "CPU",
+      "translation": "центральный процессор"
+    },
+    {
+      "term": "expansion card",
+      "translation": "карта расширения"
+    },
+    {
+      "term": "external disk drive",
+      "translation": "внешний жёсткий диск"
+    },
+    {
+      "term": "front side bus",
+      "translation": "системная (фронтальная) шина"
+    },
+    {
+      "term": "headphones",
+      "translation": "наушники"
+    },
+    {
+      "term": "input device",
+      "translation": "устройство ввода информации"
+    },
+    {
+      "term": "memory card",
+      "translation": "карта памяти"
+    },
+    {
+      "term": "multi-core CPU",
+      "translation": "многоядерный процессор"
+    },
+    {
+      "term": "multi-tasking",
+      "translation": "многозадачный"
+    },
+    {
+      "term": "output device",
+      "translation": "устройство вывода информации"
+    },
+    {
+      "term": "peripherals",
+      "translation": "подключаемое оборудование"
+    },
+    {
+      "term": "power-supply unit",
+      "translation": "блок питания"
+    },
+    {
+      "term": "RAM",
+      "translation": "оперативное запоминающее устройство (ОЗУ)"
+    },
+    {
+      "term": "ROM",
+      "translation": "постоянное запоминающее устройство (ПЗУ)"
+    },
+    {
+      "term": "software",
+      "translation": "программное обеспечение"
+    },
+    {
+      "term": "speakers",
+      "translation": "колонки"
+    },
+    {
+      "term": "storage device",
+      "translation": "устройство хранения данных"
+    },
+    {
+      "term": "system clock",
+      "translation": "тактовый генератор"
+    },
+    {
+      "term": "to execute instructions",
+      "translation": "выполнять инструкции"
+    },
+    {
+      "term": "to transmit data",
+      "translation": "передавать данные"
+    },
+    {
+      "term": "USB",
+      "translation": "универсальная последовательная шина"
+    },
+    {
+      "term": "volatile",
+      "translation": "энергозависимый"
+    }
+  ]
+}

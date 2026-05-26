@@ -1,0 +1,74 @@
+{
+  "unit": 6,
+  "title": "Data Security",
+  "vocabulary": [
+    {
+      "term": "backup",
+      "translation": "резервное копирование"
+    },
+    {
+      "term": "biometric authentication",
+      "translation": "биометрическая аутентификация"
+    },
+    {
+      "term": "brute force",
+      "translation": "метод грубой силы"
+    },
+    {
+      "term": "CAPTCHA",
+      "translation": "защита от роботов"
+    },
+    {
+      "term": "cryptanalysis",
+      "translation": "криптоанализ"
+    },
+    {
+      "term": "cybersecurity",
+      "translation": "кибербезопасность"
+    },
+    {
+      "term": "to deny access",
+      "translation": "отказать в доступе, отклонить доступ"
+    },
+    {
+      "term": "encryption",
+      "translation": "шифрование"
+    },
+    {
+      "term": "firewall",
+      "translation": "брэндмауэр, межсетевой экран"
+    },
+    {
+      "term": "MFA",
+      "translation": "многофакторная аутентификация"
+    },
+    {
+      "term": "to update antivirus software",
+      "translation": "обновлять антивирусное ПО"
+    },
+    {
+      "term": "password",
+      "translation": "пароль"
+    },
+    {
+      "term": "packet filtering",
+      "translation": "фильтрация пакетов"
+    },
+    {
+      "term": "signature",
+      "translation": "сигнатура"
+    },
+    {
+      "term": "heuristic scanning",
+      "translation": "эвристическое сканирование"
+    },
+    {
+      "term": "vulnerability",
+      "translation": "уязвимость"
+    },
+    {
+      "term": "access control",
+      "translation": "контроль доступа"
+    }
+  ]
+}

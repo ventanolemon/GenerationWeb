@@ -1,0 +1,643 @@
+{
+  "title": "Essential English for IT Students - Complete Vocabulary",
+  "description": "Comprehensive vocabulary collection from all 8 units",
+  "total_terms": 147,
+  "units": [
+    {
+      "unit": 1,
+      "title": "The Internet",
+      "vocabulary": [
+        {
+          "term": "ADSL",
+          "translation": "асимметричная цифровая абонентская линия"
+        },
+        {
+          "term": "backbone",
+          "translation": "магистральный кабель"
+        },
+        {
+          "term": "bandwidth",
+          "translation": "пропускная способность (ширина полосы пропускания)"
+        },
+        {
+          "term": "broadband access",
+          "translation": "широкополосный доступ"
+        },
+        {
+          "term": "cellular connection",
+          "translation": "сотовая связь"
+        },
+        {
+          "term": "coaxial cable",
+          "translation": "коаксиальный кабель"
+        },
+        {
+          "term": "copper twisted-pair cable",
+          "translation": "медный кабель витая пара"
+        },
+        {
+          "term": "dedicated line",
+          "translation": "выделенная линия"
+        },
+        {
+          "term": "dial-up access",
+          "translation": "коммутируемый доступ"
+        },
+        {
+          "term": "distortion of a signal",
+          "translation": "искажение сигнала (расхождение)"
+        },
+        {
+          "term": "DSL",
+          "translation": "цифровая абонентская линия"
+        },
+        {
+          "term": "fiber-optic cable",
+          "translation": "оптоволоконный кабель"
+        },
+        {
+          "term": "frequency",
+          "translation": "частота"
+        },
+        {
+          "term": "satellite connection",
+          "translation": "спутниковое соединение"
+        },
+        {
+          "term": "SDSL",
+          "translation": "симметричная цифровая абонентская линия"
+        },
+        {
+          "term": "transceiver",
+          "translation": "приемопередатчик"
+        },
+        {
+          "term": "packet switching",
+          "translation": "пакетная коммутация (передача данных)"
+        },
+        {
+          "term": "circuit switching",
+          "translation": "коммутация каналов"
+        },
+        {
+          "term": "TCP/IP",
+          "translation": "протокол управления передачей/интернет-протокол"
+        },
+        {
+          "term": "World Wide Web",
+          "translation": "всемирная паутина"
+        }
+      ]
+    },
+    {
+      "unit": 2,
+      "title": "Search Engines",
+      "vocabulary": [
+        {
+          "term": "crawler",
+          "translation": "поисковый робот"
+        },
+        {
+          "term": "hyperlink",
+          "translation": "гиперссылка"
+        },
+        {
+          "term": "indexing",
+          "translation": "индексирование"
+        },
+        {
+          "term": "keywords",
+          "translation": "ключевые слова"
+        },
+        {
+          "term": "ranking",
+          "translation": "ранжирование (у автоматизированного поисковика)"
+        },
+        {
+          "term": "relevant result",
+          "translation": "релевантный результат"
+        },
+        {
+          "term": "request",
+          "translation": "запрос"
+        },
+        {
+          "term": "search bar",
+          "translation": "строка поиска"
+        },
+        {
+          "term": "search engine",
+          "translation": "поисковая система"
+        },
+        {
+          "term": "tab",
+          "translation": "вкладка"
+        },
+        {
+          "term": "URL",
+          "translation": "адрес веб-страницы"
+        },
+        {
+          "term": "web browser",
+          "translation": "веб-браузер"
+        },
+        {
+          "term": "query",
+          "translation": "запрос"
+        },
+        {
+          "term": "browser",
+          "translation": "браузер"
+        },
+        {
+          "term": "metasearch engine",
+          "translation": "метапоисковая система"
+        },
+        {
+          "term": "algorithm",
+          "translation": "алгоритм"
+        },
+        {
+          "term": "database",
+          "translation": "база данных"
+        },
+        {
+          "term": "spider",
+          "translation": "паук (поисковый робот)"
+        }
+      ]
+    },
+    {
+      "unit": 3,
+      "title": "Programming Languages",
+      "vocabulary": [
+        {
+          "term": "assembler",
+          "translation": "ассемблер"
+        },
+        {
+          "term": "binary code",
+          "translation": "двоичный код"
+        },
+        {
+          "term": "compatible",
+          "translation": "совместимый"
+        },
+        {
+          "term": "compiler",
+          "translation": "компилятор"
+        },
+        {
+          "term": "debugging",
+          "translation": "отладка"
+        },
+        {
+          "term": "encapsulation",
+          "translation": "инкапсуляция (for OOP)"
+        },
+        {
+          "term": "high-level language",
+          "translation": "высокоуровневый язык"
+        },
+        {
+          "term": "inheritance",
+          "translation": "наследование"
+        },
+        {
+          "term": "interpreter",
+          "translation": "интерпретатор"
+        },
+        {
+          "term": "low-level language",
+          "translation": "низкоуровневый язык"
+        },
+        {
+          "term": "machine code",
+          "translation": "машинный код"
+        },
+        {
+          "term": "OOP",
+          "translation": "объектно-ориентированное программирование"
+        },
+        {
+          "term": "polymorphism",
+          "translation": "полиморфизм"
+        },
+        {
+          "term": "source code",
+          "translation": "исходный код"
+        },
+        {
+          "term": "Java applets",
+          "translation": "Java-аплеты"
+        },
+        {
+          "term": "object",
+          "translation": "объект"
+        },
+        {
+          "term": "class",
+          "translation": "класс"
+        },
+        {
+          "term": "method",
+          "translation": "метод"
+        },
+        {
+          "term": "syntax",
+          "translation": "синтаксис"
+        },
+        {
+          "term": "algorithm",
+          "translation": "алгоритм"
+        }
+      ]
+    },
+    {
+      "unit": 4,
+      "title": "Web Design",
+      "vocabulary": [
+        {
+          "term": "backend development",
+          "translation": "разработка серверных компонентов приложения"
+        },
+        {
+          "term": "CSS",
+          "translation": "каскадные таблицы стилей"
+        },
+        {
+          "term": "frontend development",
+          "translation": "разработка клиентской части"
+        },
+        {
+          "term": "HTML",
+          "translation": "язык гипертекстовой разметки"
+        },
+        {
+          "term": "hyperlink",
+          "translation": "гиперссылка"
+        },
+        {
+          "term": "JavaScript",
+          "translation": "JavaScript"
+        },
+        {
+          "term": "layout",
+          "translation": "расположение, макет (сайта)"
+        },
+        {
+          "term": "markup tags",
+          "translation": "теги разметки"
+        },
+        {
+          "term": "to rank high",
+          "translation": "занимать высокое место в рейтинге"
+        },
+        {
+          "term": "SEO",
+          "translation": "поисковая оптимизация"
+        },
+        {
+          "term": "template",
+          "translation": "шаблон"
+        },
+        {
+          "term": "URL",
+          "translation": "адрес веб-страницы"
+        },
+        {
+          "term": "website builder",
+          "translation": "конструктор веб-сайтов"
+        },
+        {
+          "term": "WYSIWYG",
+          "translation": "что видишь, то и получаешь"
+        },
+        {
+          "term": "responsive design",
+          "translation": "отзывчивый дизайн"
+        },
+        {
+          "term": "user interface",
+          "translation": "пользовательский интерфейс"
+        },
+        {
+          "term": "web page",
+          "translation": "веб-страница"
+        },
+        {
+          "term": "content management system",
+          "translation": "система управления контентом"
+        }
+      ]
+    },
+    {
+      "unit": 5,
+      "title": "Malware and Cybercrime",
+      "vocabulary": [
+        {
+          "term": "adware",
+          "translation": "рекламное ПО"
+        },
+        {
+          "term": "copyright violation",
+          "translation": "нарушение авторских прав"
+        },
+        {
+          "term": "cybercrime",
+          "translation": "киберпреступность"
+        },
+        {
+          "term": "DDoS attack",
+          "translation": "распределённая атака на отказ в обслуживании"
+        },
+        {
+          "term": "defacement",
+          "translation": "искажение информации на вебсайте"
+        },
+        {
+          "term": "keylogger",
+          "translation": "клавиатурный шпион"
+        },
+        {
+          "term": "malware",
+          "translation": "вредоносное ПО"
+        },
+        {
+          "term": "miner",
+          "translation": "майнер (вирус-майнер)"
+        },
+        {
+          "term": "misdirection routine",
+          "translation": "процедура дезориентации"
+        },
+        {
+          "term": "payload",
+          "translation": "полезная нагрузка (вируса)"
+        },
+        {
+          "term": "phishing",
+          "translation": "фишинг, интернет-мошенничество с целью хищения личных данных, выуживание паролей"
+        },
+        {
+          "term": "piggybacking",
+          "translation": "несанкционированное проникновение вслед за зарегистрированным пользователем (напр., проникновение в сеть)"
+        },
+        {
+          "term": "ransomware",
+          "translation": "программы-вымогатели"
+        },
+        {
+          "term": "reproduction routine",
+          "translation": "процедура самокопирования/ воспроизводства"
+        },
+        {
+          "term": "salami shaving",
+          "translation": "мошенничество «салями»"
+        },
+        {
+          "term": "software piracy",
+          "translation": "пиратство ПО"
+        },
+        {
+          "term": "spyware",
+          "translation": "шпионские программы"
+        },
+        {
+          "term": "trigger",
+          "translation": "запуск, активация вируса"
+        },
+        {
+          "term": "Trojan",
+          "translation": "троянский конь"
+        },
+        {
+          "term": "virus",
+          "translation": "вирус"
+        },
+        {
+          "term": "worm",
+          "translation": "червь"
+        }
+      ]
+    },
+    {
+      "unit": 6,
+      "title": "Data Security",
+      "vocabulary": [
+        {
+          "term": "backup",
+          "translation": "резервное копирование"
+        },
+        {
+          "term": "biometric authentication",
+          "translation": "биометрическая аутентификация"
+        },
+        {
+          "term": "brute force",
+          "translation": "метод грубой силы"
+        },
+        {
+          "term": "CAPTCHA",
+          "translation": "защита от роботов"
+        },
+        {
+          "term": "cryptanalysis",
+          "translation": "криптоанализ"
+        },
+        {
+          "term": "cybersecurity",
+          "translation": "кибербезопасность"
+        },
+        {
+          "term": "to deny access",
+          "translation": "отказать в доступе, отклонить доступ"
+        },
+        {
+          "term": "encryption",
+          "translation": "шифрование"
+        },
+        {
+          "term": "firewall",
+          "translation": "брэндмауэр, межсетевой экран"
+        },
+        {
+          "term": "MFA",
+          "translation": "многофакторная аутентификация"
+        },
+        {
+          "term": "to update antivirus software",
+          "translation": "обновлять антивирусное ПО"
+        },
+        {
+          "term": "password",
+          "translation": "пароль"
+        },
+        {
+          "term": "packet filtering",
+          "translation": "фильтрация пакетов"
+        },
+        {
+          "term": "signature",
+          "translation": "сигнатура"
+        },
+        {
+          "term": "heuristic scanning",
+          "translation": "эвристическое сканирование"
+        },
+        {
+          "term": "vulnerability",
+          "translation": "уязвимость"
+        },
+        {
+          "term": "access control",
+          "translation": "контроль доступа"
+        }
+      ]
+    },
+    {
+      "unit": 7,
+      "title": "The Future of IT",
+      "vocabulary": [
+        {
+          "term": "Artificial Intelligence",
+          "translation": "искусственный интеллект"
+        },
+        {
+          "term": "artificial neural network",
+          "translation": "искусственная нейронная сеть, ИНС"
+        },
+        {
+          "term": "augmented reality",
+          "translation": "дополненная реальность"
+        },
+        {
+          "term": "backpropagation",
+          "translation": "алгоритм обратного распространения ошибки"
+        },
+        {
+          "term": "biometrics",
+          "translation": "биометрия"
+        },
+        {
+          "term": "Internet of Things",
+          "translation": "интернет вещей"
+        },
+        {
+          "term": "machine learning",
+          "translation": "машинное обучение"
+        },
+        {
+          "term": "raw data",
+          "translation": "необработанные данные"
+        },
+        {
+          "term": "smart home",
+          "translation": "умный дом"
+        },
+        {
+          "term": "virtual reality",
+          "translation": "виртуальная реальность"
+        },
+        {
+          "term": "neural network",
+          "translation": "нейронная сеть"
+        },
+        {
+          "term": "deep learning",
+          "translation": "глубокое обучение"
+        },
+        {
+          "term": "algorithm",
+          "translation": "алгоритм"
+        },
+        {
+          "term": "big data",
+          "translation": "большие данные"
+        },
+        {
+          "term": "cloud computing",
+          "translation": "облачные вычисления"
+        },
+        {
+          "term": "automation",
+          "translation": "автоматизация"
+        }
+      ]
+    },
+    {
+      "unit": 8,
+      "title": "Professions in IT",
+      "vocabulary": [
+        {
+          "term": "backend developer",
+          "translation": "разработчик серверной части"
+        },
+        {
+          "term": "cloud architect",
+          "translation": "архитектор облачных решений"
+        },
+        {
+          "term": "data scientist",
+          "translation": "специалист по данным"
+        },
+        {
+          "term": "database administrator",
+          "translation": "администратор баз данных"
+        },
+        {
+          "term": "frontend developer",
+          "translation": "разработчик клиентской части"
+        },
+        {
+          "term": "full-stack developer",
+          "translation": "полный разработчик"
+        },
+        {
+          "term": "network engineer",
+          "translation": "сетевой инженер"
+        },
+        {
+          "term": "pen tester",
+          "translation": "тестировщик на проникновение"
+        },
+        {
+          "term": "software engineer",
+          "translation": "инженер-программист"
+        },
+        {
+          "term": "security specialist",
+          "translation": "специалист по безопасности"
+        },
+        {
+          "term": "system administrator",
+          "translation": "системный администратор"
+        },
+        {
+          "term": "web developer",
+          "translation": "веб-разработчик"
+        },
+        {
+          "term": "IT director",
+          "translation": "IT-директор"
+        },
+        {
+          "term": "project manager",
+          "translation": "менеджер проектов"
+        },
+        {
+          "term": "QA engineer",
+          "translation": "инженер по тестированию"
+        },
+        {
+          "term": "DevOps engineer",
+          "translation": "DevOps-инженер"
+        },
+        {
+          "term": "technical support specialist",
+          "translation": "специалист технической поддержки"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,98 @@
+{
+  "unit": 5,
+  "title": "Secondary Storage",
+  "vocabulary": [
+    {
+      "term": "access time (seek time)",
+      "translation": "время доступа"
+    },
+    {
+      "term": "backup",
+      "translation": "резервное копирование"
+    },
+    {
+      "term": "CD-R",
+      "translation": "записываемый компакт-диск"
+    },
+    {
+      "term": "CD-ROM",
+      "translation": "компакт-диск только для чтения"
+    },
+    {
+      "term": "CD-RW",
+      "translation": "перезаписываемый компакт-диск"
+    },
+    {
+      "term": "defragmentation",
+      "translation": "дефрагментация"
+    },
+    {
+      "term": "directory",
+      "translation": "каталог, папка"
+    },
+    {
+      "term": "DVD",
+      "translation": "цифровой универсальный диск"
+    },
+    {
+      "term": "floating gate transistor",
+      "translation": "транзистор с плавающим затвором"
+    },
+    {
+      "term": "floppy disk",
+      "translation": "дискета"
+    },
+    {
+      "term": "HDD",
+      "translation": "жёсткий диск"
+    },
+    {
+      "term": "laser beam",
+      "translation": "лазерный луч"
+    },
+    {
+      "term": "partition",
+      "translation": "раздел на жёстком диске"
+    },
+    {
+      "term": "platter",
+      "translation": "пластина жёсткого диска"
+    },
+    {
+      "term": "punched card",
+      "translation": "перфокарта"
+    },
+    {
+      "term": "read/write head",
+      "translation": "головка чтения/записи"
+    },
+    {
+      "term": "seek time",
+      "translation": "время поиска"
+    },
+    {
+      "term": "SSD",
+      "translation": "твердотельный накопитель"
+    },
+    {
+      "term": "to archive",
+      "translation": "архивировать"
+    },
+    {
+      "term": "to erase",
+      "translation": "стирать (данные)"
+    },
+    {
+      "term": "track",
+      "translation": "дорожка на CD/жёстком диске"
+    },
+    {
+      "term": "transfer rate",
+      "translation": "скорость передачи данных"
+    },
+    {
+      "term": "USB-flash drive / memory stick",
+      "translation": "флеш-накопитель"
+    }
+  ]
+}

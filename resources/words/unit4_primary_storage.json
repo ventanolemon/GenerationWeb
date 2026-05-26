@@ -1,0 +1,26 @@
+{
+  "unit": 4,
+  "title": "Primary Storage",
+  "vocabulary": [
+    {
+      "term": "cache hit",
+      "translation": "попадание в кэш"
+    },
+    {
+      "term": "memory capacity",
+      "translation": "объём памяти"
+    },
+    {
+      "term": "storage medium",
+      "translation": "носитель информации"
+    },
+    {
+      "term": "write-back cache",
+      "translation": "кэш с обратной (отложенной) записью"
+    },
+    {
+      "term": "write-through cache",
+      "translation": "кэш со сквозной записью"
+    }
+  ]
+}

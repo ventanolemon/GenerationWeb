@@ -1,0 +1,247 @@
+[
+  {
+    "template": "___ is a high-speed Internet connection that uses standard copper twisted-pair telephone cabling but carries digital signals instead of analogue ones.",
+    "answers": ["DSL"],
+    "translation": "DSL — высокоскоростное интернет-соединение, использующее обычный медный кабель витой пары, но передающее цифровые сигналы вместо аналоговых."
+  },
+  {
+    "template": "In ___, the download speed is faster than the upload speed, which suits home users who download much more than they upload.",
+    "answers": ["ADSL"],
+    "translation": "В ADSL скорость загрузки выше скорости отдачи, что удобно для домашних пользователей, которые скачивают больше, чем отправляют."
+  },
+  {
+    "template": "___ cables send data by harnessing the power of light, using a binary system where the presence of light is one and the absence is zero.",
+    "answers": ["fiber-optic"],
+    "translation": "Оптоволоконные кабели передают данные с помощью света, используя двоичную систему: наличие света — это единица, отсутствие — ноль."
+  },
+  {
+    "template": "Cable Internet uses the infrastructure of cable TV networks and connects to your devices via a cable ___.",
+    "answers": ["modem"],
+    "translation": "Кабельный интернет использует инфраструктуру сетей кабельного телевидения и подключается к вашим устройствам через кабельный модем."
+  },
+  {
+    "template": "A ___ network is a communication network distributed over land areas called 'cells', each served by at least one base station.",
+    "answers": ["cellular"],
+    "translation": "Сотовая сеть — это сеть связи, распределённая по участкам земли, называемым «ячейками», каждая из которых обслуживается хотя бы одной базовой станцией."
+  },
+  {
+    "template": "In ___ switching, data is divided into smaller units called packets, which can travel through different paths and be reassembled at the destination.",
+    "answers": ["packet"],
+    "translation": "При пакетной коммутации данные делятся на меньшие единицы — пакеты, — которые могут идти разными путями и собираться обратно в пункте назначения."
+  },
+  {
+    "template": "___ switching establishes a dedicated communication channel between two nodes before the session starts and keeps it reserved for the entire session.",
+    "answers": ["circuit"],
+    "translation": "Коммутация каналов устанавливает выделенный канал связи между двумя узлами до начала сеанса и удерживает его зарезервированным на всё время сеанса."
+  },
+  {
+    "template": "___ is a stack of protocols used to interconnect network devices on the Internet; its foundational protocols are the Transmission Control Protocol and the Internet Protocol.",
+    "answers": ["TCP/IP"],
+    "translation": "TCP/IP — это стек протоколов, используемый для соединения сетевых устройств в Интернете; в его основе лежат протокол управления передачей и интернет-протокол."
+  },
+  {
+    "template": "A crawler-based search engine uses a special program called a ___ to find new and updated content by following hyperlinks across the web.",
+    "answers": ["crawler"],
+    "translation": "Поисковая система на основе обходчика использует специальную программу — краулер, — которая находит новый и обновлённый контент, переходя по гиперссылкам в Сети."
+  },
+  {
+    "template": "___ involves processing and storing the information that a search engine finds in a massive database of discovered URLs.",
+    "answers": ["indexing"],
+    "translation": "Индексирование — это обработка и хранение информации, найденной поисковой системой, в огромной базе данных обнаруженных URL-адресов."
+  },
+  {
+    "template": "The ordering of search results from most relevant to least relevant is called ___.",
+    "answers": ["ranking"],
+    "translation": "Упорядочивание результатов поиска от наиболее релевантного к наименее релевантному называется ранжированием."
+  },
+  {
+    "template": "A ___ search engine does not have its own database of indexed pages — it sends queries to several other search engines and compiles the results into one overall list.",
+    "answers": ["meta-search"],
+    "translation": "Метапоисковая система не имеет собственной базы проиндексированных страниц — она отправляет запросы нескольким другим поисковикам и объединяет результаты в один общий список."
+  },
+  {
+    "template": "Human-powered ___ depend on human editors who manually review and place submitted websites into appropriate categories.",
+    "answers": ["directories"],
+    "translation": "Каталоги, управляемые людьми, опираются на редакторов, которые вручную проверяют и распределяют присланные сайты по соответствующим категориям."
+  },
+  {
+    "template": "___ code is the only language a computer can understand directly — it consists entirely of binary digits.",
+    "answers": ["machine"],
+    "translation": "Машинный код — единственный язык, который компьютер понимает напрямую; он целиком состоит из двоичных цифр."
+  },
+  {
+    "template": "An ___ is a program that converts code written in assembly language into machine code.",
+    "answers": ["assembler"],
+    "translation": "Ассемблер — это программа, преобразующая код на языке ассемблера в машинный код."
+  },
+  {
+    "template": "A ___ translates the entire high-level source program into machine code at once, producing an executable file.",
+    "answers": ["compiler"],
+    "translation": "Компилятор переводит всю высокоуровневую исходную программу в машинный код за один раз, создавая исполняемый файл."
+  },
+  {
+    "template": "An ___ translates high-level source code into machine code line by line as the program runs, which makes execution slower but more flexible.",
+    "answers": ["interpreter"],
+    "translation": "Интерпретатор переводит высокоуровневый исходный код в машинный построчно, во время выполнения программы; это делает её работу медленнее, но гибче."
+  },
+  {
+    "template": "___-level languages are closer to ordinary human language, offer a high level of abstraction, and are portable across different computers.",
+    "answers": ["high"],
+    "translation": "Высокоуровневые языки ближе к обычной человеческой речи, дают высокий уровень абстракции и переносимы между разными компьютерами."
+  },
+  {
+    "template": "___ is the OOP feature that bundles data and the methods that operate on that data into self-contained objects.",
+    "answers": ["encapsulation"],
+    "translation": "Инкапсуляция — свойство ООП, которое объединяет данные и методы, работающие с ними, в самостоятельные объекты."
+  },
+  {
+    "template": "___ allows a subclass to automatically receive all the properties of its parent class without redefining them.",
+    "answers": ["inheritance"],
+    "translation": "Наследование позволяет подклассу автоматически получать все свойства родительского класса без их повторного определения."
+  },
+  {
+    "template": "___ means that different objects can receive the same instruction but handle it in different ways.",
+    "answers": ["polymorphism"],
+    "translation": "Полиморфизм означает, что разные объекты могут получать одну и ту же инструкцию, но обрабатывать её по-разному."
+  },
+  {
+    "template": "___ is a markup language used to describe the structure of information on a webpage by placing tags around its content.",
+    "answers": ["HTML"],
+    "translation": "HTML — это язык разметки, используемый для описания структуры информации на веб-странице путём размещения тегов вокруг её содержимого."
+  },
+  {
+    "template": "___ is the design mechanism whose primary function is to improve the appearance of a webpage by defining colours, fonts, and layout.",
+    "answers": ["CSS"],
+    "translation": "CSS — механизм оформления, основная функция которого — улучшать внешний вид веб-страницы за счёт задания цветов, шрифтов и компоновки."
+  },
+  {
+    "template": "___ is a cross-platform, object-oriented programming language used to make web pages interactive and to control the behaviour of page elements.",
+    "answers": ["JavaScript"],
+    "translation": "JavaScript — кросс-платформенный объектно-ориентированный язык программирования, используемый для интерактивности веб-страниц и управления поведением их элементов."
+  },
+  {
+    "template": "___ development refers to building the visible part of a website — the user interface and everything the user interacts with in the browser.",
+    "answers": ["frontend"],
+    "translation": "Фронтенд-разработка — это создание видимой части сайта: пользовательского интерфейса и всего того, с чем пользователь взаимодействует в браузере."
+  },
+  {
+    "template": "___ development refers to the server-side part of a website, working with databases, servers, and server-side languages such as Python or Java.",
+    "answers": ["backend"],
+    "translation": "Бэкенд-разработка — это серверная часть сайта; она работает с базами данных, серверами и серверными языками вроде Python или Java."
+  },
+  {
+    "template": "___ stands for Search Engine Optimization — a set of improvements applied to a website to help it rank higher on search results pages.",
+    "answers": ["SEO"],
+    "translation": "SEO расшифровывается как «поисковая оптимизация» — набор улучшений сайта, помогающих ему занимать более высокие позиции в результатах поиска."
+  },
+  {
+    "template": "___ is short for 'malicious software' — any program intentionally designed to disrupt, damage, or gain unauthorised access to a computer system.",
+    "answers": ["malware"],
+    "translation": "Malware — сокращение от «вредоносное программное обеспечение»: любая программа, намеренно созданная для нарушения работы, повреждения или несанкционированного доступа к компьютеру."
+  },
+  {
+    "template": "A ___ is malicious code that must attach itself to a host program; it remains dormant until the user activates the infected file.",
+    "answers": ["virus"],
+    "translation": "Вирус — это вредоносный код, который должен встраиваться в программу-носитель; он остаётся неактивным, пока пользователь не запустит заражённый файл."
+  },
+  {
+    "template": "A ___ is a standalone malicious program that spreads autonomously across networks without needing to attach itself to any host program.",
+    "answers": ["worm"],
+    "translation": "Червь — самостоятельная вредоносная программа, которая распространяется по сети без необходимости встраиваться в программу-носитель."
+  },
+  {
+    "template": "A ___ horse looks like a legitimate program but secretly contains destructive code that can open a backdoor for an attacker.",
+    "answers": ["Trojan"],
+    "translation": "Троянский конь маскируется под легальную программу, но скрытно содержит разрушительный код, способный открыть бэкдор для злоумышленника."
+  },
+  {
+    "template": "___ encrypts a victim's data and demands payment for its release, and there is no guarantee that paying will restore access.",
+    "answers": ["ransomware"],
+    "translation": "Программа-вымогатель шифрует данные жертвы и требует выкуп за их разблокировку, при этом оплата не гарантирует восстановления доступа."
+  },
+  {
+    "template": "___ is malware designed to collect and report data about the user's Internet activity, often without their knowledge.",
+    "answers": ["spyware"],
+    "translation": "Spyware — это вредоносное ПО, собирающее и передающее данные об активности пользователя в Интернете, как правило без его ведома."
+  },
+  {
+    "template": "A ___ is a specific type of spyware that records a user's keystrokes to capture passwords and other sensitive information.",
+    "answers": ["keylogger"],
+    "translation": "Кейлогер — особый вид шпионского ПО, который записывает нажатия клавиш, чтобы перехватывать пароли и другую конфиденциальную информацию."
+  },
+  {
+    "template": "___ is an attempt to steal sensitive information by disguising as a legitimate source, typically through fake emails containing links to malicious websites.",
+    "answers": ["phishing"],
+    "translation": "Фишинг — попытка кражи конфиденциальной информации путём выдачи себя за легальный источник, обычно через поддельные письма со ссылками на вредоносные сайты."
+  },
+  {
+    "template": "A ___ attack uses multiple infected computers (a botnet) to overwhelm a server with traffic so that it cannot respond to legitimate requests.",
+    "answers": ["DDoS"],
+    "translation": "DDoS-атака использует множество заражённых компьютеров (ботнет), чтобы перегрузить сервер трафиком, не давая ему обрабатывать запросы законных пользователей."
+  },
+  {
+    "template": "A network of computers infected with malware and remotely controlled by an attacker without the owners' knowledge is called a ___.",
+    "answers": ["botnet"],
+    "translation": "Сеть компьютеров, заражённых вредоносным ПО и удалённо управляемых злоумышленником без ведома владельцев, называется ботнетом."
+  },
+  {
+    "template": "A ___ is a combination of software and hardware that protects a network by monitoring and controlling traffic based on predefined security rules.",
+    "answers": ["firewall"],
+    "translation": "Брандмауэр — сочетание программных и аппаратных средств, защищающее сеть путём отслеживания и контроля трафика на основе заранее заданных правил безопасности."
+  },
+  {
+    "template": "A ___ is a distinguishing feature of a virus — like a fingerprint — that allows antivirus software to recognise it in scanned files.",
+    "answers": ["signature"],
+    "translation": "Сигнатура — отличительная особенность вируса, своего рода «отпечаток пальца», по которому антивирус может распознать его в проверяемых файлах."
+  },
+  {
+    "template": "___ scanning uses rules and algorithms to look for suspicious patterns of behaviour, allowing the detection of new or modified malware not yet in the signature database.",
+    "answers": ["heuristic"],
+    "translation": "Эвристическое сканирование использует правила и алгоритмы для поиска подозрительных шаблонов поведения, позволяя обнаруживать новое или изменённое вредоносное ПО, которого ещё нет в базе сигнатур."
+  },
+  {
+    "template": "In ___ encryption, all parties share the same single key, which is used both to encrypt and to decrypt messages.",
+    "answers": ["symmetric"],
+    "translation": "В симметричном шифровании все стороны используют один общий ключ, которым сообщение и шифруется, и расшифровывается."
+  },
+  {
+    "template": "In ___ encryption, two mathematically related keys are used: a public key for encryption and a private key for decryption.",
+    "answers": ["asymmetric"],
+    "translation": "В асимметричном шифровании используются два математически связанных ключа: открытый — для шифрования и закрытый — для расшифровки."
+  },
+  {
+    "template": "___ force is a method of breaking a cipher by trying random keys one after another until the correct one is found.",
+    "answers": ["brute"],
+    "translation": "Полный перебор — метод вскрытия шифра путём последовательного подбора случайных ключей, пока не найдётся правильный."
+  },
+  {
+    "template": "A ___ is a challenge used by websites to determine whether the user is a real human and not an automated bot.",
+    "answers": ["CAPTCHA"],
+    "translation": "CAPTCHA — это проверочное задание, используемое сайтами, чтобы определить, является ли пользователь человеком, а не автоматическим ботом."
+  },
+  {
+    "template": "Artificial ___ is the simulation of human intelligence by machines that can learn from data and make decisions.",
+    "answers": ["intelligence"],
+    "translation": "Искусственный интеллект — моделирование человеческого мышления машинами, способными обучаться на данных и принимать решения."
+  },
+  {
+    "template": "Machine ___ is a subset of AI in which algorithms improve automatically through experience and data, without being explicitly programmed.",
+    "answers": ["learning"],
+    "translation": "Машинное обучение — раздел ИИ, в котором алгоритмы автоматически улучшаются за счёт опыта и данных, без явного программирования."
+  },
+  {
+    "template": "The Internet of ___ refers to the network of physical objects connected to the Internet that can collect and exchange data.",
+    "answers": ["Things"],
+    "translation": "Интернет вещей — это сеть физических объектов, подключённых к Интернету и способных собирать данные и обмениваться ими."
+  },
+  {
+    "template": "A ___ developer is capable of working on both the frontend and the backend parts of a web application.",
+    "answers": ["full-stack"],
+    "translation": "Full-stack-разработчик умеет работать как над клиентской, так и над серверной частью веб-приложения."
+  },
+  {
+    "template": "A ___ tester legally simulates cyberattacks on a system in order to find security vulnerabilities before real attackers can exploit them.",
+    "answers": ["pen"],
+    "translation": "Пентестер легально моделирует кибератаки на систему, чтобы найти уязвимости в безопасности до того, как их найдут настоящие злоумышленники."
+  }
+]

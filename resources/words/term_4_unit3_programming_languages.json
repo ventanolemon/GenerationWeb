@@ -1,0 +1,86 @@
+{
+  "unit": 3,
+  "title": "Programming Languages",
+  "vocabulary": [
+    {
+      "term": "assembler",
+      "translation": "ассемблер"
+    },
+    {
+      "term": "binary code",
+      "translation": "двоичный код"
+    },
+    {
+      "term": "compatible",
+      "translation": "совместимый"
+    },
+    {
+      "term": "compiler",
+      "translation": "компилятор"
+    },
+    {
+      "term": "debugging",
+      "translation": "отладка"
+    },
+    {
+      "term": "encapsulation",
+      "translation": "инкапсуляция (for OOP)"
+    },
+    {
+      "term": "high-level language",
+      "translation": "высокоуровневый язык"
+    },
+    {
+      "term": "inheritance",
+      "translation": "наследование"
+    },
+    {
+      "term": "interpreter",
+      "translation": "интерпретатор"
+    },
+    {
+      "term": "low-level language",
+      "translation": "низкоуровневый язык"
+    },
+    {
+      "term": "machine code",
+      "translation": "машинный код"
+    },
+    {
+      "term": "OOP",
+      "translation": "объектно-ориентированное программирование"
+    },
+    {
+      "term": "polymorphism",
+      "translation": "полиморфизм"
+    },
+    {
+      "term": "source code",
+      "translation": "исходный код"
+    },
+    {
+      "term": "Java applets",
+      "translation": "Java-аплеты"
+    },
+    {
+      "term": "object",
+      "translation": "объект"
+    },
+    {
+      "term": "class",
+      "translation": "класс"
+    },
+    {
+      "term": "method",
+      "translation": "метод"
+    },
+    {
+      "term": "syntax",
+      "translation": "синтаксис"
+    },
+    {
+      "term": "algorithm",
+      "translation": "алгоритм"
+    }
+  ]
+}

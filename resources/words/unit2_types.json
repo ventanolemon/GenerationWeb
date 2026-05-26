@@ -1,0 +1,46 @@
+{
+  "unit": 2,
+  "title": "Types of Computers",
+  "vocabulary": [
+    {
+      "term": "battery pack",
+      "translation": "аккумуляторная батарея"
+    },
+    {
+      "term": "built-in webcam",
+      "translation": "встроенная камера"
+    },
+    {
+      "term": "desktop PC",
+      "translation": "стационарный компьютер"
+    },
+    {
+      "term": "detached keyboard",
+      "translation": "съемная клавиатура"
+    },
+    {
+      "term": "system unit",
+      "translation": "системный блок"
+    },
+    {
+      "term": "tablet PC",
+      "translation": "планшет"
+    },
+    {
+      "term": "touchpad",
+      "translation": "сенсорная панель"
+    },
+    {
+      "term": "touchscreen",
+      "translation": "сенсорный экран"
+    },
+    {
+      "term": "virtual keyboard",
+      "translation": "виртуальная клавиатура"
+    },
+    {
+      "term": "wireless mouse",
+      "translation": "беспроводная мышь"
+    }
+  ]
+}

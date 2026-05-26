@@ -1,0 +1,35 @@
+.app {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  height: 100vh;
+}
+
+.sidebar {
+  background: #fff;
+  border-right: 1px solid #ddd;
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+.title {
+  font-size: 1.1rem;
+  margin: 0 0 1rem 0;
+}
+
+.main {
+  padding: 1.5rem 2rem;
+  overflow-y: auto;
+}
+
+.hint {
+  color: #888;
+  font-style: italic;
+}
+
+.error {
+  padding: 0.75rem 1rem;
+  border-radius: 4px;
+  background: #fee;
+  color: #900;
+  margin-bottom: 1rem;
+}

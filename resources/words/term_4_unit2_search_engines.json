@@ -1,0 +1,78 @@
+{
+  "unit": 2,
+  "title": "Search Engines",
+  "vocabulary": [
+    {
+      "term": "crawler",
+      "translation": "поисковый робот"
+    },
+    {
+      "term": "hyperlink",
+      "translation": "гиперссылка"
+    },
+    {
+      "term": "indexing",
+      "translation": "индексирование"
+    },
+    {
+      "term": "keywords",
+      "translation": "ключевые слова"
+    },
+    {
+      "term": "ranking",
+      "translation": "ранжирование (у автоматизированного поисковика)"
+    },
+    {
+      "term": "relevant result",
+      "translation": "релевантный результат"
+    },
+    {
+      "term": "request",
+      "translation": "запрос"
+    },
+    {
+      "term": "search bar",
+      "translation": "строка поиска"
+    },
+    {
+      "term": "search engine",
+      "translation": "поисковая система"
+    },
+    {
+      "term": "tab",
+      "translation": "вкладка"
+    },
+    {
+      "term": "URL",
+      "translation": "адрес веб-страницы"
+    },
+    {
+      "term": "web browser",
+      "translation": "веб-браузер"
+    },
+    {
+      "term": "query",
+      "translation": "запрос"
+    },
+    {
+      "term": "browser",
+      "translation": "браузер"
+    },
+    {
+      "term": "metasearch engine",
+      "translation": "метапоисковая система"
+    },
+    {
+      "term": "algorithm",
+      "translation": "алгоритм"
+    },
+    {
+      "term": "database",
+      "translation": "база данных"
+    },
+    {
+      "term": "spider",
+      "translation": "паук (поисковый робот)"
+    }
+  ]
+}

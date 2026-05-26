@@ -1,0 +1,417 @@
+{
+  "title": "Essential English for IT Students. Part 1 — Complete Vocabulary",
+  "description": "Complete glossary from all 7 units (MIREA, 2023)",
+  "total_terms": 92,
+  "units": [
+    {
+      "unit": 1,
+      "title": "History of Computers",
+      "vocabulary": [
+        {
+          "term": "calculations",
+          "translation": "вычисления"
+        },
+        {
+          "term": "digital",
+          "translation": "цифровой"
+        },
+        {
+          "term": "energy consumption",
+          "translation": "энергопотребление"
+        },
+        {
+          "term": "integrated circuit",
+          "translation": "микросхема, интегральная схема"
+        },
+        {
+          "term": "performance",
+          "translation": "производительность"
+        },
+        {
+          "term": "semiconductor",
+          "translation": "полупроводник"
+        },
+        {
+          "term": "silicon",
+          "translation": "кремний"
+        },
+        {
+          "term": "vacuum tube",
+          "translation": "электронная лампа"
+        }
+      ]
+    },
+    {
+      "unit": 2,
+      "title": "Types of Computers",
+      "vocabulary": [
+        {
+          "term": "battery pack",
+          "translation": "аккумуляторная батарея"
+        },
+        {
+          "term": "built-in webcam",
+          "translation": "встроенная камера"
+        },
+        {
+          "term": "desktop PC",
+          "translation": "стационарный компьютер"
+        },
+        {
+          "term": "detached keyboard",
+          "translation": "съемная клавиатура"
+        },
+        {
+          "term": "system unit",
+          "translation": "системный блок"
+        },
+        {
+          "term": "tablet PC",
+          "translation": "планшет"
+        },
+        {
+          "term": "touchpad",
+          "translation": "сенсорная панель"
+        },
+        {
+          "term": "touchscreen",
+          "translation": "сенсорный экран"
+        },
+        {
+          "term": "virtual keyboard",
+          "translation": "виртуальная клавиатура"
+        },
+        {
+          "term": "wireless mouse",
+          "translation": "беспроводная мышь"
+        }
+      ]
+    },
+    {
+      "unit": 3,
+      "title": "Computer Hardware",
+      "vocabulary": [
+        {
+          "term": "ALU",
+          "translation": "арифметико-логическое устройство"
+        },
+        {
+          "term": "BIOS",
+          "translation": "базовая система ввода/вывода"
+        },
+        {
+          "term": "bus",
+          "translation": "шина"
+        },
+        {
+          "term": "clock speed",
+          "translation": "тактовая частота"
+        },
+        {
+          "term": "CPU",
+          "translation": "центральный процессор"
+        },
+        {
+          "term": "expansion card",
+          "translation": "карта расширения"
+        },
+        {
+          "term": "external disk drive",
+          "translation": "внешний жёсткий диск"
+        },
+        {
+          "term": "front side bus",
+          "translation": "системная (фронтальная) шина"
+        },
+        {
+          "term": "headphones",
+          "translation": "наушники"
+        },
+        {
+          "term": "input device",
+          "translation": "устройство ввода информации"
+        },
+        {
+          "term": "memory card",
+          "translation": "карта памяти"
+        },
+        {
+          "term": "multi-core CPU",
+          "translation": "многоядерный процессор"
+        },
+        {
+          "term": "multi-tasking",
+          "translation": "многозадачный"
+        },
+        {
+          "term": "output device",
+          "translation": "устройство вывода информации"
+        },
+        {
+          "term": "peripherals",
+          "translation": "подключаемое оборудование"
+        },
+        {
+          "term": "power-supply unit",
+          "translation": "блок питания"
+        },
+        {
+          "term": "RAM",
+          "translation": "оперативное запоминающее устройство (ОЗУ)"
+        },
+        {
+          "term": "ROM",
+          "translation": "постоянное запоминающее устройство (ПЗУ)"
+        },
+        {
+          "term": "software",
+          "translation": "программное обеспечение"
+        },
+        {
+          "term": "speakers",
+          "translation": "колонки"
+        },
+        {
+          "term": "storage device",
+          "translation": "устройство хранения данных"
+        },
+        {
+          "term": "system clock",
+          "translation": "тактовый генератор"
+        },
+        {
+          "term": "to execute instructions",
+          "translation": "выполнять инструкции"
+        },
+        {
+          "term": "to transmit data",
+          "translation": "передавать данные"
+        },
+        {
+          "term": "USB",
+          "translation": "универсальная последовательная шина"
+        },
+        {
+          "term": "volatile",
+          "translation": "энергозависимый"
+        }
+      ]
+    },
+    {
+      "unit": 4,
+      "title": "Primary Storage",
+      "vocabulary": [
+        {
+          "term": "cache hit",
+          "translation": "попадание в кэш"
+        },
+        {
+          "term": "memory capacity",
+          "translation": "объём памяти"
+        },
+        {
+          "term": "storage medium",
+          "translation": "носитель информации"
+        },
+        {
+          "term": "write-back cache",
+          "translation": "кэш с обратной (отложенной) записью"
+        },
+        {
+          "term": "write-through cache",
+          "translation": "кэш со сквозной записью"
+        }
+      ]
+    },
+    {
+      "unit": 5,
+      "title": "Secondary Storage",
+      "vocabulary": [
+        {
+          "term": "access time (seek time)",
+          "translation": "время доступа"
+        },
+        {
+          "term": "backup",
+          "translation": "резервное копирование"
+        },
+        {
+          "term": "CD-R",
+          "translation": "записываемый компакт-диск"
+        },
+        {
+          "term": "CD-ROM",
+          "translation": "компакт-диск только для чтения"
+        },
+        {
+          "term": "CD-RW",
+          "translation": "перезаписываемый компакт-диск"
+        },
+        {
+          "term": "defragmentation",
+          "translation": "дефрагментация"
+        },
+        {
+          "term": "directory",
+          "translation": "каталог, папка"
+        },
+        {
+          "term": "DVD",
+          "translation": "цифровой универсальный диск"
+        },
+        {
+          "term": "floating gate transistor",
+          "translation": "транзистор с плавающим затвором"
+        },
+        {
+          "term": "floppy disk",
+          "translation": "дискета"
+        },
+        {
+          "term": "HDD",
+          "translation": "жёсткий диск"
+        },
+        {
+          "term": "laser beam",
+          "translation": "лазерный луч"
+        },
+        {
+          "term": "partition",
+          "translation": "раздел на жёстком диске"
+        },
+        {
+          "term": "platter",
+          "translation": "пластина жёсткого диска"
+        },
+        {
+          "term": "punched card",
+          "translation": "перфокарта"
+        },
+        {
+          "term": "read/write head",
+          "translation": "головка чтения/записи"
+        },
+        {
+          "term": "seek time",
+          "translation": "время поиска"
+        },
+        {
+          "term": "SSD",
+          "translation": "твердотельный накопитель"
+        },
+        {
+          "term": "to archive",
+          "translation": "архивировать"
+        },
+        {
+          "term": "to erase",
+          "translation": "стирать (данные)"
+        },
+        {
+          "term": "track",
+          "translation": "дорожка на CD/жёстком диске"
+        },
+        {
+          "term": "transfer rate",
+          "translation": "скорость передачи данных"
+        },
+        {
+          "term": "USB-flash drive / memory stick",
+          "translation": "флеш-накопитель"
+        }
+      ]
+    },
+    {
+      "unit": 6,
+      "title": "Software",
+      "vocabulary": [
+        {
+          "term": "application",
+          "translation": "приложение"
+        },
+        {
+          "term": "CLI",
+          "translation": "интерфейс командной строки"
+        },
+        {
+          "term": "compatible",
+          "translation": "совместимый"
+        },
+        {
+          "term": "cooperative multitasking",
+          "translation": "кооперативная многозадачность; совместная многозадачность, невытесняющая многозадачность"
+        },
+        {
+          "term": "GUI",
+          "translation": "графический интерфейс пользователя"
+        },
+        {
+          "term": "open-source software",
+          "translation": "программы с открытым исходным кодом"
+        },
+        {
+          "term": "preemptive multitasking",
+          "translation": "вытесняющая многозадачность, прерывающая программа (программа, вытесняющая из памяти другую программу в соответствии с приоритетом)"
+        },
+        {
+          "term": "proprietary software",
+          "translation": "закрытое программное обеспечение (защищённое) (в отличие от программного обеспечения, являющегося открытым (open-source software))"
+        },
+        {
+          "term": "spreadsheet",
+          "translation": "электронная таблица"
+        },
+        {
+          "term": "to edit",
+          "translation": "редактировать"
+        },
+        {
+          "term": "WIMP",
+          "translation": "окна, иконки, меню, указатель"
+        }
+      ]
+    },
+    {
+      "unit": 7,
+      "title": "Networks",
+      "vocabulary": [
+        {
+          "term": "bus topology",
+          "translation": "топология общая шина"
+        },
+        {
+          "term": "LAN",
+          "translation": "локальная сеть"
+        },
+        {
+          "term": "MAN",
+          "translation": "городская сеть"
+        },
+        {
+          "term": "mesh topology",
+          "translation": "топология сетки, ячеистая топология, многосвязная сеть"
+        },
+        {
+          "term": "network backbone",
+          "translation": "сетевая магистраль"
+        },
+        {
+          "term": "peer-to-peer network",
+          "translation": "одноранговая сеть"
+        },
+        {
+          "term": "ring topology",
+          "translation": "кольцевая топология"
+        },
+        {
+          "term": "WAN",
+          "translation": "глобальная сеть"
+        },
+        {
+          "term": "wireless access point",
+          "translation": "беспроводная точка доступа"
+        }
+      ]
+    }
+  ]
+}

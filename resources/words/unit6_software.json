@@ -1,0 +1,50 @@
+{
+  "unit": 6,
+  "title": "Software",
+  "vocabulary": [
+    {
+      "term": "application",
+      "translation": "приложение"
+    },
+    {
+      "term": "CLI",
+      "translation": "интерфейс командной строки"
+    },
+    {
+      "term": "compatible",
+      "translation": "совместимый"
+    },
+    {
+      "term": "cooperative multitasking",
+      "translation": "кооперативная многозадачность; совместная многозадачность, невытесняющая многозадачность"
+    },
+    {
+      "term": "GUI",
+      "translation": "графический интерфейс пользователя"
+    },
+    {
+      "term": "open-source software",
+      "translation": "программы с открытым исходным кодом"
+    },
+    {
+      "term": "preemptive multitasking",
+      "translation": "вытесняющая многозадачность, прерывающая программа (программа, вытесняющая из памяти другую программу в соответствии с приоритетом)"
+    },
+    {
+      "term": "proprietary software",
+      "translation": "закрытое программное обеспечение (защищённое) (в отличие от программного обеспечения, являющегося открытым (open-source software))"
+    },
+    {
+      "term": "spreadsheet",
+      "translation": "электронная таблица"
+    },
+    {
+      "term": "to edit",
+      "translation": "редактировать"
+    },
+    {
+      "term": "WIMP",
+      "translation": "окна, иконки, меню, указатель"
+    }
+  ]
+}

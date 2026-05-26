@@ -1,0 +1,74 @@
+{
+  "unit": 8,
+  "title": "Professions in IT",
+  "vocabulary": [
+    {
+      "term": "backend developer",
+      "translation": "разработчик серверной части"
+    },
+    {
+      "term": "cloud architect",
+      "translation": "архитектор облачных решений"
+    },
+    {
+      "term": "data scientist",
+      "translation": "специалист по данным"
+    },
+    {
+      "term": "database administrator",
+      "translation": "администратор баз данных"
+    },
+    {
+      "term": "frontend developer",
+      "translation": "разработчик клиентской части"
+    },
+    {
+      "term": "full-stack developer",
+      "translation": "полный разработчик"
+    },
+    {
+      "term": "network engineer",
+      "translation": "сетевой инженер"
+    },
+    {
+      "term": "pen tester",
+      "translation": "тестировщик на проникновение"
+    },
+    {
+      "term": "software engineer",
+      "translation": "инженер-программист"
+    },
+    {
+      "term": "security specialist",
+      "translation": "специалист по безопасности"
+    },
+    {
+      "term": "system administrator",
+      "translation": "системный администратор"
+    },
+    {
+      "term": "web developer",
+      "translation": "веб-разработчик"
+    },
+    {
+      "term": "IT director",
+      "translation": "IT-директор"
+    },
+    {
+      "term": "project manager",
+      "translation": "менеджер проектов"
+    },
+    {
+      "term": "QA engineer",
+      "translation": "инженер по тестированию"
+    },
+    {
+      "term": "DevOps engineer",
+      "translation": "DevOps-инженер"
+    },
+    {
+      "term": "technical support specialist",
+      "translation": "специалист технической поддержки"
+    }
+  ]
+}

@@ -1,0 +1,1126 @@
+{
+  "unit": 4,
+  "title": "Computer Systems and Networks",
+  "vocabulary": [
+    {
+      "term": "access point",
+      "translation": "точка доступа"
+    },
+    {
+      "term": "access time (seek time)",
+      "translation": "время доступа"
+    },
+    {
+      "term": "addition",
+      "translation": "сложение"
+    },
+    {
+      "term": "adware",
+      "translation": "рекламное ПО"
+    },
+    {
+      "term": "AI",
+      "translation": "искусственный интеллект"
+    },
+    {
+      "term": "analog and digital signals",
+      "translation": "аналоговый, цифровой сигналы"
+    },
+    {
+      "term": "application code",
+      "translation": "код приложения"
+    },
+    {
+      "term": "application/ app",
+      "translation": "приложение"
+    },
+    {
+      "term": "AR",
+      "translation": "дополненная реальность"
+    },
+    {
+      "term": "ALU",
+      "translation": "арифметико-логическое устройство"
+    },
+    {
+      "term": "artificial neural network",
+      "translation": "искусственная нейронная сеть, ИНС"
+    },
+    {
+      "term": "assembler",
+      "translation": "ассемблер"
+    },
+    {
+      "term": "assembly languages",
+      "translation": "языки ассемблера, низкоуровневые языки, близкие к ассемблеру"
+    },
+    {
+      "term": "asynchronous transmission",
+      "translation": "асинхронная передача данных"
+    },
+    {
+      "term": "attenuation of a signal",
+      "translation": "затухание (ослабление) сигнала"
+    },
+    {
+      "term": "backbone",
+      "translation": "магистраль"
+    },
+    {
+      "term": "backdoor",
+      "translation": "лазейка в системе безопасности"
+    },
+    {
+      "term": "backend development",
+      "translation": "разработка серверных компонентов приложения"
+    },
+    {
+      "term": "background templates",
+      "translation": "фоновые шаблоны"
+    },
+    {
+      "term": "backpropagation",
+      "translation": "алгоритм обратного распространения ошибки"
+    },
+    {
+      "term": "backup",
+      "translation": "резервное копирование"
+    },
+    {
+      "term": "bandwidth",
+      "translation": "пропускная способность (ширина полосы пропускания)"
+    },
+    {
+      "term": "BIOS (Basic Input/Output System)",
+      "translation": "базовая система ввода/вывода"
+    },
+    {
+      "term": "battery pack",
+      "translation": "аккумуляторная батарея"
+    },
+    {
+      "term": "binary code",
+      "translation": "двоичный код"
+    },
+    {
+      "term": "biometric security devices",
+      "translation": "биометрические средства защиты"
+    },
+    {
+      "term": "bridge",
+      "translation": "мост"
+    },
+    {
+      "term": "broadband connection",
+      "translation": "широкополосный интернет"
+    },
+    {
+      "term": "built-in webcam",
+      "translation": "встроенная камера"
+    },
+    {
+      "term": "bus",
+      "translation": "шина"
+    },
+    {
+      "term": "bus width",
+      "translation": "разрядность шины"
+    },
+    {
+      "term": "bus topology",
+      "translation": "топология общая шина"
+    },
+    {
+      "term": "cache coherency",
+      "translation": "когерентность кэша"
+    },
+    {
+      "term": "cache hit",
+      "translation": "попадание в кэш"
+    },
+    {
+      "term": "cache miss",
+      "translation": "промах кэша"
+    },
+    {
+      "term": "cache line size",
+      "translation": "размер кэш-строки"
+    },
+    {
+      "term": "calculations",
+      "translation": "вычисления"
+    },
+    {
+      "term": "capacitor",
+      "translation": "конденсатор (электронный компонент, накапливающий заряд)"
+    },
+    {
+      "term": "cellular connection",
+      "translation": "сотовая связь"
+    },
+    {
+      "term": "CPU (Central Processing Unit)",
+      "translation": "центральный процессор"
+    },
+    {
+      "term": "circuit board",
+      "translation": "печатная плата"
+    },
+    {
+      "term": "client-server architecture",
+      "translation": "архитектура клиент-сервер"
+    },
+    {
+      "term": "clock speed",
+      "translation": "тактовая частота"
+    },
+    {
+      "term": "cloud computing",
+      "translation": "облачные вычисления"
+    },
+    {
+      "term": "coaxial cable",
+      "translation": "коаксиальный кабель"
+    },
+    {
+      "term": "compatible",
+      "translation": "совместимый"
+    },
+    {
+      "term": "compiler",
+      "translation": "компилятор"
+    },
+    {
+      "term": "consistent data",
+      "translation": "согласованные данные"
+    },
+    {
+      "term": "control unit",
+      "translation": "блок управления"
+    },
+    {
+      "term": "cooperative multitasking",
+      "translation": "кооперативная многозадачность; совместная многозадачность, невытесняющая многозадачность"
+    },
+    {
+      "term": "copper cable",
+      "translation": "медный провод"
+    },
+    {
+      "term": "crawler-based search engine",
+      "translation": "автоматизированная поисковая система"
+    },
+    {
+      "term": "crawling",
+      "translation": "поиск (сканирование информации)"
+    },
+    {
+      "term": "CSS",
+      "translation": "каскадные таблицы стилей"
+    },
+    {
+      "term": "data link layer",
+      "translation": "канальный уровень"
+    },
+    {
+      "term": "data transmission",
+      "translation": "передача данных"
+    },
+    {
+      "term": "datagram packet switching",
+      "translation": "коммутация дейтаграммных пакетов"
+    },
+    {
+      "term": "DDoS attack (Distributed Denial of Service)",
+      "translation": "распределённая атака на отказ в обслуживании"
+    },
+    {
+      "term": "debugging",
+      "translation": "отладка"
+    },
+    {
+      "term": "dedicated line",
+      "translation": "выделенная линия"
+    },
+    {
+      "term": "default settings",
+      "translation": "настройки по умолчанию (стандартные)"
+    },
+    {
+      "term": "delay/ latency",
+      "translation": "задержка (передачи сигнала)"
+    },
+    {
+      "term": "desktop PC",
+      "translation": "стационарный компьютер"
+    },
+    {
+      "term": "detachable keyboard",
+      "translation": "съемная клавиатура"
+    },
+    {
+      "term": "dial-up connection",
+      "translation": "коммутируемое соединение"
+    },
+    {
+      "term": "differential backup",
+      "translation": "частичное копирование, разностное резервное копирование (выполняет копирование файлов, созданных или измененных с момента обычного (или добавочного) архивирования."
+    },
+    {
+      "term": "digital signal",
+      "translation": "цифровой сигнал"
+    },
+    {
+      "term": "DSL",
+      "translation": "цифровая абонентская линия"
+    },
+    {
+      "term": "directory",
+      "translation": "каталог, папка"
+    },
+    {
+      "term": "distortion of a signal",
+      "translation": "искажение сигнала (расхождение)"
+    },
+    {
+      "term": "division",
+      "translation": "деление"
+    },
+    {
+      "term": "download speed",
+      "translation": "скорость скачивания (загрузки)"
+    },
+    {
+      "term": "encapsulation",
+      "translation": "инкапсуляция (for OOP)"
+    },
+    {
+      "term": "encryption",
+      "translation": "шифрование"
+    },
+    {
+      "term": "energy consumption",
+      "translation": "энергопотребление"
+    },
+    {
+      "term": "erasable",
+      "translation": "перезаписываемый, допускающий возможность стирания"
+    },
+    {
+      "term": "executable file",
+      "translation": "исполняемый файл"
+    },
+    {
+      "term": "expansion card",
+      "translation": "карта расширения"
+    },
+    {
+      "term": "expansion slots",
+      "translation": "слоты расширения"
+    },
+    {
+      "term": "external hard disk drive (HDD)",
+      "translation": "внешний жёсткий диск"
+    },
+    {
+      "term": "feature",
+      "translation": "характеристика, особенность"
+    },
+    {
+      "term": "fiber-optic cables",
+      "translation": "оптоволоконный кабель"
+    },
+    {
+      "term": "firewall",
+      "translation": "брэндмауэр, межсетевой экран"
+    },
+    {
+      "term": "firmware",
+      "translation": "прошивка"
+    },
+    {
+      "term": "flash drive",
+      "translation": "флэшка"
+    },
+    {
+      "term": "floating gate transistor",
+      "translation": "транзистор с плавающим затвором"
+    },
+    {
+      "term": "floppy disk",
+      "translation": "дискета"
+    },
+    {
+      "term": "font",
+      "translation": "шрифт"
+    },
+    {
+      "term": "footer",
+      "translation": "нижний колонтитул"
+    },
+    {
+      "term": "formatting",
+      "translation": "форматирование"
+    },
+    {
+      "term": "freeware",
+      "translation": "бесплатное ПО"
+    },
+    {
+      "term": "front side bus",
+      "translation": "системная (фронтальная) шина"
+    },
+    {
+      "term": "FTP",
+      "translation": "протокол передачи данных"
+    },
+    {
+      "term": "fully connected neural networks",
+      "translation": "полносвязные нейросети"
+    },
+    {
+      "term": "gateway",
+      "translation": "шлюз, межсетевой шлюз сетевое устройство или компьютер"
+    },
+    {
+      "term": "geostationary satellite",
+      "translation": "геостационарный спутник"
+    },
+    {
+      "term": "GUI",
+      "translation": "графический интерфейс пользователя"
+    },
+    {
+      "term": "handheld, palmtop, portable devices",
+      "translation": "портативные устройства"
+    },
+    {
+      "term": "hardware",
+      "translation": "аппаратное техническое обеспечение"
+    },
+    {
+      "term": "header",
+      "translation": "верхний колонтитул"
+    },
+    {
+      "term": "head crash",
+      "translation": "авария головки (поломка магнитной головки у HDD)"
+    },
+    {
+      "term": "headphones",
+      "translation": "наушники"
+    },
+    {
+      "term": "help-desk troubleshooter",
+      "translation": "сотрудник службы технической поддержки"
+    },
+    {
+      "term": "heuristic scanning",
+      "translation": "эвристическое сканирование"
+    },
+    {
+      "term": "hidden units",
+      "translation": "скрытые элементы"
+    },
+    {
+      "term": "high level language",
+      "translation": "высокоуровневый язык"
+    },
+    {
+      "term": "high-speed Internet connection",
+      "translation": "высокоскоростное интернет-соединение"
+    },
+    {
+      "term": "host-based firewall",
+      "translation": "межсетевой экран узлов (software)"
+    },
+    {
+      "term": "hot spot",
+      "translation": "общая точка доступа"
+    },
+    {
+      "term": "HTML",
+      "translation": "язык разметки гипертекста"
+    },
+    {
+      "term": "HTTP",
+      "translation": "протокол гипертекстовой передачи"
+    },
+    {
+      "term": "hub",
+      "translation": "концентратор или повторитель"
+    },
+    {
+      "term": "human-powered directory",
+      "translation": "веб-каталог"
+    },
+    {
+      "term": "hyperlinks",
+      "translation": "гиперссылки"
+    },
+    {
+      "term": "incremental backup",
+      "translation": "выборочное копирование"
+    },
+    {
+      "term": "indexing",
+      "translation": "индексирование"
+    },
+    {
+      "term": "indent",
+      "translation": "отступ"
+    },
+    {
+      "term": "input/ output device",
+      "translation": "устройство ввода/вывода информации"
+    },
+    {
+      "term": "IR (Instruction Register)",
+      "translation": "регистр инструкций"
+    },
+    {
+      "term": "integrated circuits",
+      "translation": "микросхема, интегральная схема"
+    },
+    {
+      "term": "interconnected nodes",
+      "translation": "взаимосвязанные узлы"
+    },
+    {
+      "term": "internal/external storage device",
+      "translation": "внутреннее/внешнее устройство хранения"
+    },
+    {
+      "term": "Internet access",
+      "translation": "доступ к интернету"
+    },
+    {
+      "term": "interpreter",
+      "translation": "интерпретатор"
+    },
+    {
+      "term": "inheritance",
+      "translation": "наследование"
+    },
+    {
+      "term": "IoT",
+      "translation": "интернет вещей"
+    },
+    {
+      "term": "jump command",
+      "translation": "команда перехода"
+    },
+    {
+      "term": "kernel",
+      "translation": "ядро"
+    },
+    {
+      "term": "key features",
+      "translation": "основные характеристики, отличительные признаки"
+    },
+    {
+      "term": "keylogger",
+      "translation": "клавиатурный шпион"
+    },
+    {
+      "term": "laptop",
+      "translation": "ноутбук"
+    },
+    {
+      "term": "laser beam",
+      "translation": "лазерный луч"
+    },
+    {
+      "term": "layout",
+      "translation": "расположение, макет (сайта)"
+    },
+    {
+      "term": "line spacing",
+      "translation": "межстрочный интервал"
+    },
+    {
+      "term": "LAN",
+      "translation": "локальная сеть"
+    },
+    {
+      "term": "LCD",
+      "translation": "жидкокристаллический дисплей"
+    },
+    {
+      "term": "lowercase",
+      "translation": "нижный регистр"
+    },
+    {
+      "term": "low-level language",
+      "translation": "низкоуровневый язык"
+    },
+    {
+      "term": "machine learning",
+      "translation": "машинное обучение"
+    },
+    {
+      "term": "magnetic tape",
+      "translation": "магнитная лента"
+    },
+    {
+      "term": "mainframe",
+      "translation": "мейнфрейм, мощный сервер"
+    },
+    {
+      "term": "make a backup",
+      "translation": "сделать резервную копию"
+    },
+    {
+      "term": "malware",
+      "translation": "вредоносное ПО"
+    },
+    {
+      "term": "MAN",
+      "translation": "городская сеть"
+    },
+    {
+      "term": "margins",
+      "translation": "поля"
+    },
+    {
+      "term": "markup tags",
+      "translation": "теги разметки"
+    },
+    {
+      "term": "memory allocation",
+      "translation": "выделение памяти, распределение памяти"
+    },
+    {
+      "term": "memory capacity",
+      "translation": "объём памяти"
+    },
+    {
+      "term": "memory card",
+      "translation": "карта памяти"
+    },
+    {
+      "term": "mesh topology",
+      "translation": "топология сетки, ячеистая топология, многосвязная сеть"
+    },
+    {
+      "term": "Meta-Search engine",
+      "translation": "метапоисковая система"
+    },
+    {
+      "term": "misdirection routine",
+      "translation": "процедура дезориентации"
+    },
+    {
+      "term": "multi-core CPU",
+      "translation": "многоядерный процессор"
+    },
+    {
+      "term": "multiplication",
+      "translation": "умножение"
+    },
+    {
+      "term": "multi-tasking",
+      "translation": "многозадачный"
+    },
+    {
+      "term": "nested folders",
+      "translation": "вложенные папки"
+    },
+    {
+      "term": "network security",
+      "translation": "безопасность в сети"
+    },
+    {
+      "term": "network topology",
+      "translation": "топология сети"
+    },
+    {
+      "term": "network-based firewall",
+      "translation": "сетевой брандмауэр (combination of software and hardware)"
+    },
+    {
+      "term": "neural network",
+      "translation": "нейронная сеть"
+    },
+    {
+      "term": "node",
+      "translation": "узел, устройство подключенное к компьютерной сети"
+    },
+    {
+      "term": "non-volatile",
+      "translation": "энергонезависимый"
+    },
+    {
+      "term": "Off-Page SEO",
+      "translation": "внешняя поисковая оптимизация"
+    },
+    {
+      "term": "office suite",
+      "translation": "пакет офисных приложений"
+    },
+    {
+      "term": "On-Page SEO",
+      "translation": "поисковая оптимизация страницы"
+    },
+    {
+      "term": "open-source software",
+      "translation": "программы с открытым исходным кодом"
+    },
+    {
+      "term": "organic results",
+      "translation": "естественные результаты (работы поисковой машины, противопоставляются \"спонсированным\" (оплаченным рекламодателем) результатам"
+    },
+    {
+      "term": "OSI model",
+      "translation": "модель взаимодействия открытых систем"
+    },
+    {
+      "term": "output unit",
+      "translation": "блок вывода"
+    },
+    {
+      "term": "overwriting virus",
+      "translation": "вирус перезаписи"
+    },
+    {
+      "term": "packet switching",
+      "translation": "пакетная коммутация (передача данных)"
+    },
+    {
+      "term": "page source code",
+      "translation": "исходный код страницы"
+    },
+    {
+      "term": "particle",
+      "translation": "частица"
+    },
+    {
+      "term": "partition",
+      "translation": "раздел на жёстком диске"
+    },
+    {
+      "term": "payload",
+      "translation": "полезная нагрузка"
+    },
+    {
+      "term": "PC (Program Counter)",
+      "translation": "счётчик команд, программный счетчик"
+    },
+    {
+      "term": "peer-to-peer architecture",
+      "translation": "одноранговая сеть"
+    },
+    {
+      "term": "performance",
+      "translation": "производительность"
+    },
+    {
+      "term": "peripherals",
+      "translation": "подключаемое оборудование"
+    },
+    {
+      "term": "PAN (Personal Area Network)",
+      "translation": "персональная сеть"
+    },
+    {
+      "term": "pervasive computing",
+      "translation": "повсеместные вычисления"
+    },
+    {
+      "term": "phishing",
+      "translation": "фишинг, интернет-мошенничество с целью хищения личных данных, выуживание паролей"
+    },
+    {
+      "term": "piggybacking",
+      "translation": "несанкционированное проникновение вслед за зарегистрированным пользователем (напр., проникновение в сеть )"
+    },
+    {
+      "term": "pit",
+      "translation": "ячейка памяти у оптических дисков"
+    },
+    {
+      "term": "plaintext",
+      "translation": "открытый текст, незашифрованный текст"
+    },
+    {
+      "term": "platter",
+      "translation": "пластина жёсткого диска"
+    },
+    {
+      "term": "power-supply unit",
+      "translation": "блок питания"
+    },
+    {
+      "term": "preemptive multitasking",
+      "translation": "вытесняющая многозадачность, прерывающая программа (программа, вытесняющая из памяти другую программу в соответствии с приоритетом)"
+    },
+    {
+      "term": "primary storage",
+      "translation": "основное запоминающее устройство"
+    },
+    {
+      "term": "proprietary software",
+      "translation": "закрытое программное обеспечение (защищённое) (в отличие от программного обеспечения, являющегося открытым (open-source software) )"
+    },
+    {
+      "term": "protocol",
+      "translation": "протокол в общем случае, набор правил"
+    },
+    {
+      "term": "punched card",
+      "translation": "перфокарта"
+    },
+    {
+      "term": "RAM",
+      "translation": "оперативное запоминающее устройство (ОЗУ)"
+    },
+    {
+      "term": "ranking",
+      "translation": "ранжирование (у автоматизированного поисковика)"
+    },
+    {
+      "term": "ransomware",
+      "translation": "программы-вымогатели"
+    },
+    {
+      "term": "raw data",
+      "translation": "необработанные данные"
+    },
+    {
+      "term": "ROM (Read Only Memory)",
+      "translation": "постоянное запоминающее устройство (ПЗУ)"
+    },
+    {
+      "term": "read-write head",
+      "translation": "головка чтения/записи"
+    },
+    {
+      "term": "real-time OS",
+      "translation": "операционная система, управляющая обработкой данных в реальном времени; операционная система реального времени"
+    },
+    {
+      "term": "registers (IR, PC)",
+      "translation": "регистры процессора"
+    },
+    {
+      "term": "remote access",
+      "translation": "удалённый доступ"
+    },
+    {
+      "term": "reproduction routine",
+      "translation": "процедура самокопирования/ воспроизводства"
+    },
+    {
+      "term": "request/ query/ search string",
+      "translation": "запрос"
+    },
+    {
+      "term": "ring topology",
+      "translation": "кольцевая топология"
+    },
+    {
+      "term": "robotics",
+      "translation": "робототехника"
+    },
+    {
+      "term": "router",
+      "translation": "маршрутизатор"
+    },
+    {
+      "term": "satellite connection",
+      "translation": "спутниковая связь"
+    },
+    {
+      "term": "satellite Internet access",
+      "translation": "доступ к спутниковому интернету"
+    },
+    {
+      "term": "search engine",
+      "translation": "поисковая система"
+    },
+    {
+      "term": "search index",
+      "translation": "база данных у поисковика"
+    },
+    {
+      "term": "search box/ search bar",
+      "translation": "строка поиска"
+    },
+    {
+      "term": "security measures",
+      "translation": "меры безопасности"
+    },
+    {
+      "term": "semiconductor",
+      "translation": "полупроводник"
+    },
+    {
+      "term": "semiconductor technology",
+      "translation": "полупроводниковая технология"
+    },
+    {
+      "term": "sensitive data",
+      "translation": "конфиденциальные данные"
+    },
+    {
+      "term": "SEO",
+      "translation": "поисковая оптимизация"
+    },
+    {
+      "term": "session layer",
+      "translation": "сеансовый уровень"
+    },
+    {
+      "term": "shading",
+      "translation": "заливка"
+    },
+    {
+      "term": "shareware",
+      "translation": "условно бесплатное ПО (ПО, предоставляемое на испытательный срок)"
+    },
+    {
+      "term": "signature-based scanning",
+      "translation": "сигнатурное сканирование"
+    },
+    {
+      "term": "silicon",
+      "translation": "кремний"
+    },
+    {
+      "term": "SMT",
+      "translation": "одновременная многопоточность"
+    },
+    {
+      "term": "smart home appliances",
+      "translation": "умные приборы"
+    },
+    {
+      "term": "software",
+      "translation": "программное обеспечение"
+    },
+    {
+      "term": "solid state technology",
+      "translation": "твердотельная технология"
+    },
+    {
+      "term": "source code",
+      "translation": "исходный код"
+    },
+    {
+      "term": "speakers",
+      "translation": "колонки"
+    },
+    {
+      "term": "spreadsheets",
+      "translation": "электронные таблицы"
+    },
+    {
+      "term": "spyware",
+      "translation": "шпионские программы"
+    },
+    {
+      "term": "SSD",
+      "translation": "твердотельный накопитель"
+    },
+    {
+      "term": "SSL",
+      "translation": "протокол защищённых соединений"
+    },
+    {
+      "term": "star topology",
+      "translation": "топология “звезда”"
+    },
+    {
+      "term": "storage device",
+      "translation": "устройство хранения данных"
+    },
+    {
+      "term": "storage medium",
+      "translation": "носитель информации"
+    },
+    {
+      "term": "streaming video",
+      "translation": "потоковое видео"
+    },
+    {
+      "term": "subscribers",
+      "translation": "абоненты"
+    },
+    {
+      "term": "supercomputer",
+      "translation": "cуперкомпьютер"
+    },
+    {
+      "term": "supervisor program",
+      "translation": "организующая программа"
+    },
+    {
+      "term": "switch",
+      "translation": "переключатель, коммутатор"
+    },
+    {
+      "term": "system clock",
+      "translation": "тактовый генератор"
+    },
+    {
+      "term": "system unit",
+      "translation": "системный блок"
+    },
+    {
+      "term": "tablet",
+      "translation": "планшет"
+    },
+    {
+      "term": "timesharing operating systems",
+      "translation": "операционная система с режимом разделения времени"
+    },
+    {
+      "term": "to archive",
+      "translation": "архивировать"
+    },
+    {
+      "term": "to click a suspicious link",
+      "translation": "переходить по подозрительной ссылке"
+    },
+    {
+      "term": "to deny access",
+      "translation": "отказать в доступе, отклонить доступ"
+    },
+    {
+      "term": "to edit",
+      "translation": "редактировать"
+    },
+    {
+      "term": "to encrypt data",
+      "translation": "шифровать данные"
+    },
+    {
+      "term": "to erase/ delete/ remove",
+      "translation": "стирать (данные)"
+    },
+    {
+      "term": "to prevent an unauthorized access",
+      "translation": "предотвратить несанкционированный/ неавторизованный доступ"
+    },
+    {
+      "term": "to run an infected program",
+      "translation": "запускать заражённую программу"
+    },
+    {
+      "term": "to spread/ propagate viruses",
+      "translation": "распространять вирусы"
+    },
+    {
+      "term": "to update antivirus software",
+      "translation": "обновлять антивирусное ПО"
+    },
+    {
+      "term": "touch screen",
+      "translation": "сенсорный экран"
+    },
+    {
+      "term": "touchpad",
+      "translation": "сенсорная панель"
+    },
+    {
+      "term": "track",
+      "translation": "дорожка на CD/жёстком диске"
+    },
+    {
+      "term": "transceiver",
+      "translation": "приемопередатчик"
+    },
+    {
+      "term": "transfer rate",
+      "translation": "скорость передачи данных"
+    },
+    {
+      "term": "trigger",
+      "translation": "запуск, активация вируса"
+    },
+    {
+      "term": "Trojan",
+      "translation": "Троянский конь"
+    },
+    {
+      "term": "twisted-pair cable",
+      "translation": "витая пара"
+    },
+    {
+      "term": "UDP",
+      "translation": "протокол пользовательских дэйтаграмм"
+    },
+    {
+      "term": "unauthorized access",
+      "translation": "неавторизованный доступ, несанкционированный доступ"
+    },
+    {
+      "term": "URL",
+      "translation": "универсальный указатель ресурса"
+    },
+    {
+      "term": "USB port",
+      "translation": "USB порт"
+    },
+    {
+      "term": "USB-flash drive / memory stick",
+      "translation": "флеш-накопитель"
+    },
+    {
+      "term": "vacuum tubes",
+      "translation": "электронные лампы"
+    },
+    {
+      "term": "virtual keyboard",
+      "translation": "виртуальная клавиатура"
+    },
+    {
+      "term": "virtual circuit switching",
+      "translation": "коммутация виртуальных каналов"
+    },
+    {
+      "term": "volatile",
+      "translation": "энергозависимый"
+    },
+    {
+      "term": "voltage",
+      "translation": "напряжение"
+    },
+    {
+      "term": "VR",
+      "translation": "виртуальная реальность"
+    },
+    {
+      "term": "website builder",
+      "translation": "конструктор веб-сайтов"
+    },
+    {
+      "term": "Website defacement",
+      "translation": "искажение информации на вебсайте"
+    },
+    {
+      "term": "weight",
+      "translation": "вес (веса)"
+    },
+    {
+      "term": "WLAN",
+      "translation": "беспроводная локальная сеть"
+    },
+    {
+      "term": "word processor",
+      "translation": "текстовый редактор"
+    },
+    {
+      "term": "worm",
+      "translation": "червь"
+    },
+    {
+      "term": "write-back cache",
+      "translation": "кэш с обратной (отложенной) записью"
+    },
+    {
+      "term": "write-through cache",
+      "translation": "кэш со сквозной записью"
+    }
+  ]
+}
