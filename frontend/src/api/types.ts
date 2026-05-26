@@ -113,6 +113,7 @@ export interface InteractiveStartResponse {
   partition_id: number;
   prompt: Block[];
   is_finished: boolean;
+  supports_tolerant: boolean;
 }
 
 export type GenerateResponse = StaticTaskResponse | InteractiveStartResponse;
@@ -134,4 +135,36 @@ export interface ExportRequest {
   partitionId: number;
   count: number;
   withAnswers: boolean;
+}
+
+
+// ─── Авторизация ──────────────────────────────────────────────────────────
+
+export interface UserInfo {
+  login: string;
+  fio: string;
+  group: string;
+}
+
+
+// ─── Управление разделами ─────────────────────────────────────────────────
+
+export interface PartitionEditData {
+  id: number;
+  subject_id: number;
+  name: string;
+  constracted: number;
+  generation_params: unknown;
+}
+
+export interface PartitionCandidates {
+  own: Partition[];
+  siblings: Partition[];
+}
+
+export interface UpsertPartitionRequest {
+  subject_id: number;
+  name: string;
+  constracted: number;
+  generation_params: unknown;
 }

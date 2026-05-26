@@ -25,6 +25,7 @@ router = APIRouter(prefix="/interactive", tags=["interactive"])
 class SubmitRequest(BaseModel):
     session_id: str = Field(..., min_length=1)
     user_input: str = Field(..., description="Ответ пользователя; может быть пустой строкой")
+    tolerant: bool = Field(False, description="Принимать мелкие опечатки (расстояние Левенштейна)")
 
 
 @router.post("/submit")
@@ -36,6 +37,9 @@ def submit_answer(body: SubmitRequest, request: Request) -> dict:
             status_code=404,
             detail="Session not found or expired",
         )
+
+    if hasattr(task, "tolerant"):
+        task.tolerant = body.tolerant
 
     try:
         result = task.submit(body.user_input)

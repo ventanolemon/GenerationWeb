@@ -52,3 +52,121 @@
   font-style: italic;
   padding: 0.5rem;
 }
+
+/* PartitionControls */
+
+.partitionControls {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.ctrlBtn {
+  flex: 1;
+  padding: 0.3rem 0.4rem;
+  font-size: 0.82rem;
+  background: #f4f4f4;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ctrlBtn:hover:not(:disabled) {
+  background: #e8e8e8;
+}
+.ctrlBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ctrlBtnDanger:hover:not(:disabled) {
+  background: #fee;
+  border-color: #d99;
+  color: #c33;
+}
+
+.createWrap {
+  position: relative;
+  flex: 1;
+}
+.createWrap > .ctrlBtn {
+  width: 100%;
+}
+
+.createMenu {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  z-index: 100;
+  min-width: 160px;
+  overflow: hidden;
+}
+.createMenu button {
+  display: block;
+  width: 100%;
+  padding: 0.45rem 0.8rem;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.createMenu button:hover {
+  background: #f0f4ff;
+}
+
+.confirmBubble {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+  padding: 0.4rem 0.6rem;
+  background: #fff8ee;
+  border: 1px solid #e0c080;
+  border-radius: 4px;
+  font-size: 0.82rem;
+}
+.confirmBubble span {
+  flex: 1;
+  word-break: break-word;
+}
+.confirmBubble button {
+  padding: 0.15rem 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.82rem;
+}
+.confirmBubble button:first-of-type {
+  background: #c33;
+  color: #fff;
+  border-color: #c33;
+}
+
+/* Имя пользователя в шапке сайдбара */
+.userBadge {
+  font-size: 0.82rem;
+  color: #555;
+  margin-bottom: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.logoutBtn {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 0.78rem;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+.logoutBtn:hover {
+  color: #333;
+}

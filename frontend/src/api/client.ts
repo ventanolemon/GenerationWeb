@@ -7,8 +7,12 @@ import type {
   ExportRequest,
   GenerateResponse,
   Partition,
+  PartitionCandidates,
+  PartitionEditData,
   Subject,
   TurnResultResponse,
+  UpsertPartitionRequest,
+  UserInfo,
 } from "./types";
 
 // Базовая обёртка вокруг fetch с двумя задачами: распарсить JSON и
@@ -72,10 +76,42 @@ export const api = {
     });
   },
 
-  submit(sessionId: string, userInput: string): Promise<TurnResultResponse> {
+  submit(sessionId: string, userInput: string, tolerant = false): Promise<TurnResultResponse> {
     return request<TurnResultResponse>("/api/interactive/submit", {
       method: "POST",
-      body: JSON.stringify({ sessionId, userInput }),
+      body: JSON.stringify({ sessionId, userInput, tolerant }),
+    });
+  },
+
+  // ─── Авторизация ──────────────────────────────────────────────────────
+
+  login(login: string, password: string): Promise<UserInfo> {
+    return request<UserInfo>("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ login, password }),
+    });
+  },
+
+  // ─── Управление разделами ──────────────────────────────────────────────
+
+  getPartitionForEdit(id: number): Promise<PartitionEditData> {
+    return request<PartitionEditData>(`/api/partitions/${id}`);
+  },
+
+  getPartitionCandidates(subjectId: number): Promise<PartitionCandidates> {
+    return request<PartitionCandidates>(`/api/partitions/candidates/${subjectId}`);
+  },
+
+  upsertPartition(body: UpsertPartitionRequest): Promise<{ partition_id: number }> {
+    return request<{ partition_id: number }>("/api/partitions", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+
+  deletePartition(id: number, subjectId: number): Promise<{ deleted: number }> {
+    return request<{ deleted: number }>(`/api/partitions/${id}?subjectId=${subjectId}`, {
+      method: "DELETE",
     });
   },
 

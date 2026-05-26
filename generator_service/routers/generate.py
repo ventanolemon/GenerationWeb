@@ -75,6 +75,7 @@ def generate_task(body: GenerateRequest, request: Request) -> dict:
             "partition_id": body.partition_id,
             "prompt": [b.to_dict() for b in initial],
             "is_finished": task.is_finished(),
+            "supports_tolerant": hasattr(task, "tolerant"),
         }
 
     raise HTTPException(

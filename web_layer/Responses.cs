@@ -75,3 +75,23 @@ public record TurnResultResponse(
 /// Простой health-ответ.
 /// </summary>
 public record HealthResponse(string Status, int Generators);
+
+/// <summary>
+/// Авторизованный пользователь.
+/// </summary>
+public record UserDto(
+    string Login,
+    string Fio,
+    string Group
+);
+
+/// <summary>
+/// Данные раздела с generation_params для редактирования.
+/// </summary>
+public record PartitionEditDto(
+    int Id,
+    [property: JsonPropertyName("subject_id")] int SubjectId,
+    string Name,
+    int Constracted,
+    [property: JsonPropertyName("generation_params")] JsonElement GenerationParams
+);

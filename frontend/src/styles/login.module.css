@@ -1,0 +1,104 @@
+.overlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: #f0f2f5;
+}
+
+.card {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.12);
+  padding: 2rem 2.5rem;
+  width: 360px;
+  max-width: 95vw;
+}
+
+.title {
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin: 0 0 1.5rem;
+  color: #1a1a2e;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.9rem;
+  color: #555;
+}
+
+.input {
+  padding: 0.45rem 0.65rem;
+  border: 1px solid #bbb;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.input:focus {
+  border-color: #4a7fd4;
+}
+
+.error {
+  padding: 0.5rem 0.75rem;
+  background: #fee;
+  color: #900;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.btns {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.btnPrimary {
+  flex: 1;
+  padding: 0.55rem;
+  background: #4a7fd4;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btnPrimary:hover:not(:disabled) {
+  background: #3a6ac0;
+}
+.btnPrimary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btnSecondary {
+  flex: 1;
+  padding: 0.55rem;
+  background: transparent;
+  color: #555;
+  border: 1px solid #bbb;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btnSecondary:hover:not(:disabled) {
+  background: #f4f4f4;
+}
+.btnSecondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

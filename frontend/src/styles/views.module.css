@@ -111,6 +111,13 @@
   font-size: 0.85em;
   margin-left: 0.5rem;
 }
+.tolerantLabel {
+  font-size: 0.85em;
+  margin-left: 1rem;
+  color: #555;
+  cursor: pointer;
+  user-select: none;
+}
 
 .history {
   background: #fff;

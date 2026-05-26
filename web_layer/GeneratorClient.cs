@@ -88,11 +88,11 @@ public sealed class GeneratorClient
     // ─── Интерактив ────────────────────────────────────────────────────
 
     public async Task<(TurnResultResponse? Result, bool SessionExists)> SubmitAsync(
-        string sessionId, string userInput, CancellationToken ct)
+        string sessionId, string userInput, bool tolerant, CancellationToken ct)
     {
         var response = await _http.PostAsJsonAsync(
             "/interactive/submit",
-            new { session_id = sessionId, user_input = userInput },
+            new { session_id = sessionId, user_input = userInput, tolerant },
             ct);
 
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -146,6 +146,61 @@ public sealed class GeneratorClient
                        ?? $"tasks_{request.PartitionId}.docx";
         var body = await response.Content.ReadAsStreamAsync(ct);
         return (body, fileName);
+    }
+
+    // ─── Авторизация ────────────────────────────────────────────────────
+
+    public async Task<UserDto?> LoginAsync(string login, string password, CancellationToken ct)
+    {
+        var response = await _http.PostAsJsonAsync(
+            "/auth/login",
+            new { login, password },
+            ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<UserDto>(JsonOptions, ct);
+    }
+
+    // ─── Управление разделами ────────────────────────────────────────────
+
+    public async Task<PartitionEditDto?> GetPartitionForEditAsync(int partitionId, CancellationToken ct)
+    {
+        var response = await _http.GetAsync($"/partitions/{partitionId}", ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<PartitionEditDto>(JsonOptions, ct);
+    }
+
+    public async Task<JsonElement?> GetPartitionCandidatesAsync(int subjectId, CancellationToken ct)
+    {
+        var response = await _http.GetAsync($"/partitions/candidates/{subjectId}", ct);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions, ct);
+    }
+
+    public async Task<int?> UpsertPartitionAsync(
+        int subjectId, string name, int constracted,
+        object? generationParams, CancellationToken ct)
+    {
+        var response = await _http.PostAsJsonAsync(
+            "/partitions",
+            new { subject_id = subjectId, name, constracted,
+                  generation_params = generationParams ?? (object)new { } },
+            ct);
+        response.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions, ct);
+        if (result.TryGetProperty("partition_id", out var pid))
+            return pid.GetInt32();
+        return null;
+    }
+
+    public async Task<bool> DeletePartitionAsync(int partitionId, CancellationToken ct)
+    {
+        var response = await _http.DeleteAsync($"/partitions/{partitionId}", ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return false;
+        response.EnsureSuccessStatusCode();
+        return true;
     }
 
     // ─── Служебное ─────────────────────────────────────────────────────
