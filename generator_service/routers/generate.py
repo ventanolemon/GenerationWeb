@@ -15,21 +15,25 @@ POST /generate — главный эндпоинт сервиса.
 """
 
 from __future__ import annotations
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from core import InteractiveTask, StaticTask
+from ..context import current_user_id as current_user_id_var
 
 router = APIRouter(prefix="/generate", tags=["generate"])
 
 
 class GenerateRequest(BaseModel):
     partition_id: int = Field(..., gt=0, description="ID раздела из Partitions")
+    user_id: Optional[str] = Field(None, description="ID пользователя (login или guest UUID)")
 
 
 @router.post("")
 def generate_task(body: GenerateRequest, request: Request) -> dict:
+    current_user_id_var.set(body.user_id)
     registry = request.app.state.registry
     repo = request.app.state.repo
     sessions = request.app.state.sessions

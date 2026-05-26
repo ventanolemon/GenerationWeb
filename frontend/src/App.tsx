@@ -13,6 +13,16 @@ import styles from "./styles/app.module.css";
 import sidebarStyles from "./styles/sidebar.module.css";
 
 const USER_STORAGE_KEY = "generator_user";
+const GUEST_ID_KEY = "generator_guest_id";
+
+function getOrCreateGuestId(): string {
+  let id = localStorage.getItem(GUEST_ID_KEY);
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem(GUEST_ID_KEY, id);
+  }
+  return id;
+}
 
 function loadStoredUser(): UserInfo | null {
   try {
@@ -36,6 +46,7 @@ export default function App() {
   const [authenticated, setAuthenticated] = useState(false);
   const [user, setUser] = useState<UserInfo | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
+  const [guestId] = useState<string>(getOrCreateGuestId);
 
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [subjectId, setSubjectId] = useState<number | null>(null);
@@ -151,7 +162,7 @@ export default function App() {
       <main className={styles.main}>
         {loadError && <div className={styles.error}>{loadError}</div>}
         {partition ? (
-          <View key={partition.id} partition={partition} />
+          <View key={partition.id} partition={partition} userId={user?.login ?? guestId} />
         ) : (
           <div className={styles.hint}>
             Выберите раздел слева, чтобы начать.
@@ -162,9 +173,9 @@ export default function App() {
   );
 }
 
-function View({ partition }: { partition: Partition }) {
+function View({ partition, userId }: { partition: Partition; userId: string }) {
   if (partition.is_interactive) {
-    return <InteractiveTaskView partition={partition} />;
+    return <InteractiveTaskView partition={partition} userId={userId} />;
   }
   switch (partition.view_kind) {
     case "single":

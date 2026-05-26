@@ -5,7 +5,7 @@ namespace WebLayer.Contracts;
 /// получить. Никаких параметров генерации с фронта не приходит: всё, что
 /// нужно, лежит в БД (generation_parametrs) и подтягивается FastAPI.
 /// </summary>
-public record GenerateRequest(int PartitionId);
+public record GenerateRequest(int PartitionId, string? UserId = null);
 
 /// <summary>
 /// Тело POST /interactive/submit — ответ пользователя в активной сессии.

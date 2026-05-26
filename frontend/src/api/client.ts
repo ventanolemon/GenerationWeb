@@ -69,10 +69,10 @@ export const api = {
     return request<Partition[]>(`/api/subjects/${subjectId}/partitions`);
   },
 
-  generate(partitionId: number): Promise<GenerateResponse> {
+  generate(partitionId: number, userId?: string | null): Promise<GenerateResponse> {
     return request<GenerateResponse>("/api/generate", {
       method: "POST",
-      body: JSON.stringify({ partitionId }),
+      body: JSON.stringify({ partitionId, userId: userId ?? null }),
     });
   },
 

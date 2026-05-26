@@ -6,6 +6,7 @@ import styles from "../styles/views.module.css";
 
 interface Props {
   partition: Partition;
+  userId?: string | null;
 }
 
 interface SessionState {
@@ -30,7 +31,7 @@ interface SessionState {
  * История ходов скроллится сама в конец при каждом новом feedback —
  * через ref и useEffect.
  */
-export default function InteractiveTaskView({ partition }: Props) {
+export default function InteractiveTaskView({ partition, userId }: Props) {
   const [session, setSession] = useState<SessionState | null>(null);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -59,7 +60,7 @@ export default function InteractiveTaskView({ partition }: Props) {
     setSession(null);
     setInput("");
     try {
-      const result = await api.generate(partition.id);
+      const result = await api.generate(partition.id, userId);
       if (result.type !== "interactive") {
         throw new Error(
           "Раздел не интерактивный, попал не в тот компонент",

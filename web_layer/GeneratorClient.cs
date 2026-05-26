@@ -71,10 +71,10 @@ public sealed class GeneratorClient
     /// Бросает HttpRequestException при 5xx, возвращает null при 404
     /// (нет генератора для этого partition_id).
     /// </summary>
-    public async Task<JsonElement?> GenerateAsync(int partitionId, CancellationToken ct)
+    public async Task<JsonElement?> GenerateAsync(int partitionId, string? userId, CancellationToken ct)
     {
         var response = await _http.PostAsJsonAsync(
-            "/generate", new { partition_id = partitionId }, ct);
+            "/generate", new { partition_id = partitionId, user_id = userId }, ct);
 
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
         {

@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from bootstrap import build_registry
 from const import WORDS_DIR
+from ..context import current_user_id as current_user_id_var
 
 router = APIRouter(prefix="/partitions", tags=["partitions"])
 
@@ -28,7 +29,12 @@ class UpsertPartitionRequest(BaseModel):
 
 def _rebuild(request: Request) -> None:
     repo = request.app.state.repo
-    request.app.state.registry = build_registry(repo, WORDS_DIR)
+    stats_store = getattr(request.app.state, "stats_store", None)
+    request.app.state.registry = build_registry(
+        repo, WORDS_DIR,
+        stats_store=stats_store,
+        user_id_provider=lambda: current_user_id_var.get(),
+    )
 
 
 @router.get("/candidates/{subject_id}")
