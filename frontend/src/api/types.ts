@@ -174,6 +174,33 @@ export interface ChangePasswordRequest {
 }
 
 
+// ─── Статистика словарного тренажёра ───────────────────────────────────────
+
+export interface WordStatEntry {
+  term: string;
+  translation: string;
+  times_shown: number;
+  times_correct: number;
+  times_wrong: number;
+  accuracy: number | null; // null — ни разу не отвечали
+  last_seen: number;       // unix-время, 0 если не показывалось
+}
+
+export interface StatsSummary {
+  total_terms: number;
+  total_shown: number;
+  total_correct: number;
+  total_wrong: number;
+  accuracy: number; // доля 0..1
+}
+
+export interface UserStats {
+  is_guest: boolean;
+  summary: StatsSummary;
+  words: WordStatEntry[];
+}
+
+
 // ─── Управление разделами ─────────────────────────────────────────────────
 
 export interface PartitionEditData {

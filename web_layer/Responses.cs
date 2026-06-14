@@ -92,6 +92,17 @@ public record UserDto(
 );
 
 /// <summary>
+/// Статистика словарного тренажёра для окна профиля.
+/// Прокидывается как сырой JsonElement: структура (summary + words[])
+/// разбирается на фронте, C#-слою незачем знать её детально.
+/// </summary>
+public record StatsResponse(
+    [property: JsonPropertyName("is_guest")] bool IsGuest,
+    [property: JsonPropertyName("summary")] JsonElement Summary,
+    [property: JsonPropertyName("words")] JsonElement Words
+);
+
+/// <summary>
 /// Данные раздела с generation_params для редактирования.
 /// </summary>
 public record PartitionEditDto(

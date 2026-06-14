@@ -10,15 +10,11 @@ import TestExportView from "./views/TestExportView";
 import InteractiveTaskView from "./views/InteractiveTaskView";
 import LandingPage from "./views/LandingPage";
 import ThemeToggle from "./components/ThemeToggle";
+import ProfileModal from "./components/ProfileModal";
+import AuthModal from "./components/AuthModal";
+import { initials, avatarBackground } from "./utils/user";
 import styles from "./styles/app.module.css";
 import sidebarStyles from "./styles/sidebar.module.css";
-
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0][0]!.toUpperCase();
-  return (parts[0][0]! + parts[1][0]!).toUpperCase();
-}
 
 const USER_STORAGE_KEY = "generator_user";
 const GUEST_ID_KEY = "generator_guest_id";
@@ -62,6 +58,8 @@ export default function App() {
   const [partition, setPartition] = useState<Partition | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [partitionsVersion, setPartitionsVersion] = useState(0);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
 
   // Проверяем сохранённую сессию при старте
   useEffect(() => {
@@ -121,6 +119,18 @@ export default function App() {
     setPartitionsVersion((v) => v + 1);
   }
 
+  // Профиль обновлён в окне профиля — синхронизируем состояние и localStorage.
+  function handleUserUpdated(updated: UserInfo) {
+    setUser(updated);
+    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updated));
+  }
+
+  // Гость из окна профиля захотел зарегистрироваться.
+  function handleRequestRegister() {
+    setProfileOpen(false);
+    setAuthModalOpen(true);
+  }
+
   if (!authChecked) return null;
 
   if (!authenticated) {
@@ -137,9 +147,16 @@ export default function App() {
           <h1 className={styles.title}>Генератор заданий</h1>
         </div>
 
-        {/* Имя пользователя / гостевой режим */}
-        <div className={sidebarStyles.userBadge}>
-          <span className={sidebarStyles.avatar}>
+        {/* Имя пользователя / гостевой режим — клик открывает профиль */}
+        <div
+          className={`${sidebarStyles.userBadge} ${sidebarStyles.userBadgeClickable}`}
+          onClick={() => setProfileOpen(true)}
+          title="Открыть профиль"
+        >
+          <span
+            className={sidebarStyles.avatar}
+            style={{ background: avatarBackground(user?.avatar_color) }}
+          >
             {user ? initials(displayName) : "Г"}
           </span>
           <div className={sidebarStyles.userMeta}>
@@ -148,7 +165,10 @@ export default function App() {
               {user ? user.group || "Пользователь" : "Гостевой режим"}
             </span>
           </div>
-          <button className={sidebarStyles.logoutBtn} onClick={handleLogout}>
+          <button
+            className={sidebarStyles.logoutBtn}
+            onClick={(e) => { e.stopPropagation(); handleLogout(); }}
+          >
             {user ? "Выйти" : "Войти"}
           </button>
         </div>
@@ -184,6 +204,24 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {profileOpen && (
+        <ProfileModal
+          user={user}
+          userId={user?.login ?? guestId}
+          onClose={() => setProfileOpen(false)}
+          onUserUpdated={handleUserUpdated}
+          onRequestRegister={handleRequestRegister}
+        />
+      )}
+
+      {authModalOpen && (
+        <AuthModal
+          initialTab="register"
+          onLogin={(u) => { setAuthModalOpen(false); handleLogin(u); }}
+          onClose={() => setAuthModalOpen(false)}
+        />
+      )}
     </div>
   );
 }

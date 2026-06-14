@@ -41,6 +41,7 @@ from .routers import generate as generate_router
 from .routers import interactive as interactive_router
 from .routers import meta as meta_router
 from .routers import partitions as partitions_router
+from .routers import stats as stats_router
 from .routers import subjects as subjects_router
 from .session_store import SessionStore
 
@@ -108,4 +109,5 @@ app.include_router(generate_router.router)
 app.include_router(interactive_router.router)
 app.include_router(export_router.router)
 app.include_router(partitions_router.router)
+app.include_router(stats_router.router)
 app.include_router(meta_router.router)

@@ -233,6 +233,24 @@ public sealed class GeneratorClient
         return null;
     }
 
+    // ─── Статистика ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Статистика словарного тренажёра. userId == null → гостевая статистика.
+    /// Возвращаем сырой JsonElement (summary + words[]) для фронта.
+    /// </summary>
+    public async Task<JsonElement?> GetStatsAsync(string? userId, CancellationToken ct)
+    {
+        var url = string.IsNullOrEmpty(userId)
+            ? "/stats"
+            : $"/stats?user_id={Uri.EscapeDataString(userId)}";
+        var response = await _http.GetAsync(url, ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable)
+            return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions, ct);
+    }
+
     // ─── Управление разделами ────────────────────────────────────────────
 
     public async Task<PartitionEditDto?> GetPartitionForEditAsync(int partitionId, CancellationToken ct)

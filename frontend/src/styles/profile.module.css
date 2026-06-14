@@ -1,0 +1,235 @@
+/* ── Шапка профиля ───────────────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.4rem;
+}
+.avatar {
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 1.5rem;
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent), #0ea5e9);
+}
+.headMeta {
+  min-width: 0;
+  flex: 1;
+}
+.name {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0 0 0.2rem;
+}
+.subline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.55rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+.guestBadge {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.about {
+  margin: 0 0 1.3rem;
+  padding: 0.8rem 1rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.55;
+  white-space: pre-line;
+}
+
+.actions {
+  display: flex;
+  gap: 0.6rem;
+  margin-bottom: 1.6rem;
+  flex-wrap: wrap;
+}
+
+/* ── Гостевой призыв ──────────────────────────────────────────── */
+.guestCta {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 1rem 1.1rem;
+  margin-bottom: 1.5rem;
+  background: var(--accent-glow);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+}
+.guestCtaText {
+  flex: 1;
+  font-size: 0.9rem;
+  color: var(--text);
+  line-height: 1.5;
+}
+.guestCtaText strong {
+  display: block;
+  margin-bottom: 0.15rem;
+}
+
+/* ── Сводка статистики ───────────────────────────────────────── */
+.sectionTitle {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+  margin: 0 0 0.7rem;
+  font-weight: 600;
+}
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 0.7rem;
+  margin-bottom: 1.4rem;
+}
+.card {
+  padding: 0.8rem 0.9rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  text-align: center;
+}
+.cardValue {
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.cardValueAccent {
+  color: var(--accent);
+}
+.cardLabel {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  margin-top: 0.2rem;
+}
+
+/* ── Таблица слов ────────────────────────────────────────────── */
+.searchRow {
+  margin-bottom: 0.7rem;
+}
+.search {
+  width: 100%;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.tableWrap {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.table th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-weight: 600;
+  text-align: left;
+  padding: 0.5rem 0.7rem;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.table td {
+  padding: 0.45rem 0.7rem;
+  border-bottom: 1px solid var(--border);
+}
+.table tr:last-child td {
+  border-bottom: none;
+}
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.term {
+  font-weight: 500;
+}
+.translation {
+  color: var(--text-muted);
+}
+
+/* Цветовой код качества знания слова (левая полоса на строке). */
+.rowMastered td:first-child {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.rowProblem td:first-child {
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+.rowNeutral td:first-child {
+  box-shadow: inset 3px 0 0 var(--warn);
+}
+
+.empty {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* ── Подформы (редактирование / пароль) ──────────────────────── */
+.subForm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+.colorRow {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.swatch {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+}
+.swatchActive {
+  border-color: var(--text);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+.successMsg {
+  padding: 0.5rem 0.75rem;
+  background: var(--ok-bg);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+}

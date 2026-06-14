@@ -16,6 +16,7 @@ import type {
   UpdateProfileRequest,
   UpsertPartitionRequest,
   UserInfo,
+  UserStats,
 } from "./types";
 
 // Базовая обёртка вокруг fetch с двумя задачами: распарсить JSON и
@@ -122,6 +123,12 @@ export const api = {
         new_password: body.newPassword,
       }),
     });
+  },
+
+  // ─── Статистика ────────────────────────────────────────────────────────────
+
+  getStats(userId: string): Promise<UserStats> {
+    return request<UserStats>(`/api/stats?userId=${encodeURIComponent(userId)}`);
   },
 
   // ─── Управление разделами ──────────────────────────────────────────────
