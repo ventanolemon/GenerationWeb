@@ -8,9 +8,17 @@ import StaticTaskView from "./views/StaticTaskView";
 import TableTaskView from "./views/TableTaskView";
 import TestExportView from "./views/TestExportView";
 import InteractiveTaskView from "./views/InteractiveTaskView";
-import LoginPage from "./views/LoginPage";
+import LandingPage from "./views/LandingPage";
+import ThemeToggle from "./components/ThemeToggle";
 import styles from "./styles/app.module.css";
 import sidebarStyles from "./styles/sidebar.module.css";
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0][0]!.toUpperCase();
+  return (parts[0][0]! + parts[1][0]!).toUpperCase();
+}
 
 const USER_STORAGE_KEY = "generator_user";
 const GUEST_ID_KEY = "generator_guest_id";
@@ -37,7 +45,7 @@ function loadStoredUser(): UserInfo | null {
  * Корневой компонент.
  *
  * Добавлено по сравнению с первоначальной версией:
- *  1. Авторизация — LoginPage показывается при первом запуске;
+ *  1. Авторизация — LandingPage показывается при первом запуске;
  *     user_info хранится в localStorage.
  *  2. PartitionControls — кнопки «+ Создать», «Изменить», «Удалить»
  *     под списком разделов.
@@ -116,31 +124,33 @@ export default function App() {
   if (!authChecked) return null;
 
   if (!authenticated) {
-    return <LoginPage onLogin={handleLogin} />;
+    return <LandingPage onLogin={handleLogin} />;
   }
+
+  const displayName = user ? user.fio || user.login : "Гость";
 
   return (
     <div className={styles.app}>
       <aside className={styles.sidebar}>
-        <h1 className={styles.title}>Генератор заданий</h1>
+        <div className={styles.brand}>
+          <span className={styles.brandMark}>Γ</span>
+          <h1 className={styles.title}>Генератор заданий</h1>
+        </div>
 
         {/* Имя пользователя / гостевой режим */}
         <div className={sidebarStyles.userBadge}>
-          {user ? (
-            <>
-              <span>{user.fio || user.login}</span>
-              <button className={sidebarStyles.logoutBtn} onClick={handleLogout}>
-                Выйти
-              </button>
-            </>
-          ) : (
-            <>
-              <span>Гость</span>
-              <button className={sidebarStyles.logoutBtn} onClick={handleLogout}>
-                Войти
-              </button>
-            </>
-          )}
+          <span className={sidebarStyles.avatar}>
+            {user ? initials(displayName) : "Г"}
+          </span>
+          <div className={sidebarStyles.userMeta}>
+            <span className={sidebarStyles.userName}>{displayName}</span>
+            <span className={sidebarStyles.userRole}>
+              {user ? user.group || "Пользователь" : "Гостевой режим"}
+            </span>
+          </div>
+          <button className={sidebarStyles.logoutBtn} onClick={handleLogout}>
+            {user ? "Выйти" : "Войти"}
+          </button>
         </div>
 
         <SubjectPicker
@@ -158,6 +168,11 @@ export default function App() {
           selected={partition}
           onChanged={handlePartitionsChanged}
         />
+
+        <div className={styles.sidebarSpacer} />
+        <div className={styles.sidebarFooter}>
+          <ThemeToggle />
+        </div>
       </aside>
       <main className={styles.main}>
         {loadError && <div className={styles.error}>{loadError}</div>}

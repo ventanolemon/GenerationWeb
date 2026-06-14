@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Partition, PartitionEditData } from "../../api/types";
+import type { Partition } from "../../api/types";
 import { api } from "../../api/client";
 import Modal from "../Modal";
 import mstyles from "../../styles/modal.module.css";

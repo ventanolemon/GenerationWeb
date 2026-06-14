@@ -1,5 +1,7 @@
 .view h2 {
   margin-top: 0;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .controls {
@@ -7,22 +9,39 @@
   flex-wrap: wrap;
   gap: 0.6rem;
   align-items: center;
-  margin-bottom: 1rem;
+  margin-bottom: 1.2rem;
+}
+
+/* Акцентная кнопка действия (Сгенерировать / Ответить и т.п.) */
+.primaryBtn {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  border: 1px solid var(--accent);
+  font-weight: 500;
+  box-shadow: 0 0 0 0 var(--accent-glow);
+  transition: box-shadow 0.2s, background 0.15s;
+}
+.primaryBtn:not(:disabled):hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  box-shadow: 0 0 16px var(--accent-glow);
 }
 
 .error {
-  padding: 0.5rem 0.75rem;
-  background: #fee;
-  color: #900;
-  border-radius: 4px;
-  margin-bottom: 0.8rem;
+  padding: 0.6rem 0.85rem;
+  background: var(--danger-bg);
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  margin-bottom: 0.9rem;
 }
 
 .content {
-  background: #fff;
-  border-radius: 6px;
-  padding: 1.2rem 1.4rem;
-  border: 1px solid #e0e0e0;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  padding: 1.3rem 1.5rem;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
 }
 
 /* TableTaskView */
@@ -30,19 +49,22 @@
 .tableView {
   width: 100%;
   border-collapse: collapse;
-  background: #fff;
-  border: 1px solid #ddd;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
 }
 .tableView th,
 .tableView td {
-  border: 1px solid #e0e0e0;
-  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--border);
+  padding: 0.65rem 0.85rem;
   vertical-align: top;
   text-align: left;
 }
 .tableView thead th {
-  background: #f4f4f4;
+  background: var(--surface-2);
   font-weight: 600;
+  color: var(--text-muted);
 }
 .numCol {
   width: 3rem;
@@ -52,9 +74,9 @@
   width: 3rem;
 }
 .deleteBtn {
-  background: #fff;
-  border: 1px solid #d99;
-  color: #c33;
+  background: transparent;
+  border: 1px solid var(--danger);
+  color: var(--danger);
   border-radius: 50%;
   width: 28px;
   height: 28px;
@@ -64,7 +86,7 @@
   cursor: pointer;
 }
 .deleteBtn:hover {
-  background: #fee;
+  background: var(--danger-bg);
 }
 
 /* TestExportView */
@@ -72,7 +94,7 @@
 .tabBar {
   display: flex;
   gap: 0.3rem;
-  border-bottom: 1px solid #ddd;
+  border-bottom: 1px solid var(--border);
   margin-bottom: 1rem;
   flex-wrap: wrap;
 }
@@ -80,67 +102,76 @@
   border: 1px solid transparent;
   border-bottom: none;
   background: transparent;
-  padding: 0.4rem 0.9rem;
-  border-radius: 4px 4px 0 0;
+  color: var(--text-muted);
+  padding: 0.45rem 0.95rem;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
   cursor: pointer;
 }
 .tab:hover {
-  background: #f0f0f0;
+  background: var(--surface-2);
 }
 .tabActive {
-  background: #fff;
-  border-color: #ddd;
-  color: #224;
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--accent);
   font-weight: 600;
 }
 .tabContent {
-  background: #fff;
-  border: 1px solid #ddd;
-  border-top: none;
-  padding: 1rem 1.3rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0 var(--radius) var(--radius) var(--radius);
+  padding: 1.1rem 1.4rem;
 }
 
 /* InteractiveTaskView */
 
 .scoreLine {
-  margin-bottom: 0.7rem;
-  color: #555;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.9rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 .smallBtn {
-  padding: 0.15em 0.7em;
+  padding: 0.2em 0.8em;
   font-size: 0.85em;
-  margin-left: 0.5rem;
 }
 .tolerantLabel {
   font-size: 0.85em;
-  margin-left: 1rem;
-  color: #555;
+  margin-left: 0.5rem;
+  color: var(--text-muted);
   cursor: pointer;
   user-select: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
 }
 
 .history {
-  background: #fff;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  padding: 0.8rem;
-  max-height: 320px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.9rem;
+  max-height: 340px;
   overflow-y: auto;
   margin-bottom: 1rem;
 }
 .historyItem {
-  padding: 0.4rem 0;
-  border-bottom: 1px solid #f0f0f0;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
 }
 .historyItem:last-child {
   border-bottom: none;
 }
 
 .prompt {
-  background: #fafafa;
-  padding: 0.8rem 1rem;
-  border-radius: 6px;
-  margin-bottom: 0.8rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  padding: 0.9rem 1.1rem;
+  border-radius: var(--radius);
+  margin-bottom: 0.9rem;
 }
 
 .inputRow {
@@ -149,14 +180,15 @@
 }
 .answerInput {
   flex: 1;
-  padding: 0.4em 0.7em;
+  padding: 0.5em 0.8em;
   font: inherit;
 }
 
 .finishedBanner {
-  padding: 1rem;
-  background: #e8f4ff;
-  color: #224;
-  border-radius: 6px;
+  padding: 1rem 1.2rem;
+  background: var(--ok-bg);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
   font-weight: 600;
 }

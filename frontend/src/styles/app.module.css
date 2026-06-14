@@ -1,35 +1,76 @@
 .app {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 290px 1fr;
   height: 100vh;
 }
 
 .sidebar {
-  background: #fff;
-  border-right: 1px solid #ddd;
-  padding: 1rem;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--sidebar-border);
+  padding: 1.1rem 1rem;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  color: var(--sidebar-text);
 }
 
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0 0 1.2rem 0;
+}
+.brandMark {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--accent), #0ea5e9);
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  color: #04130c;
+  box-shadow: 0 0 16px var(--accent-glow);
+}
 .title {
-  font-size: 1.1rem;
-  margin: 0 0 1rem 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 0;
+  color: var(--sidebar-text);
+}
+
+/* Низ сайдбара — переключатель темы прижат к нижней кромке. */
+.sidebarSpacer {
+  flex: 1;
+}
+.sidebarFooter {
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--sidebar-border);
+  display: flex;
+  justify-content: flex-end;
 }
 
 .main {
-  padding: 1.5rem 2rem;
+  padding: 1.6rem 2rem;
   overflow-y: auto;
 }
 
 .hint {
-  color: #888;
-  font-style: italic;
+  color: var(--text-muted);
+  background: var(--surface);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: 2.5rem 2rem;
+  text-align: center;
+  font-size: 0.95rem;
 }
 
 .error {
   padding: 0.75rem 1rem;
-  border-radius: 4px;
-  background: #fee;
-  color: #900;
+  border-radius: var(--radius-sm);
+  background: var(--danger-bg);
+  color: var(--danger);
+  border: 1px solid var(--danger);
   margin-bottom: 1rem;
 }
