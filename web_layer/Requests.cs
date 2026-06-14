@@ -24,6 +24,34 @@ public record ExportRequest(int PartitionId, int Count = 1, bool WithAnswers = t
 public record LoginRequest(string Login, string Password);
 
 /// <summary>
+/// Тело POST /api/auth/register.
+/// </summary>
+public record RegisterRequest(
+    string Login,
+    string Password,
+    string Fio,
+    string Group = "",
+    string Email = "");
+
+/// <summary>
+/// Тело PATCH /api/auth/profile/{login}.
+/// </summary>
+public record UpdateProfileRequest(
+    string Fio,
+    string Group = "",
+    string Email = "",
+    string About = "",
+    string AvatarColor = "");
+
+/// <summary>
+/// Тело POST /api/auth/change-password.
+/// </summary>
+public record ChangePasswordRequest(
+    string Login,
+    string CurrentPassword,
+    string NewPassword);
+
+/// <summary>
 /// Тело POST /api/partitions — создание или обновление раздела.
 /// GenerationParams — произвольный JSON (group list, test config, fisic config).
 /// </summary>

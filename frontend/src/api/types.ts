@@ -138,12 +138,39 @@ export interface ExportRequest {
 }
 
 
-// ─── Авторизация ──────────────────────────────────────────────────────────
+// ─── Авторизация и профиль ────────────────────────────────────────────────
 
 export interface UserInfo {
   login: string;
   fio: string;
   group: string;
+  // Расширенные поля профиля (приходят при GET /profile, могут отсутствовать при login)
+  email?: string;
+  about?: string;
+  avatar_color?: string;
+  created_at?: number;
+}
+
+export interface RegisterRequest {
+  login: string;
+  password: string;
+  fio: string;
+  group?: string;
+  email?: string;
+}
+
+export interface UpdateProfileRequest {
+  fio: string;
+  group: string;
+  email: string;
+  about: string;
+  avatar_color: string;
+}
+
+export interface ChangePasswordRequest {
+  login: string;
+  currentPassword: string;
+  newPassword: string;
 }
 
 

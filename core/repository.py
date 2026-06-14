@@ -11,8 +11,10 @@ Subject и Partition — обычные dataclass'ы, безо всякой UI-�
 """
 
 from __future__ import annotations
+import hashlib
 import json
 import sqlite3
+import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -65,6 +67,35 @@ _VIEW_KIND_BY_CONSTRACTED = {
     2: "table",
     3: "test",
 }
+
+
+@dataclass(frozen=True)
+class UserProfile:
+    login: str
+    fio: str
+    group: str
+    email: str
+    about: str
+    avatar_color: str
+    created_at: float
+
+    def to_dict(self) -> dict:
+        return {
+            "login": self.login,
+            "fio": self.fio,
+            "group": self.group,
+            "email": self.email,
+            "about": self.about,
+            "avatar_color": self.avatar_color,
+            "created_at": self.created_at,
+        }
+
+
+def _hash_password(login: str, password: str) -> str:
+    """sha256(login:password) — используется для новых регистраций через веб.
+    Существующие десктопные аккаунты хранят пароль в открытом виде — find_user
+    проверяет оба формата, чтобы не сломать обратную совместимость."""
+    return hashlib.sha256(f"{login}:{password}".encode()).hexdigest()
 
 
 class Repository:
@@ -272,15 +303,124 @@ class Repository:
     def editor_kind_for(self, partition: Partition) -> str | None:
         return self.EDITOR_KIND_BY_CONSTRACTED.get(partition.constracted)
 
-    # ---------- Users (для авторизации) ----------
+    # ---------- Users (авторизация и профиль) ----------
 
-    def find_user(self, login: str, password: str) -> Optional[tuple]:
+    def ensure_users_table(self) -> None:
+        """Создаёт таблицу users если её нет, добавляет новые колонки профиля
+        в существующую (ALTER TABLE IF NOT EXISTS эмулируется через try/except)."""
         with self._connect() as conn:
-            return conn.execute(
-                "SELECT login, FIO, \"group\" FROM users "
-                "WHERE login = ? AND password = ?",
-                (login, password),
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS users ("
+                "  login TEXT PRIMARY KEY,"
+                "  password TEXT NOT NULL DEFAULT '',"
+                "  FIO TEXT NOT NULL DEFAULT '',"
+                "  \"group\" TEXT NOT NULL DEFAULT '',"
+                "  email TEXT NOT NULL DEFAULT '',"
+                "  about TEXT NOT NULL DEFAULT '',"
+                "  avatar_color TEXT NOT NULL DEFAULT '',"
+                "  created_at REAL NOT NULL DEFAULT 0"
+                ")"
+            )
+            for col, typedef in [
+                ("email",        "TEXT NOT NULL DEFAULT ''"),
+                ("about",        "TEXT NOT NULL DEFAULT ''"),
+                ("avatar_color", "TEXT NOT NULL DEFAULT ''"),
+                ("created_at",   "REAL NOT NULL DEFAULT 0"),
+            ]:
+                try:
+                    conn.execute(f'ALTER TABLE users ADD COLUMN {col} {typedef}')
+                except sqlite3.OperationalError:
+                    pass
+            conn.commit()
+
+    def find_user(self, login: str, password: str) -> Optional[UserProfile]:
+        """Проверяет логин/пароль. Принимает пароль в открытом виде (старые
+        десктопные аккаунты) и в виде sha256-хеша (новые веб-регистрации)."""
+        pw_hash = _hash_password(login, password)
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT login, FIO, \"group\", email, about, avatar_color, created_at "
+                "FROM users "
+                "WHERE login = ? AND (password = ? OR password = ?)",
+                (login, pw_hash, password),
             ).fetchone()
+        if row is None:
+            return None
+        return UserProfile(
+            login=row[0], fio=row[1] or "", group=row[2] or "",
+            email=row[3] or "", about=row[4] or "",
+            avatar_color=row[5] or "", created_at=row[6] or 0.0,
+        )
+
+    def get_user_profile(self, login: str) -> Optional[UserProfile]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT login, FIO, \"group\", email, about, avatar_color, created_at "
+                "FROM users WHERE login = ?",
+                (login,),
+            ).fetchone()
+        if row is None:
+            return None
+        return UserProfile(
+            login=row[0], fio=row[1] or "", group=row[2] or "",
+            email=row[3] or "", about=row[4] or "",
+            avatar_color=row[5] or "", created_at=row[6] or 0.0,
+        )
+
+    def create_user(
+        self, login: str, password: str, fio: str, group: str, email: str = ""
+    ) -> bool:
+        """Регистрирует нового пользователя. Возвращает True при успехе,
+        False если логин уже занят."""
+        pw_hash = _hash_password(login, password)
+        with self._connect() as conn:
+            try:
+                conn.execute(
+                    "INSERT INTO users "
+                    "(login, password, FIO, \"group\", email, avatar_color, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, '', ?)",
+                    (login, pw_hash, fio, group, email, time.time()),
+                )
+                conn.commit()
+                return True
+            except sqlite3.IntegrityError:
+                return False
+
+    def update_user_profile(
+        self,
+        login: str,
+        fio: str,
+        group: str,
+        email: str,
+        about: str,
+        avatar_color: str,
+    ) -> bool:
+        """Обновляет поля профиля. Возвращает True если пользователь найден."""
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE users SET FIO = ?, \"group\" = ?, email = ?, "
+                "about = ?, avatar_color = ? WHERE login = ?",
+                (fio, group, email, about, avatar_color, login),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+
+    def change_user_password(
+        self, login: str, current_password: str, new_password: str
+    ) -> bool:
+        """Меняет пароль. Проверяет текущий пароль (оба формата) перед сменой.
+        Возвращает True при успехе, False при неверном текущем пароле."""
+        profile = self.find_user(login, current_password)
+        if profile is None:
+            return False
+        new_hash = _hash_password(login, new_password)
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE users SET password = ? WHERE login = ?",
+                (new_hash, login),
+            )
+            conn.commit()
+        return True
 
     # ---------- WordStats ----------
 

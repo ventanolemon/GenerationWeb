@@ -42,5 +42,63 @@ public static class AuthEndpoints
             Results.Ok(new { login = (string?)null, fio = (string?)null, group = (string?)null })
         )
         .WithTags("auth");
+
+        app.MapPost("/api/auth/register", async (
+            RegisterRequest body,
+            GeneratorClient client,
+            CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(body.Login) ||
+                string.IsNullOrWhiteSpace(body.Password) ||
+                string.IsNullOrWhiteSpace(body.Fio))
+            {
+                return Results.BadRequest(new { error = "Заполните обязательные поля" });
+            }
+
+            var (user, error) = await client.RegisterAsync(body, ct);
+            if (user is null)
+            {
+                return Results.Json(new { error }, statusCode: 409);
+            }
+            return Results.Created($"/api/auth/profile/{user.Login}", user);
+        })
+        .WithTags("auth");
+
+        app.MapGet("/api/auth/profile/{login}", async (
+            string login,
+            GeneratorClient client,
+            CancellationToken ct) =>
+        {
+            var profile = await client.GetProfileAsync(login, ct);
+            return profile is null
+                ? Results.NotFound(new { error = $"Пользователь {login} не найден" })
+                : Results.Ok(profile);
+        })
+        .WithTags("auth");
+
+        app.MapPatch("/api/auth/profile/{login}", async (
+            string login,
+            UpdateProfileRequest body,
+            GeneratorClient client,
+            CancellationToken ct) =>
+        {
+            var profile = await client.UpdateProfileAsync(login, body, ct);
+            return profile is null
+                ? Results.NotFound(new { error = $"Пользователь {login} не найден" })
+                : Results.Ok(profile);
+        })
+        .WithTags("auth");
+
+        app.MapPost("/api/auth/change-password", async (
+            ChangePasswordRequest body,
+            GeneratorClient client,
+            CancellationToken ct) =>
+        {
+            var (ok, error) = await client.ChangePasswordAsync(body, ct);
+            return ok
+                ? Results.Ok(new { ok = true })
+                : Results.Json(new { error }, statusCode: 401);
+        })
+        .WithTags("auth");
     }
 }

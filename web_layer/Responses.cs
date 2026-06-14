@@ -77,12 +77,18 @@ public record TurnResultResponse(
 public record HealthResponse(string Status, int Generators);
 
 /// <summary>
-/// Авторизованный пользователь.
+/// Данные пользователя — возвращаются после входа, регистрации и из профиля.
+/// Расширенные поля (Email, About, AvatarColor, CreatedAt) появляются при
+/// GET /profile; при входе могут быть пустыми строками/0.
 /// </summary>
 public record UserDto(
     string Login,
     string Fio,
-    string Group
+    string Group,
+    string Email = "",
+    string About = "",
+    [property: JsonPropertyName("avatar_color")] string AvatarColor = "",
+    [property: JsonPropertyName("created_at")] double CreatedAt = 0
 );
 
 /// <summary>

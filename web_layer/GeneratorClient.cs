@@ -148,7 +148,7 @@ public sealed class GeneratorClient
         return (body, fileName);
     }
 
-    // ─── Авторизация ────────────────────────────────────────────────────
+    // ─── Авторизация и профиль ──────────────────────────────────────────────
 
     public async Task<UserDto?> LoginAsync(string login, string password, CancellationToken ct)
     {
@@ -160,6 +160,77 @@ public sealed class GeneratorClient
             return null;
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<UserDto>(JsonOptions, ct);
+    }
+
+    public async Task<(UserDto? User, string? Error)> RegisterAsync(
+        RegisterRequest req, CancellationToken ct)
+    {
+        var response = await _http.PostAsJsonAsync(
+            "/auth/register",
+            new { login = req.Login, password = req.Password,
+                  fio = req.Fio, group = req.Group, email = req.Email },
+            ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+        {
+            var detail = await TryReadDetail(response, ct);
+            return (null, detail ?? "Логин уже занят");
+        }
+        response.EnsureSuccessStatusCode();
+        var user = await response.Content.ReadFromJsonAsync<UserDto>(JsonOptions, ct);
+        return (user, null);
+    }
+
+    public async Task<UserDto?> GetProfileAsync(string login, CancellationToken ct)
+    {
+        var response = await _http.GetAsync(
+            $"/auth/profile/{Uri.EscapeDataString(login)}", ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<UserDto>(JsonOptions, ct);
+    }
+
+    public async Task<UserDto?> UpdateProfileAsync(
+        string login, UpdateProfileRequest req, CancellationToken ct)
+    {
+        var response = await _http.PatchAsJsonAsync(
+            $"/auth/profile/{Uri.EscapeDataString(login)}",
+            new { fio = req.Fio, group = req.Group, email = req.Email,
+                  about = req.About, avatar_color = req.AvatarColor },
+            ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<UserDto>(JsonOptions, ct);
+    }
+
+    public async Task<(bool Ok, string? Error)> ChangePasswordAsync(
+        ChangePasswordRequest req, CancellationToken ct)
+    {
+        var response = await _http.PostAsJsonAsync(
+            "/auth/change-password",
+            new { login = req.Login,
+                  current_password = req.CurrentPassword,
+                  new_password = req.NewPassword },
+            ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            var detail = await TryReadDetail(response, ct);
+            return (false, detail ?? "Неверный текущий пароль");
+        }
+        response.EnsureSuccessStatusCode();
+        return (true, null);
+    }
+
+    private static async Task<string?> TryReadDetail(
+        HttpResponseMessage response, CancellationToken ct)
+    {
+        try
+        {
+            var json = await response.Content
+                .ReadFromJsonAsync<System.Text.Json.JsonElement>(ct: ct);
+            if (json.TryGetProperty("detail", out var d)) return d.GetString();
+        }
+        catch { }
+        return null;
     }
 
     // ─── Управление разделами ────────────────────────────────────────────

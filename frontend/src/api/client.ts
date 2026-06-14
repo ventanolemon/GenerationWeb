@@ -4,13 +4,16 @@
 // это сделало бы deploy невозможным без правок.
 
 import type {
+  ChangePasswordRequest,
   ExportRequest,
   GenerateResponse,
   Partition,
   PartitionCandidates,
   PartitionEditData,
+  RegisterRequest,
   Subject,
   TurnResultResponse,
+  UpdateProfileRequest,
   UpsertPartitionRequest,
   UserInfo,
 } from "./types";
@@ -83,12 +86,41 @@ export const api = {
     });
   },
 
-  // ─── Авторизация ──────────────────────────────────────────────────────
+  // ─── Авторизация и профиль ────────────────────────────────────────────────
 
   login(login: string, password: string): Promise<UserInfo> {
     return request<UserInfo>("/api/auth/login", {
       method: "POST",
       body: JSON.stringify({ login, password }),
+    });
+  },
+
+  register(body: RegisterRequest): Promise<UserInfo> {
+    return request<UserInfo>("/api/auth/register", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+
+  getProfile(login: string): Promise<UserInfo> {
+    return request<UserInfo>(`/api/auth/profile/${encodeURIComponent(login)}`);
+  },
+
+  updateProfile(login: string, body: UpdateProfileRequest): Promise<UserInfo> {
+    return request<UserInfo>(`/api/auth/profile/${encodeURIComponent(login)}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+  },
+
+  changePassword(body: ChangePasswordRequest): Promise<void> {
+    return request<void>("/api/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify({
+        login: body.login,
+        current_password: body.currentPassword,
+        new_password: body.newPassword,
+      }),
     });
   },
 

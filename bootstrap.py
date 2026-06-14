@@ -73,6 +73,8 @@ def sync_database(repo: Repository, words_dir: Path) -> None:
     repo.ensure_subject(10, "Производные",           "Математический анализ")
     repo.ensure_subject(11, "ОПВС",                  "ОПВС")
 
+    # Таблица users: создаём если отсутствует, добавляем колонки профиля.
+    repo.ensure_users_table()
     # Таблица WordStats для межсессионной памяти словарного тренажёра.
     repo.ensure_word_stats_table()
 

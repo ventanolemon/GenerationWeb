@@ -5,7 +5,6 @@ import Modal from "./Modal";
 import styles from "../styles/login.module.css";
 
 interface Props {
-  /** С какой вкладки открыть: вход или регистрация. */
   initialTab?: AuthTab;
   onLogin: (user: UserInfo | null) => void;
   onClose: () => void;
@@ -13,55 +12,88 @@ interface Props {
 
 type AuthTab = "login" | "register";
 
-/**
- * Модальное окно авторизации поверх лендинга.
- *
- * Вкладка «Вход» — рабочая форма: POST /api/auth/login (проверка в таблице
- * users десктопной БД). Вкладка «Регистрация» — информационная: учётные
- * записи в этой системе заводит администратор, поэтому вместо неработающей
- * формы показываем пояснение и предлагаем гостевой вход.
- */
 export default function AuthModal({ initialTab = "login", onLogin, onClose }: Props) {
   const [tab, setTab] = useState<AuthTab>(initialTab);
-  const [login, setLogin] = useState("");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Вход
+  const [login, setLogin] = useState("");
+  const [password, setPassword] = useState("");
+
+  // Регистрация
+  const [regLogin, setRegLogin] = useState("");
+  const [regPassword, setRegPassword] = useState("");
+  const [regPassword2, setRegPassword2] = useState("");
+  const [regFio, setRegFio] = useState("");
+  const [regGroup, setRegGroup] = useState("");
+  const [regEmail, setRegEmail] = useState("");
+
+  function switchTab(t: AuthTab) {
+    setTab(t);
+    setError(null);
+  }
+
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
-    if (!login.trim() || !password) {
-      setError("Введите логин и пароль.");
-      return;
-    }
+    if (!login.trim() || !password) { setError("Введите логин и пароль."); return; }
     setLoading(true);
     setError(null);
     try {
       const user = await api.login(login.trim(), password);
       onLogin(user);
     } catch (err) {
-      if (err instanceof ApiError && err.status === 401) {
-        setError("Неверный логин или пароль.");
-      } else {
-        setError(err instanceof Error ? err.message : String(err));
-      }
+      setError(
+        err instanceof ApiError && err.status === 401
+          ? "Неверный логин или пароль."
+          : err instanceof Error ? err.message : String(err)
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleRegister(e: React.FormEvent) {
+    e.preventDefault();
+    if (!regLogin.trim()) { setError("Введите логин."); return; }
+    if (regPassword.length < 4) { setError("Пароль должен быть не менее 4 символов."); return; }
+    if (regPassword !== regPassword2) { setError("Пароли не совпадают."); return; }
+    if (!regFio.trim()) { setError("Введите имя."); return; }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const user = await api.register({
+        login: regLogin.trim(),
+        password: regPassword,
+        fio: regFio.trim(),
+        group: regGroup.trim(),
+        email: regEmail.trim(),
+      });
+      onLogin(user);
+    } catch (err) {
+      setError(
+        err instanceof ApiError && err.status === 409
+          ? `Логин «${regLogin}» уже занят. Выберите другой.`
+          : err instanceof Error ? err.message : String(err)
+      );
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <Modal title="Вход в систему" onClose={onClose} width={400}>
+    <Modal title="Вход в систему" onClose={onClose} width={420}>
       <div className={styles.tabs}>
         <button
           className={`${styles.tab} ${tab === "login" ? styles.tabActive : ""}`}
-          onClick={() => { setTab("login"); setError(null); }}
+          onClick={() => switchTab("login")}
         >
           Вход
         </button>
         <button
           className={`${styles.tab} ${tab === "register" ? styles.tabActive : ""}`}
-          onClick={() => { setTab("register"); setError(null); }}
+          onClick={() => switchTab("register")}
         >
           Регистрация
         </button>
@@ -105,24 +137,85 @@ export default function AuthModal({ initialTab = "login", onLogin, onClose }: Pr
           </button>
         </form>
       ) : (
-        <div className={styles.form}>
-          <div className={styles.infoPanel}>
-            Учётные записи в системе выдаёт <strong>администратор</strong> вашего
-            учебного заведения. Если у вас уже есть логин — перейдите на вкладку{" "}
-            <strong>«Вход»</strong>.
-            <br />
-            <br />
-            Хотите просто попробовать? Гостевой режим даёт полный доступ к
-            генератору; история ответов сохраняется только в этом браузере.
-          </div>
+        <form onSubmit={handleRegister} className={styles.form}>
+          <label className={styles.label}>
+            Логин *
+            <input
+              className={styles.input}
+              type="text"
+              value={regLogin}
+              onChange={(e) => setRegLogin(e.target.value)}
+              autoFocus
+              autoComplete="username"
+              placeholder="только латиница, цифры, _ - ."
+            />
+          </label>
+          <label className={styles.label}>
+            Имя (ФИО) *
+            <input
+              className={styles.input}
+              type="text"
+              value={regFio}
+              onChange={(e) => setRegFio(e.target.value)}
+              autoComplete="name"
+              placeholder="Иванов Иван Иванович"
+            />
+          </label>
+          <label className={styles.label}>
+            Группа
+            <input
+              className={styles.input}
+              type="text"
+              value={regGroup}
+              onChange={(e) => setRegGroup(e.target.value)}
+              placeholder="ИВТ-21"
+            />
+          </label>
+          <label className={styles.label}>
+            Email
+            <input
+              className={styles.input}
+              type="email"
+              value={regEmail}
+              onChange={(e) => setRegEmail(e.target.value)}
+              autoComplete="email"
+              placeholder="необязательно"
+            />
+          </label>
+          <label className={styles.label}>
+            Пароль *
+            <input
+              className={styles.input}
+              type="password"
+              value={regPassword}
+              onChange={(e) => setRegPassword(e.target.value)}
+              autoComplete="new-password"
+            />
+          </label>
+          <label className={styles.label}>
+            Повторите пароль *
+            <input
+              className={styles.input}
+              type="password"
+              value={regPassword2}
+              onChange={(e) => setRegPassword2(e.target.value)}
+              autoComplete="new-password"
+            />
+          </label>
+          {error && <div className={styles.error}>{error}</div>}
+          <button type="submit" className={styles.btnPrimary} disabled={loading}>
+            {loading ? "Регистрация…" : "Зарегистрироваться"}
+          </button>
+          <div className={styles.divider}>или</div>
           <button
             type="button"
-            className={styles.btnPrimary}
+            className={styles.btnGuest}
             onClick={() => onLogin(null)}
+            disabled={loading}
           >
-            Попробовать как гость
+            Продолжить как гость
           </button>
-        </div>
+        </form>
       )}
     </Modal>
   );
