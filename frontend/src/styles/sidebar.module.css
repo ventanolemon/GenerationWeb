@@ -1,4 +1,5 @@
 .subjectPicker {
+  position: relative;
   margin-bottom: 1rem;
 }
 
@@ -11,19 +12,77 @@
   margin-bottom: 0.35rem;
 }
 
-.select {
+.dropdownTrigger {
   width: 100%;
-  padding: 0.45rem 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.45rem 0.6rem;
   font: inherit;
+  font-size: 0.92rem;
   border: 1px solid var(--sidebar-border);
   border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.04);
   color: var(--sidebar-text);
+  cursor: pointer;
+  text-align: left;
 }
-.select:focus {
-  outline: none;
+.dropdownTrigger:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.dropdownTriggerOpen {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.dropdownValue {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dropdownChevron {
+  flex-shrink: 0;
+  margin-left: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--sidebar-muted);
+}
+
+.dropdownMenu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 200;
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem 0;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  max-height: 260px;
+  overflow-y: auto;
+}
+.dropdownOption {
+  padding: 0.45rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.92rem;
+  color: var(--text);
+}
+.dropdownOption:hover {
+  background: var(--accent-glow);
+  color: var(--text);
+}
+.dropdownOptionSelected {
+  background: var(--accent-glow);
+  color: var(--accent);
+  font-weight: 500;
+}
+.dropdownEmpty {
+  padding: 0.45rem 0.75rem;
+  font-size: 0.88rem;
+  color: var(--sidebar-muted);
+  font-style: italic;
 }
 
 .partitionList {
