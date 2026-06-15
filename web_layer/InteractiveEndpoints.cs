@@ -28,7 +28,7 @@ public static class InteractiveEndpoints
             // user_input может быть пустой строкой — это легитимный кейс
             // (например, пользователь нажал Enter в пустом поле).
             var (result, exists) = await client.SubmitAsync(
-                body.SessionId, body.UserInput ?? string.Empty, ct);
+                body.SessionId, body.UserInput ?? string.Empty, body.Tolerant, ct);
 
             if (!exists)
             {

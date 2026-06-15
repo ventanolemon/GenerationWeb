@@ -68,10 +68,13 @@ app.UseCors();
 
 // ─── Регистрация эндпоинтов ────────────────────────────────────────────
 
+app.MapAuthEndpoints();
 app.MapSubjectsEndpoints();
 app.MapGenerateEndpoints();
 app.MapInteractiveEndpoints();
 app.MapExportEndpoints();
+app.MapPartitionEndpoints();
+app.MapStatsEndpoints();
 app.MapMetaEndpoints();
 
 // Корневой эндпоинт — подсказка, что и где

@@ -75,3 +75,40 @@ public record TurnResultResponse(
 /// Простой health-ответ.
 /// </summary>
 public record HealthResponse(string Status, int Generators);
+
+/// <summary>
+/// Данные пользователя — возвращаются после входа, регистрации и из профиля.
+/// Расширенные поля (Email, About, AvatarColor, CreatedAt) появляются при
+/// GET /profile; при входе могут быть пустыми строками/0.
+/// </summary>
+public record UserDto(
+    string Login,
+    string Fio,
+    string Group,
+    string Email = "",
+    string About = "",
+    [property: JsonPropertyName("avatar_color")] string AvatarColor = "",
+    [property: JsonPropertyName("created_at")] double CreatedAt = 0
+);
+
+/// <summary>
+/// Статистика словарного тренажёра для окна профиля.
+/// Прокидывается как сырой JsonElement: структура (summary + words[])
+/// разбирается на фронте, C#-слою незачем знать её детально.
+/// </summary>
+public record StatsResponse(
+    [property: JsonPropertyName("is_guest")] bool IsGuest,
+    [property: JsonPropertyName("summary")] JsonElement Summary,
+    [property: JsonPropertyName("words")] JsonElement Words
+);
+
+/// <summary>
+/// Данные раздела с generation_params для редактирования.
+/// </summary>
+public record PartitionEditDto(
+    int Id,
+    [property: JsonPropertyName("subject_id")] int SubjectId,
+    string Name,
+    int Constracted,
+    [property: JsonPropertyName("generation_params")] JsonElement GenerationParams
+);

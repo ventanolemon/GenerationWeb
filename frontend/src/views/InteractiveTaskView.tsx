@@ -6,6 +6,7 @@ import styles from "../styles/views.module.css";
 
 interface Props {
   partition: Partition;
+  userId?: string | null;
 }
 
 interface SessionState {
@@ -14,6 +15,7 @@ interface SessionState {
   history: Block[][];  // массив "feedback" с прошлых ходов
   score: { correct: number; total: number };
   finished: boolean;
+  supportsTolerant: boolean;
 }
 
 /**
@@ -29,11 +31,12 @@ interface SessionState {
  * История ходов скроллится сама в конец при каждом новом feedback —
  * через ref и useEffect.
  */
-export default function InteractiveTaskView({ partition }: Props) {
+export default function InteractiveTaskView({ partition, userId }: Props) {
   const [session, setSession] = useState<SessionState | null>(null);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tolerant, setTolerant] = useState(false);
   const historyRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -57,7 +60,7 @@ export default function InteractiveTaskView({ partition }: Props) {
     setSession(null);
     setInput("");
     try {
-      const result = await api.generate(partition.id);
+      const result = await api.generate(partition.id, userId);
       if (result.type !== "interactive") {
         throw new Error(
           "Раздел не интерактивный, попал не в тот компонент",
@@ -69,6 +72,7 @@ export default function InteractiveTaskView({ partition }: Props) {
         history: [],
         score: { correct: 0, total: 0 },
         finished: result.is_finished,
+        supportsTolerant: result.supports_tolerant ?? false,
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -82,7 +86,7 @@ export default function InteractiveTaskView({ partition }: Props) {
     const userInput = input;
     setInput("");
     try {
-      const result = await api.submit(session.sessionId, userInput);
+      const result = await api.submit(session.sessionId, userInput, tolerant);
       setSession((prev) => {
         if (!prev) return prev;
         return {
@@ -94,6 +98,7 @@ export default function InteractiveTaskView({ partition }: Props) {
           },
           prompt: result.next_prompt ?? [],
           finished: result.is_finished,
+          supportsTolerant: prev.supportsTolerant,
         };
       });
       // Возвращаем фокус в инпут — для тренажёра удобнее, чем тыкать мышью.
@@ -119,6 +124,16 @@ export default function InteractiveTaskView({ partition }: Props) {
           <button onClick={startSession} className={styles.smallBtn}>
             Заново
           </button>
+          {session.supportsTolerant && (
+            <label className={styles.tolerantLabel}>
+              <input
+                type="checkbox"
+                checked={tolerant}
+                onChange={(e) => setTolerant(e.target.checked)}
+              />
+              {" "}Толерантная проверка (опечатки)
+            </label>
+          )}
         </div>
       )}
 

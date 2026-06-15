@@ -4,17 +4,26 @@
 
 .label {
   display: block;
-  font-size: 0.85rem;
-  color: #666;
-  margin-bottom: 0.25rem;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--sidebar-muted);
+  margin-bottom: 0.35rem;
 }
 
 .select {
   width: 100%;
-  padding: 0.35rem;
+  padding: 0.45rem 0.5rem;
   font: inherit;
-  border: 1px solid #888;
-  border-radius: 4px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--sidebar-text);
+}
+.select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
 .partitionList {
@@ -24,31 +33,199 @@
 }
 
 .partitionItem {
-  padding: 0.4rem 0.6rem;
-  border-radius: 4px;
+  padding: 0.45rem 0.65rem;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   border: 1px solid transparent;
   margin-bottom: 0.2rem;
+  color: var(--sidebar-text);
+  font-size: 0.92rem;
 }
 .partitionItem:hover {
-  background: #f0f0f0;
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .partitionSelected {
-  background: #e3eaff;
-  border-color: #aab4d8;
+  background: var(--accent-glow);
+  border-color: var(--accent);
+  color: #fff;
 }
 
 .partitionDisabled {
-  color: #aaa;
+  color: var(--sidebar-muted);
   cursor: not-allowed;
+  opacity: 0.6;
 }
 .partitionDisabled:hover {
   background: transparent;
 }
 
 .empty {
-  color: #888;
+  color: var(--sidebar-muted);
   font-style: italic;
   padding: 0.5rem;
+  font-size: 0.88rem;
+}
+
+/* PartitionControls */
+
+.partitionControls {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.ctrlBtn {
+  flex: 1;
+  padding: 0.35rem 0.4rem;
+  font-size: 0.82rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--sidebar-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  color: var(--sidebar-text);
+}
+.ctrlBtn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: var(--border-strong);
+}
+.ctrlBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.ctrlBtnDanger:hover:not(:disabled) {
+  background: var(--danger-bg);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.createWrap {
+  position: relative;
+  flex: 1;
+}
+.createWrap > .ctrlBtn {
+  width: 100%;
+}
+
+.createMenu {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  z-index: 100;
+  min-width: 170px;
+  overflow: hidden;
+}
+.createMenu button {
+  display: block;
+  width: 100%;
+  padding: 0.5rem 0.8rem;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+.createMenu button:hover {
+  background: var(--accent-glow);
+}
+
+.confirmBubble {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.45rem;
+  padding: 0.45rem 0.6rem;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid var(--warn);
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+  color: var(--sidebar-text);
+}
+.confirmBubble span {
+  flex: 1;
+  word-break: break-word;
+}
+.confirmBubble button {
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--sidebar-text);
+  cursor: pointer;
+  font-size: 0.82rem;
+}
+.confirmBubble button:first-of-type {
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+}
+
+/* Бейдж пользователя в шапке сайдбара */
+.userBadge {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1.1rem;
+  padding: 0.6rem 0.7rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--sidebar-border);
+  border-radius: var(--radius);
+}
+.avatar {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), #0ea5e9);
+  display: grid;
+  place-items: center;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #04130c;
+}
+.userMeta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.userName {
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--sidebar-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.userRole {
+  font-size: 0.72rem;
+  color: var(--sidebar-muted);
+}
+.logoutBtn {
+  background: none;
+  border: none;
+  color: var(--sidebar-muted);
+  font-size: 0.74rem;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+  white-space: nowrap;
+}
+.logoutBtn:hover {
+  color: var(--sidebar-text);
+}
+.userBadgeClickable {
+  cursor: pointer;
+}
+.userBadgeClickable:hover {
+  border-color: var(--border-strong);
+  background: rgba(255, 255, 255, 0.07);
 }

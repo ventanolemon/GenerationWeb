@@ -71,10 +71,10 @@ public sealed class GeneratorClient
     /// Бросает HttpRequestException при 5xx, возвращает null при 404
     /// (нет генератора для этого partition_id).
     /// </summary>
-    public async Task<JsonElement?> GenerateAsync(int partitionId, CancellationToken ct)
+    public async Task<JsonElement?> GenerateAsync(int partitionId, string? userId, CancellationToken ct)
     {
         var response = await _http.PostAsJsonAsync(
-            "/generate", new { partition_id = partitionId }, ct);
+            "/generate", new { partition_id = partitionId, user_id = userId }, ct);
 
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
@@ -88,11 +88,11 @@ public sealed class GeneratorClient
     // ─── Интерактив ────────────────────────────────────────────────────
 
     public async Task<(TurnResultResponse? Result, bool SessionExists)> SubmitAsync(
-        string sessionId, string userInput, CancellationToken ct)
+        string sessionId, string userInput, bool tolerant, CancellationToken ct)
     {
         var response = await _http.PostAsJsonAsync(
             "/interactive/submit",
-            new { session_id = sessionId, user_input = userInput },
+            new { session_id = sessionId, user_input = userInput, tolerant },
             ct);
 
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -146,6 +146,150 @@ public sealed class GeneratorClient
                        ?? $"tasks_{request.PartitionId}.docx";
         var body = await response.Content.ReadAsStreamAsync(ct);
         return (body, fileName);
+    }
+
+    // ─── Авторизация и профиль ──────────────────────────────────────────────
+
+    public async Task<UserDto?> LoginAsync(string login, string password, CancellationToken ct)
+    {
+        var response = await _http.PostAsJsonAsync(
+            "/auth/login",
+            new { login, password },
+            ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<UserDto>(JsonOptions, ct);
+    }
+
+    public async Task<(UserDto? User, string? Error)> RegisterAsync(
+        RegisterRequest req, CancellationToken ct)
+    {
+        var response = await _http.PostAsJsonAsync(
+            "/auth/register",
+            new { login = req.Login, password = req.Password,
+                  fio = req.Fio, group = req.Group, email = req.Email },
+            ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+        {
+            var detail = await TryReadDetail(response, ct);
+            return (null, detail ?? "Логин уже занят");
+        }
+        response.EnsureSuccessStatusCode();
+        var user = await response.Content.ReadFromJsonAsync<UserDto>(JsonOptions, ct);
+        return (user, null);
+    }
+
+    public async Task<UserDto?> GetProfileAsync(string login, CancellationToken ct)
+    {
+        var response = await _http.GetAsync(
+            $"/auth/profile/{Uri.EscapeDataString(login)}", ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<UserDto>(JsonOptions, ct);
+    }
+
+    public async Task<UserDto?> UpdateProfileAsync(
+        string login, UpdateProfileRequest req, CancellationToken ct)
+    {
+        var response = await _http.PatchAsJsonAsync(
+            $"/auth/profile/{Uri.EscapeDataString(login)}",
+            new { fio = req.Fio, group = req.Group, email = req.Email,
+                  about = req.About, avatar_color = req.AvatarColor },
+            ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<UserDto>(JsonOptions, ct);
+    }
+
+    public async Task<(bool Ok, string? Error)> ChangePasswordAsync(
+        ChangePasswordRequest req, CancellationToken ct)
+    {
+        var response = await _http.PostAsJsonAsync(
+            "/auth/change-password",
+            new { login = req.Login,
+                  current_password = req.CurrentPassword,
+                  new_password = req.NewPassword },
+            ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            var detail = await TryReadDetail(response, ct);
+            return (false, detail ?? "Неверный текущий пароль");
+        }
+        response.EnsureSuccessStatusCode();
+        return (true, null);
+    }
+
+    private static async Task<string?> TryReadDetail(
+        HttpResponseMessage response, CancellationToken ct)
+    {
+        try
+        {
+            var json = await response.Content
+                .ReadFromJsonAsync<System.Text.Json.JsonElement>(ct: ct);
+            if (json.TryGetProperty("detail", out var d)) return d.GetString();
+        }
+        catch { }
+        return null;
+    }
+
+    // ─── Статистика ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Статистика словарного тренажёра. userId == null → гостевая статистика.
+    /// Возвращаем сырой JsonElement (summary + words[]) для фронта.
+    /// </summary>
+    public async Task<JsonElement?> GetStatsAsync(string? userId, CancellationToken ct)
+    {
+        var url = string.IsNullOrEmpty(userId)
+            ? "/stats"
+            : $"/stats?user_id={Uri.EscapeDataString(userId)}";
+        var response = await _http.GetAsync(url, ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable)
+            return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions, ct);
+    }
+
+    // ─── Управление разделами ────────────────────────────────────────────
+
+    public async Task<PartitionEditDto?> GetPartitionForEditAsync(int partitionId, CancellationToken ct)
+    {
+        var response = await _http.GetAsync($"/partitions/{partitionId}", ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<PartitionEditDto>(JsonOptions, ct);
+    }
+
+    public async Task<JsonElement?> GetPartitionCandidatesAsync(int subjectId, CancellationToken ct)
+    {
+        var response = await _http.GetAsync($"/partitions/candidates/{subjectId}", ct);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions, ct);
+    }
+
+    public async Task<int?> UpsertPartitionAsync(
+        int subjectId, string name, int constracted,
+        object? generationParams, CancellationToken ct)
+    {
+        var response = await _http.PostAsJsonAsync(
+            "/partitions",
+            new { subject_id = subjectId, name, constracted,
+                  generation_params = generationParams ?? (object)new { } },
+            ct);
+        response.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions, ct);
+        if (result.TryGetProperty("partition_id", out var pid))
+            return pid.GetInt32();
+        return null;
+    }
+
+    public async Task<bool> DeletePartitionAsync(int partitionId, CancellationToken ct)
+    {
+        var response = await _http.DeleteAsync($"/partitions/{partitionId}", ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return false;
+        response.EnsureSuccessStatusCode();
+        return true;
     }
 
     // ─── Служебное ─────────────────────────────────────────────────────

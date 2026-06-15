@@ -4,11 +4,19 @@
 // это сделало бы deploy невозможным без правок.
 
 import type {
+  ChangePasswordRequest,
   ExportRequest,
   GenerateResponse,
   Partition,
+  PartitionCandidates,
+  PartitionEditData,
+  RegisterRequest,
   Subject,
   TurnResultResponse,
+  UpdateProfileRequest,
+  UpsertPartitionRequest,
+  UserInfo,
+  UserStats,
 } from "./types";
 
 // Базовая обёртка вокруг fetch с двумя задачами: распарсить JSON и
@@ -65,17 +73,84 @@ export const api = {
     return request<Partition[]>(`/api/subjects/${subjectId}/partitions`);
   },
 
-  generate(partitionId: number): Promise<GenerateResponse> {
+  generate(partitionId: number, userId?: string | null): Promise<GenerateResponse> {
     return request<GenerateResponse>("/api/generate", {
       method: "POST",
-      body: JSON.stringify({ partitionId }),
+      body: JSON.stringify({ partitionId, userId: userId ?? null }),
     });
   },
 
-  submit(sessionId: string, userInput: string): Promise<TurnResultResponse> {
+  submit(sessionId: string, userInput: string, tolerant = false): Promise<TurnResultResponse> {
     return request<TurnResultResponse>("/api/interactive/submit", {
       method: "POST",
-      body: JSON.stringify({ sessionId, userInput }),
+      body: JSON.stringify({ sessionId, userInput, tolerant }),
+    });
+  },
+
+  // ─── Авторизация и профиль ────────────────────────────────────────────────
+
+  login(login: string, password: string): Promise<UserInfo> {
+    return request<UserInfo>("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ login, password }),
+    });
+  },
+
+  register(body: RegisterRequest): Promise<UserInfo> {
+    return request<UserInfo>("/api/auth/register", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+
+  getProfile(login: string): Promise<UserInfo> {
+    return request<UserInfo>(`/api/auth/profile/${encodeURIComponent(login)}`);
+  },
+
+  updateProfile(login: string, body: UpdateProfileRequest): Promise<UserInfo> {
+    return request<UserInfo>(`/api/auth/profile/${encodeURIComponent(login)}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+  },
+
+  changePassword(body: ChangePasswordRequest): Promise<void> {
+    return request<void>("/api/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify({
+        login: body.login,
+        current_password: body.currentPassword,
+        new_password: body.newPassword,
+      }),
+    });
+  },
+
+  // ─── Статистика ────────────────────────────────────────────────────────────
+
+  getStats(userId: string): Promise<UserStats> {
+    return request<UserStats>(`/api/stats?userId=${encodeURIComponent(userId)}`);
+  },
+
+  // ─── Управление разделами ──────────────────────────────────────────────
+
+  getPartitionForEdit(id: number): Promise<PartitionEditData> {
+    return request<PartitionEditData>(`/api/partitions/${id}`);
+  },
+
+  getPartitionCandidates(subjectId: number): Promise<PartitionCandidates> {
+    return request<PartitionCandidates>(`/api/partitions/candidates/${subjectId}`);
+  },
+
+  upsertPartition(body: UpsertPartitionRequest): Promise<{ partition_id: number }> {
+    return request<{ partition_id: number }>("/api/partitions", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+
+  deletePartition(id: number, subjectId: number): Promise<{ deleted: number }> {
+    return request<{ deleted: number }>(`/api/partitions/${id}?subjectId=${subjectId}`, {
+      method: "DELETE",
     });
   },
 

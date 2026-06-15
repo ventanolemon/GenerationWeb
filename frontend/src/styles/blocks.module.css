@@ -9,9 +9,10 @@
 
 .unknownBlock {
   padding: 0.4rem 0.6rem;
-  background: #fff4d6;
-  color: #836400;
-  border-radius: 4px;
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--warn);
+  border: 1px solid var(--warn);
+  border-radius: var(--radius-sm);
   font-size: 0.9rem;
 }
 
@@ -22,8 +23,8 @@
   max-width: 100%;
 }
 .formulaFallback {
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  background: #f4f4f4;
+  font-family: var(--font-mono);
+  background: var(--surface-2);
   padding: 0.1em 0.4em;
   border-radius: 3px;
 }
@@ -36,28 +37,30 @@
 .image {
   max-width: 100%;
   height: auto;
+  border-radius: var(--radius-sm);
 }
 .imageCaption {
   margin-top: 0.4rem;
-  color: #666;
+  color: var(--text-muted);
   font-size: 0.9rem;
   font-style: italic;
 }
 .imagePlaceholder {
   padding: 1rem;
-  background: #f4f4f4;
-  color: #888;
+  background: var(--surface-2);
+  color: var(--text-muted);
   text-align: center;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 /* Code */
 .codeBlock {
-  background: #2b2b2b;
-  color: #e6e6e6;
-  padding: 0.7rem 0.9rem;
-  border-radius: 4px;
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  background: #0b1120;
+  color: #e2e8f0;
+  padding: 0.8rem 1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
   font-size: 0.9rem;
   overflow-x: auto;
   position: relative;
@@ -68,7 +71,7 @@
   top: 0.3rem;
   right: 0.6rem;
   font-size: 0.7rem;
-  color: #888;
+  color: var(--text-faint);
   text-transform: uppercase;
 }
 
@@ -78,11 +81,11 @@
 }
 .table th,
 .table td {
-  border: 1px solid #ccc;
+  border: 1px solid var(--border-strong);
   padding: 0.3em 0.6em;
 }
 .table thead th {
-  background: #f4f4f4;
+  background: var(--surface-2);
 }
 
 /* Fill-in-blank */
@@ -98,20 +101,21 @@
   margin: 0 0.15em;
   padding: 0.1em 0.4em;
   font: inherit;
-  border: 1px solid #888;
+  border: 1px solid var(--border-strong);
   border-radius: 3px;
-  background: #fff;
+  background: var(--bg);
+  color: var(--text);
   transition: background-color 0.15s, color 0.15s;
 }
 .blankInputOk {
-  background: #d8f0d8;
-  color: #1a4d1a;
-  border-color: #67a567;
+  background: var(--ok-bg);
+  color: var(--accent);
+  border-color: var(--accent);
 }
 .blankInputBad {
-  background: #f4d8d8;
-  color: #5a1a1a;
-  border-color: #c08080;
+  background: var(--danger-bg);
+  color: var(--danger);
+  border-color: var(--danger);
 }
 
 /* WordCorrection */
@@ -122,45 +126,45 @@
   margin-bottom: 0.2rem;
 }
 .markerOk {
-  color: #2a7a2a;
+  color: var(--accent);
   font-weight: bold;
 }
 .markerTolerant {
-  color: #a07a1a;
+  color: var(--warn);
   font-weight: bold;
 }
 .markerBad {
-  color: #aa2a2a;
+  color: var(--danger);
   font-weight: bold;
 }
 .translation {
-  color: #555;
+  color: var(--text-muted);
 }
 .wordRow {
   margin-left: 1.2rem;
   font-size: 0.95rem;
 }
 .wordLabel {
-  color: #888;
+  color: var(--text-faint);
 }
 .userAnswerOk {
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  color: #2a7a2a;
+  font-family: var(--font-mono);
+  color: var(--accent);
 }
 .expected {
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  color: #2a5a8a;
+  font-family: var(--font-mono);
+  color: #38bdf8;
 }
 .diffSpan {
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
 }
 .diffEqual {
-  color: #2a7a2a;
+  color: var(--accent);
 }
 .diffWrong {
-  color: #aa2a2a;
+  color: var(--danger);
   text-decoration: underline;
 }
 .diffMissing {
-  color: #999;
+  color: var(--text-faint);
 }

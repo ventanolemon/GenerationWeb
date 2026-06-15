@@ -27,7 +27,7 @@ public static class GenerateEndpoints
                 return Results.BadRequest(new { error = "partition_id must be positive" });
             }
 
-            var result = await client.GenerateAsync(body.PartitionId, ct);
+            var result = await client.GenerateAsync(body.PartitionId, body.UserId, ct);
             if (result is null)
             {
                 return Results.NotFound(new

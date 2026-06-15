@@ -5,14 +5,58 @@ namespace WebLayer.Contracts;
 /// получить. Никаких параметров генерации с фронта не приходит: всё, что
 /// нужно, лежит в БД (generation_parametrs) и подтягивается FastAPI.
 /// </summary>
-public record GenerateRequest(int PartitionId);
+public record GenerateRequest(int PartitionId, string? UserId = null);
 
 /// <summary>
 /// Тело POST /interactive/submit — ответ пользователя в активной сессии.
+/// Tolerant — разрешить мелкие опечатки (расстояние Левенштейна ≤ 1 / ≤ 2).
 /// </summary>
-public record SubmitRequest(string SessionId, string UserInput);
+public record SubmitRequest(string SessionId, string UserInput, bool Tolerant = false);
 
 /// <summary>
 /// Тело POST /export — параметры пакетной генерации в .docx.
 /// </summary>
 public record ExportRequest(int PartitionId, int Count = 1, bool WithAnswers = true);
+
+/// <summary>
+/// Тело POST /api/auth/login.
+/// </summary>
+public record LoginRequest(string Login, string Password);
+
+/// <summary>
+/// Тело POST /api/auth/register.
+/// </summary>
+public record RegisterRequest(
+    string Login,
+    string Password,
+    string Fio,
+    string Group = "",
+    string Email = "");
+
+/// <summary>
+/// Тело PATCH /api/auth/profile/{login}.
+/// </summary>
+public record UpdateProfileRequest(
+    string Fio,
+    string Group = "",
+    string Email = "",
+    string About = "",
+    string AvatarColor = "");
+
+/// <summary>
+/// Тело POST /api/auth/change-password.
+/// </summary>
+public record ChangePasswordRequest(
+    string Login,
+    string CurrentPassword,
+    string NewPassword);
+
+/// <summary>
+/// Тело POST /api/partitions — создание или обновление раздела.
+/// GenerationParams — произвольный JSON (group list, test config, fisic config).
+/// </summary>
+public record UpsertPartitionRequest(
+    int SubjectId,
+    string Name,
+    int Constracted,
+    object? GenerationParams = null);

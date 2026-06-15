@@ -113,6 +113,7 @@ export interface InteractiveStartResponse {
   partition_id: number;
   prompt: Block[];
   is_finished: boolean;
+  supports_tolerant: boolean;
 }
 
 export type GenerateResponse = StaticTaskResponse | InteractiveStartResponse;
@@ -134,4 +135,90 @@ export interface ExportRequest {
   partitionId: number;
   count: number;
   withAnswers: boolean;
+}
+
+
+// ─── Авторизация и профиль ────────────────────────────────────────────────
+
+export interface UserInfo {
+  login: string;
+  fio: string;
+  group: string;
+  // Расширенные поля профиля (приходят при GET /profile, могут отсутствовать при login)
+  email?: string;
+  about?: string;
+  avatar_color?: string;
+  created_at?: number;
+}
+
+export interface RegisterRequest {
+  login: string;
+  password: string;
+  fio: string;
+  group?: string;
+  email?: string;
+}
+
+export interface UpdateProfileRequest {
+  fio: string;
+  group: string;
+  email: string;
+  about: string;
+  avatar_color: string;
+}
+
+export interface ChangePasswordRequest {
+  login: string;
+  currentPassword: string;
+  newPassword: string;
+}
+
+
+// ─── Статистика словарного тренажёра ───────────────────────────────────────
+
+export interface WordStatEntry {
+  term: string;
+  translation: string;
+  times_shown: number;
+  times_correct: number;
+  times_wrong: number;
+  accuracy: number | null; // null — ни разу не отвечали
+  last_seen: number;       // unix-время, 0 если не показывалось
+}
+
+export interface StatsSummary {
+  total_terms: number;
+  total_shown: number;
+  total_correct: number;
+  total_wrong: number;
+  accuracy: number; // доля 0..1
+}
+
+export interface UserStats {
+  is_guest: boolean;
+  summary: StatsSummary;
+  words: WordStatEntry[];
+}
+
+
+// ─── Управление разделами ─────────────────────────────────────────────────
+
+export interface PartitionEditData {
+  id: number;
+  subject_id: number;
+  name: string;
+  constracted: number;
+  generation_params: unknown;
+}
+
+export interface PartitionCandidates {
+  own: Partition[];
+  siblings: Partition[];
+}
+
+export interface UpsertPartitionRequest {
+  subject_id: number;
+  name: string;
+  constracted: number;
+  generation_params: unknown;
 }

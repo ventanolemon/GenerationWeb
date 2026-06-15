@@ -32,12 +32,16 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from bootstrap import build_registry, sync_database
 from const import DB_PATH, WORDS_DIR
-from core import Repository
+from core import Repository, WordStatsStore
 
+from .context import current_user_id as current_user_id_var
+from .routers import auth as auth_router
 from .routers import export as export_router
 from .routers import generate as generate_router
 from .routers import interactive as interactive_router
 from .routers import meta as meta_router
+from .routers import partitions as partitions_router
+from .routers import stats as stats_router
 from .routers import subjects as subjects_router
 from .session_store import SessionStore
 
@@ -51,11 +55,17 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing generator service…")
     repo = Repository(DB_PATH)
     sync_database(repo, WORDS_DIR)
-    registry = build_registry(repo, WORDS_DIR)
+    stats_store = WordStatsStore(repo)
+    registry = build_registry(
+        repo, WORDS_DIR,
+        stats_store=stats_store,
+        user_id_provider=lambda: current_user_id_var.get(),
+    )
 
     app.state.repo = repo
     app.state.registry = registry
     app.state.sessions = SessionStore()
+    app.state.stats_store = stats_store
     logger.info(
         "Generator service ready. Registered generators: %d",
         len(registry.all_ids()),
@@ -93,8 +103,11 @@ if cors_origins_env:
 
 # ---------- Роутеры ----------
 
+app.include_router(auth_router.router)
 app.include_router(subjects_router.router)
 app.include_router(generate_router.router)
 app.include_router(interactive_router.router)
 app.include_router(export_router.router)
+app.include_router(partitions_router.router)
+app.include_router(stats_router.router)
 app.include_router(meta_router.router)
