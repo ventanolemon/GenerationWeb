@@ -226,7 +226,7 @@ public sealed class GeneratorClient
         try
         {
             var json = await response.Content
-                .ReadFromJsonAsync<System.Text.Json.JsonElement>(ct: ct);
+                .ReadFromJsonAsync<System.Text.Json.JsonElement>(cancellationToken: ct);
             if (json.TryGetProperty("detail", out var d)) return d.GetString();
         }
         catch { }
