@@ -1,5 +1,4 @@
 .subjectPicker {
-  position: relative;
   margin-bottom: 1rem;
 }
 
@@ -48,14 +47,9 @@
 }
 
 .dropdownMenu {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: calc(100% + 4px);
-  z-index: 200;
   list-style: none;
-  margin: 0;
-  padding: 0.25rem 0;
+  margin: 0.2rem 0 0;
+  padding: 0.2rem 0;
   background: var(--surface);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
