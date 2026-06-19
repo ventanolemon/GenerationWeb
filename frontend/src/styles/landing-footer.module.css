@@ -1,0 +1,132 @@
+.footer {
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  margin-top: 2rem;
+}
+
+.grid {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 3rem 1.5rem 2rem;
+  display: grid;
+  grid-template-columns: 1.6fr 1fr 1fr 1fr;
+  gap: 2rem;
+}
+
+/* ── Брендовая колонка ───────────────────────────────────────── */
+.brandCol {
+  max-width: 320px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 0.8rem;
+}
+.brandMark {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--accent), #0ea5e9);
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  color: #04130c;
+  box-shadow: 0 0 16px var(--accent-glow);
+}
+.brandName {
+  font-weight: 600;
+  font-size: 1.02rem;
+}
+.tagline {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  line-height: 1.6;
+  margin: 0 0 1.1rem;
+}
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.badge {
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+/* ── Колонки ссылок ──────────────────────────────────────────── */
+.linkCol {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.colTitle {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+  margin: 0 0 0.35rem;
+}
+.link {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 0.15s ease;
+  width: fit-content;
+}
+.link:hover {
+  color: var(--accent);
+}
+.linkStatic {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+}
+
+/* ── Нижняя полоса ───────────────────────────────────────────── */
+.bottomBar {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 1.1rem 1.5rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-faint);
+  font-size: 0.82rem;
+}
+.version {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+/* ── Адаптив ─────────────────────────────────────────────────── */
+@media (max-width: 820px) {
+  .grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 1.6rem;
+  }
+  .brandCol {
+    grid-column: 1 / -1;
+    max-width: none;
+  }
+}
+@media (max-width: 480px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+  .bottomBar {
+    flex-direction: column;
+    gap: 0.5rem;
+    text-align: center;
+  }
+}
