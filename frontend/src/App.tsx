@@ -12,7 +12,9 @@ import LandingPage from "./views/LandingPage";
 import ThemeToggle from "./components/ThemeToggle";
 import ProfileModal from "./components/ProfileModal";
 import AuthModal from "./components/AuthModal";
+import ScrollToTop from "./components/ScrollToTop";
 import { initials, avatarBackground } from "./utils/user";
+import { APP_NAME, APP_VERSION } from "./meta";
 import styles from "./styles/app.module.css";
 import sidebarStyles from "./styles/sidebar.module.css";
 
@@ -60,6 +62,9 @@ export default function App() {
   const [partitionsVersion, setPartitionsVersion] = useState(0);
   const [profileOpen, setProfileOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
+  // Callback-ref в state: ScrollToTop должен реактивно получить <main>,
+  // когда тот смонтируется (обычный ref не вызвал бы перерисовку).
+  const [mainEl, setMainEl] = useState<HTMLElement | null>(null);
 
   // Проверяем сохранённую сессию при старте
   useEffect(() => {
@@ -191,10 +196,14 @@ export default function App() {
 
         <div className={styles.sidebarSpacer} />
         <div className={styles.sidebarFooter}>
+          <div className={styles.sidebarMeta}>
+            <span className={styles.sidebarAppName}>{APP_NAME}</span>
+            <span className={styles.sidebarVersion}>v{APP_VERSION}</span>
+          </div>
           <ThemeToggle />
         </div>
       </aside>
-      <main className={styles.main}>
+      <main className={styles.main} ref={setMainEl}>
         {loadError && <div className={styles.error}>{loadError}</div>}
         {partition ? (
           <View key={partition.id} partition={partition} userId={user?.login ?? guestId} />
@@ -203,6 +212,7 @@ export default function App() {
             Выберите раздел слева, чтобы начать.
           </div>
         )}
+        <ScrollToTop target={mainEl} />
       </main>
 
       {profileOpen && (

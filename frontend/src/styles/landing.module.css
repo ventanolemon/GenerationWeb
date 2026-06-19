@@ -137,6 +137,33 @@
   border-color: var(--accent);
 }
 
+/* ── Показатели ──────────────────────────────────────────────── */
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2.5rem;
+  margin: 3rem auto 0;
+  padding: 0;
+}
+.stat {
+  margin: 0;
+  text-align: center;
+}
+.statValue {
+  font-family: var(--font-serif);
+  font-size: clamp(1.8rem, 4vw, 2.6rem);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--accent);
+  margin: 0;
+}
+.statLabel {
+  margin: 0.45rem 0 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
 /* ── Фичи ────────────────────────────────────────────────────── */
 .features {
   max-width: 1080px;
@@ -181,11 +208,71 @@
   line-height: 1.55;
 }
 
-/* ── Подвал ──────────────────────────────────────────────────── */
-.footer {
-  border-top: 1px solid var(--border);
-  padding: 1.5rem;
+/* ── Как это работает ────────────────────────────────────────── */
+.how {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 1rem 1.5rem 4rem;
   text-align: center;
+}
+.howTitle {
+  font-family: var(--font-serif);
+  font-size: clamp(1.7rem, 3.5vw, 2.4rem);
+  margin: 0 0 0.5rem;
+}
+.howSub {
+  color: var(--text-muted);
+  margin: 0 0 2.5rem;
+  font-size: 1rem;
+}
+.steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.5rem;
+}
+.step {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.8rem 1.4rem;
+  text-align: left;
+}
+.stepNum {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-serif);
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--accent-contrast);
+  background: var(--accent);
+  margin-bottom: 1rem;
+}
+.stepTitle {
+  font-size: 1.08rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+}
+.stepText {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.55;
+}
+.stepArrow {
+  position: absolute;
+  right: -1.1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 1.4rem;
   color: var(--text-faint);
-  font-size: 0.85rem;
+  z-index: 1;
+}
+@media (max-width: 760px) {
+  .stepArrow {
+    display: none;
+  }
 }
