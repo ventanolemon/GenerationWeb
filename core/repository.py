@@ -103,6 +103,38 @@ class Repository:
 
     def __init__(self, db_path: str | Path):
         self.db_path = Path(db_path)
+        self._init_db()
+
+    def _init_db(self) -> None:
+        """Создаёт файл БД и все таблицы, если они отсутствуют.
+        Если файл повреждён — удаляет его и пересоздаёт."""
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        if self.db_path.exists():
+            try:
+                with sqlite3.connect(str(self.db_path)) as conn:
+                    conn.execute("PRAGMA integrity_check")
+            except sqlite3.DatabaseError:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "Database %s is malformed, recreating…", self.db_path
+                )
+                self.db_path.unlink()
+        with sqlite3.connect(str(self.db_path)) as conn:
+            conn.executescript("""
+                CREATE TABLE IF NOT EXISTS Subjects (
+                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    subject_name  TEXT    NOT NULL DEFAULT '',
+                    pra_subject   TEXT    NOT NULL DEFAULT ''
+                );
+                CREATE TABLE IF NOT EXISTS Partitions (
+                    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+                    subject_id           INTEGER NOT NULL DEFAULT 0,
+                    partition_name       TEXT    NOT NULL DEFAULT '',
+                    constracted          INTEGER NOT NULL DEFAULT 0,
+                    generation_parametrs TEXT    NOT NULL DEFAULT ''
+                );
+            """)
+            conn.commit()
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
