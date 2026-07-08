@@ -23,7 +23,7 @@ router = APIRouter(prefix="/partitions", tags=["partitions"])
 class UpsertPartitionRequest(BaseModel):
     subject_id: int = Field(..., gt=0)
     name: str = Field(..., min_length=1)
-    constracted: int = Field(..., ge=0, le=3)
+    constracted: int = Field(..., ge=0, le=4)  # 4 = граф (constracted=4)
     generation_params: Any = Field(default_factory=dict)
 
 

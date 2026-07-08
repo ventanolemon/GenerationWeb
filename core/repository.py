@@ -20,6 +20,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator, List, Optional
 
+from .migrations import run_migrations
+from .passwords import hash_password, verify_password
+
+# Роли пользователя (иерархия аддитивна: admin ⊃ teacher ⊃ student).
+ROLES = ("student", "teacher", "admin")
+
 
 @dataclass(frozen=True)
 class Subject:
@@ -78,10 +84,14 @@ class UserProfile:
     about: str
     avatar_color: str
     created_at: float
+    id: int = 0
+    role: str = "student"
 
     def to_dict(self) -> dict:
         return {
+            "id": self.id,
             "login": self.login,
+            "role": self.role,
             "fio": self.fio,
             "group": self.group,
             "email": self.email,
@@ -89,13 +99,6 @@ class UserProfile:
             "avatar_color": self.avatar_color,
             "created_at": self.created_at,
         }
-
-
-def _hash_password(login: str, password: str) -> str:
-    """sha256(login:password) — используется для новых регистраций через веб.
-    Существующие десктопные аккаунты хранят пароль в открытом виде — find_user
-    проверяет оба формата, чтобы не сломать обратную совместимость."""
-    return hashlib.sha256(f"{login}:{password}".encode()).hexdigest()
 
 
 class Repository:
@@ -135,6 +138,9 @@ class Repository:
                 );
             """)
             conn.commit()
+            # Версионированные миграции: RBAC, владение, sync-колонки, таблицы
+            # контура. Идемпотентно — на уже мигрированной БД это no-op.
+            run_migrations(conn)
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -299,19 +305,23 @@ class Repository:
                 (subject_id, name),
             )
             existing = cur.fetchone()
+            now = time.time()
             if existing:
                 pid = existing[0]
+                # Инкремент row_version + updated_at — основа offline-sync
+                # (см. docs/architecture/offline_sync_protocol.md).
                 conn.execute(
-                    "UPDATE Partitions SET constracted = ?, generation_parametrs = ? "
-                    "WHERE id = ?",
-                    (constracted, raw, pid),
+                    "UPDATE Partitions SET constracted = ?, generation_parametrs = ?, "
+                    "row_version = row_version + 1, updated_at = ? WHERE id = ?",
+                    (constracted, raw, now, pid),
                 )
             else:
                 cur = conn.execute(
                     "INSERT INTO Partitions "
-                    "(subject_id, partition_name, constracted, generation_parametrs) "
-                    "VALUES (?, ?, ?, ?)",
-                    (subject_id, name, constracted, raw),
+                    "(subject_id, partition_name, constracted, generation_parametrs, "
+                    " row_version, updated_at) "
+                    "VALUES (?, ?, ?, ?, 1, ?)",
+                    (subject_id, name, constracted, raw, now),
                 )
                 pid = cur.lastrowid
             conn.commit()
@@ -365,53 +375,92 @@ class Repository:
                     pass
             conn.commit()
 
-    def find_user(self, login: str, password: str) -> Optional[UserProfile]:
-        """Проверяет логин/пароль. Принимает пароль в открытом виде (старые
-        десктопные аккаунты) и в виде sha256-хеша (новые веб-регистрации)."""
-        pw_hash = _hash_password(login, password)
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT login, FIO, \"group\", email, about, avatar_color, created_at "
-                "FROM users "
-                "WHERE login = ? AND (password = ? OR password = ?)",
-                (login, pw_hash, password),
-            ).fetchone()
-        if row is None:
-            return None
+    _USER_COLS = (
+        "id, login, role, FIO, \"group\", email, about, avatar_color, created_at"
+    )
+
+    @staticmethod
+    def _row_to_profile(row) -> UserProfile:
         return UserProfile(
-            login=row[0], fio=row[1] or "", group=row[2] or "",
-            email=row[3] or "", about=row[4] or "",
-            avatar_color=row[5] or "", created_at=row[6] or 0.0,
+            id=row[0] or 0, login=row[1], role=row[2] or "student",
+            fio=row[3] or "", group=row[4] or "", email=row[5] or "",
+            about=row[6] or "", avatar_color=row[7] or "", created_at=row[8] or 0.0,
         )
 
-    def get_user_profile(self, login: str) -> Optional[UserProfile]:
+    def find_user(self, login: str, password: str) -> Optional[UserProfile]:
+        """Проверяет логин/пароль. Понимает pbkdf2, а также унаследованные
+        форматы (plaintext, sha256(login:password)) — при успешном входе на
+        устаревшем формате пароль перехешируется в pbkdf2 (self._upgrade_password)."""
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT login, FIO, \"group\", email, about, avatar_color, created_at "
-                "FROM users WHERE login = ?",
+                f"SELECT {self._USER_COLS}, password_hash FROM users WHERE login = ?",
                 (login,),
             ).fetchone()
         if row is None:
             return None
-        return UserProfile(
-            login=row[0], fio=row[1] or "", group=row[2] or "",
-            email=row[3] or "", about=row[4] or "",
-            avatar_color=row[5] or "", created_at=row[6] or 0.0,
-        )
+        ok, needs_upgrade = verify_password(row[9] or "", password, login)
+        if not ok:
+            return None
+        if needs_upgrade:
+            self._upgrade_password(login, password)
+        return self._row_to_profile(row)
+
+    def _upgrade_password(self, login: str, password: str) -> None:
+        """Перехешировать пароль в pbkdf2 и стереть плейнтекст из колонки password."""
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE users SET password_hash = ?, password = '' WHERE login = ?",
+                (hash_password(password), login),
+            )
+            conn.commit()
+
+    def get_user_profile(self, login: str) -> Optional[UserProfile]:
+        with self._connect() as conn:
+            row = conn.execute(
+                f"SELECT {self._USER_COLS} FROM users WHERE login = ?",
+                (login,),
+            ).fetchone()
+        return self._row_to_profile(row) if row else None
+
+    def get_user_id(self, login: str) -> Optional[int]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT id FROM users WHERE login = ?", (login,)
+            ).fetchone()
+        return row[0] if row else None
+
+    def set_user_role(self, login: str, role: str) -> bool:
+        """Назначить роль (админская операция). Возвращает True если найден."""
+        if role not in ROLES:
+            raise ValueError(f"Неизвестная роль {role!r}; допустимы {ROLES}.")
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE users SET role = ? WHERE login = ?", (role, login)
+            )
+            conn.commit()
+            return cur.rowcount > 0
 
     def create_user(
-        self, login: str, password: str, fio: str, group: str, email: str = ""
+        self, login: str, password: str, fio: str, group: str,
+        email: str = "", role: str = "student",
     ) -> bool:
         """Регистрирует нового пользователя. Возвращает True при успехе,
         False если логин уже занят."""
-        pw_hash = _hash_password(login, password)
+        if role not in ROLES:
+            raise ValueError(f"Неизвестная роль {role!r}; допустимы {ROLES}.")
         with self._connect() as conn:
             try:
-                conn.execute(
+                cur = conn.execute(
                     "INSERT INTO users "
-                    "(login, password, FIO, \"group\", email, avatar_color, created_at) "
-                    "VALUES (?, ?, ?, ?, ?, '', ?)",
-                    (login, pw_hash, fio, group, email, time.time()),
+                    "(login, password, password_hash, role, FIO, \"group\", "
+                    " email, avatar_color, created_at) "
+                    "VALUES (?, '', ?, ?, ?, ?, ?, '', ?)",
+                    (login, hash_password(password), role, fio, group,
+                     email, time.time()),
+                )
+                conn.execute(
+                    "UPDATE users SET id = rowid WHERE rowid = ? AND id IS NULL",
+                    (cur.lastrowid,),
                 )
                 conn.commit()
                 return True
@@ -445,14 +494,131 @@ class Repository:
         profile = self.find_user(login, current_password)
         if profile is None:
             return False
-        new_hash = _hash_password(login, new_password)
         with self._connect() as conn:
             conn.execute(
-                "UPDATE users SET password = ? WHERE login = ?",
-                (new_hash, login),
+                "UPDATE users SET password_hash = ?, password = '' WHERE login = ?",
+                (hash_password(new_password), login),
             )
             conn.commit()
         return True
+
+    # ---------- Владение контентом и видимость (RBAC) ----------
+    #
+    # Право enforcement'а по договору живёт в web_layer (см.
+    # docs/architecture/rbac_and_data_model.md). Эти методы — детерминированные
+    # предикаты над схемой, которыми web_layer и будущий contour_service
+    # пользуются; сам сервис ролей не «решает», он их вычисляет.
+
+    def subject_owner(self, subject_id: int) -> Optional[int]:
+        """owner_user_id предмета; None — системный/встроенный предмет."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT owner_user_id FROM Subjects WHERE id = ?", (subject_id,)
+            ).fetchone()
+        return row[0] if row else None
+
+    def create_subject(
+        self, name: str, parent_name: str, owner_user_id: Optional[int] = None
+    ) -> int:
+        """Создать предмет с владельцем (None = системный). Возвращает id."""
+        now = time.time()
+        with self._connect() as conn:
+            cur = conn.execute(
+                "INSERT INTO Subjects "
+                "(subject_name, pra_subject, owner_user_id, row_version, updated_at) "
+                "VALUES (?, ?, ?, 1, ?)",
+                (name, parent_name, owner_user_id, now),
+            )
+            conn.commit()
+            return cur.lastrowid
+
+    def visible_subject_ids(self, user_id: int, role: str) -> List[int]:
+        """
+        Какие предметы видит пользователь: admin — все; остальные — системные
+        (owner IS NULL) плюс свои. Удалённые (deleted_at) исключены.
+        """
+        with self._connect() as conn:
+            if role == "admin":
+                rows = conn.execute(
+                    "SELECT id FROM Subjects WHERE deleted_at IS NULL ORDER BY id"
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT id FROM Subjects "
+                    "WHERE deleted_at IS NULL "
+                    "  AND (owner_user_id IS NULL OR owner_user_id = ?) "
+                    "ORDER BY id",
+                    (user_id,),
+                ).fetchall()
+        return [r[0] for r in rows]
+
+    def can_edit_subject(self, user_id: int, role: str, subject_id: int) -> bool:
+        """
+        Кто может редактировать предмет: admin — всегда; teacher — только свои;
+        системные предметы (owner IS NULL) — только admin; student — никогда.
+        """
+        if role == "admin":
+            return True
+        if role != "teacher":
+            return False
+        owner = self.subject_owner(subject_id)
+        return owner is not None and owner == user_id
+
+    # ---------- Группы и назначения ----------
+
+    def create_group(self, name: str, created_by: Optional[int] = None) -> int:
+        with self._connect() as conn:
+            cur = conn.execute(
+                "INSERT INTO groups (name, created_by, created_at) VALUES (?, ?, ?)",
+                (name, created_by, time.time()),
+            )
+            conn.commit()
+            return cur.lastrowid
+
+    def add_group_member(self, group_id: int, user_id: int) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO group_members (group_id, user_id) "
+                "VALUES (?, ?)",
+                (group_id, user_id),
+            )
+            conn.commit()
+
+    def list_group_members(self, group_id: int) -> List[int]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT user_id FROM group_members WHERE group_id = ? "
+                "ORDER BY user_id",
+                (group_id,),
+            ).fetchall()
+        return [r[0] for r in rows]
+
+    def assign_teacher_to_group(self, teacher_id: int, group_id: int) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO teacher_groups (teacher_id, group_id) "
+                "VALUES (?, ?)",
+                (teacher_id, group_id),
+            )
+            conn.commit()
+
+    def teacher_group_ids(self, teacher_id: int) -> List[int]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT group_id FROM teacher_groups WHERE teacher_id = ? "
+                "ORDER BY group_id",
+                (teacher_id,),
+            ).fetchall()
+        return [r[0] for r in rows]
+
+    def user_group_ids(self, user_id: int) -> List[int]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT group_id FROM group_members WHERE user_id = ? "
+                "ORDER BY group_id",
+                (user_id,),
+            ).fetchall()
+        return [r[0] for r in rows]
 
     # ---------- WordStats ----------
 
