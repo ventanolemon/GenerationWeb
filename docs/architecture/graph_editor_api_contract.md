@@ -5,6 +5,25 @@
 GraphExecutor + NodeRegistry) — единственный источник истины, оба
 канваса — тонкие view над одним API.
 
+> **Статус реализации (Фаза 2 — серверная сторона API, реализовано).**
+> Движок `core/graph/` (117 типов узлов) портирован из десктопа в GenerationWeb
+> **байт-в-байт** (25/25 модулей грузятся headless; 11 граф-примеров исполняются
+> и сериализуются через web-блоки `to_dict()`). Реализованы §2-эндпоинты
+> `GET /graph/catalog`, `POST /graph/validate`, `POST /graph/preview`
+> (`generator_service/routers/graph.py` — тонкая обёртка над headless
+> `core/graph_api.py`), плюс переиспользуемый `core/graph_probe.py` (probe для
+> `/graph/preview` и будущего contour_service). Правка контракта применена:
+> upsert партиций расширен до `constracted ≤ 4`. `catalog_version` =
+> sha256 отсортированных type_id (первые 16 hex) = `165616006ce6e373` —
+> совпадает с provenance корпуса, т.е. набор узлов идентичен десктопному.
+> probe в этой фазе покрывает SYM-флаги D2/F1/F2/F3/B4 (детерминированные);
+> HYBRID/LLM-коды таксономии — зона агента-критика в contour_service.
+> Проверено: 7/7 headless (`core/test_graph_api.py`) + все три эндпоинта через
+> FastAPI TestClient. Порт клиентской части (веб-канвас) — впереди (это и есть
+> задача под §3/§4 и брифы для сильной модели). Замечание по окружению:
+> полный старт сервиса требует Python 3.12+ из-за pre-existing f-строки в
+> `exercises/linal/ex2_d.py` (не в graph-тракте); graph-модули 3.11-совместимы.
+
 ## 1. Закрепление формата (правила, не пожелания)
 
 1. Проводная форма графа — ровно `GraphSpec.to_dict()`

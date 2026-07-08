@@ -38,6 +38,7 @@ from .context import current_user_id as current_user_id_var
 from .routers import auth as auth_router
 from .routers import export as export_router
 from .routers import generate as generate_router
+from .routers import graph as graph_router
 from .routers import interactive as interactive_router
 from .routers import meta as meta_router
 from .routers import partitions as partitions_router
@@ -111,3 +112,4 @@ app.include_router(export_router.router)
 app.include_router(partitions_router.router)
 app.include_router(stats_router.router)
 app.include_router(meta_router.router)
+app.include_router(graph_router.router)
