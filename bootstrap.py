@@ -32,6 +32,7 @@ from exercises.opvs.generators import (
     LogicCircuitGenerator, CCodeMistakesGenerator,
 )
 from exercises.fisic import FisicConstructorGenerator
+from exercises.graph import GraphConstructorGenerator
 from exercises.english.generators import english_generators_for_path
 
 
@@ -149,6 +150,8 @@ def build_registry(
                 _register_group(registry, repo, part)
             elif part.constracted == 3:
                 _register_test(registry, repo, part)
+            elif part.constracted == 4:
+                _register_graph(registry, part)
 
     return registry
 
@@ -167,6 +170,18 @@ def _register_fisic(registry: GeneratorRegistry, part) -> None:
 
     def factory(_params: dict, _pid=part.id, _name=part.name, _cfg=config_dict):
         return FisicConstructorGenerator(
+            partition_id=_pid, name=_name, config=_cfg
+        )
+
+    registry.register_factory(part.id, factory)
+
+
+def _register_graph(registry: GeneratorRegistry, part) -> None:
+    """Раздел-граф (constracted=4, graph_addon.md Фаза 1): партиция хранит
+    GraphSpec-словарь, адаптер исполняет его движком core/graph."""
+    def factory(_params: dict, _pid=part.id, _name=part.name,
+                _cfg=part.generation_params):
+        return GraphConstructorGenerator(
             partition_id=_pid, name=_name, config=_cfg
         )
 

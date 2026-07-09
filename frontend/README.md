@@ -43,6 +43,9 @@ frontend/
 │   │   ├── PartitionList.tsx
 │   │   └── ErrorBoundary.tsx
 │   │
+│   ├── graph-editor/                 — визуальный редактор графов
+│   │   └── README.md                 — (constracted=4; см. свой README)
+│   │
 │   └── styles/                       — CSS-модули
 │       ├── global.css
 │       ├── app.module.css
