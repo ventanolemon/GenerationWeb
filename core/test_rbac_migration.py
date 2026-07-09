@@ -70,7 +70,9 @@ def test_fresh_db_and_idempotency():
             again = run_migrations(conn)
             after = applied_versions(conn)
             assert again == [], f"повторный прогон применил миграции: {again}"
-            assert before == after == {1}, (before, after)
+            from core.migrations import MIGRATIONS
+            expected = {v for v, _n, _f in MIGRATIONS}
+            assert before == after == expected, (before, after, expected)
     finally:
         os.unlink(path)
 
