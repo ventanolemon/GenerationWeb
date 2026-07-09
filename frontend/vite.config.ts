@@ -8,15 +8,35 @@ import react from "@vitejs/plugin-react";
 // надо — относительные URL "/api/..." работают везде.
 //
 // Если ASP.NET у вас на другом порту — поменяйте target.
+//
+// VITE_API_DIRECT=1 — dev-режим без ASP.NET: ВЕСЬ /api проксируется прямо
+// на generator_service (FastAPI, :8000) со срезанным префиксом (маршруты
+// совпадают: web_layer — тонкий прокси). Удобно там, где dotnet недоступен.
+const direct = process.env.VITE_API_DIRECT === "1";
+
 export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
     proxy: {
-      "/api": {
-        target: "http://localhost:5000",
+      // Graph-роутер живёт в generator_service (FastAPI, :8000), а не в
+      // web_layer — см. docs/architecture/graph_editor_api_contract.md §2.
+      // Более специфичный префикс должен идти ПЕРЕД общим "/api".
+      "/api/graph": {
+        target: "http://localhost:8000",
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ""),
       },
+      "/api": direct
+        ? {
+            target: "http://localhost:8000",
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api/, ""),
+          }
+        : {
+            target: "http://localhost:5000",
+            changeOrigin: true,
+          },
     },
   },
 });

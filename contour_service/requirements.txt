@@ -1,0 +1,12 @@
+# Зависимости contour_service (поверх зависимостей core — см.
+# generator_service/requirements.txt: sympy, numpy и т.д. ставятся оттуда).
+
+fastapi>=0.110
+uvicorn>=0.29
+
+# Боевые бэкенды — опциональны для dev/тестов:
+#   anthropic          — провайдер LLM (S1/S5); без него CONTOUR_PROVIDER=mock
+#   psycopg[binary]    — PostgresJobQueue (FOR UPDATE SKIP LOCKED);
+#                        без него очередь работает на SQLite-файле монорепо
+# anthropic>=0.40
+# psycopg[binary]>=3.1

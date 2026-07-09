@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import GroupEditorModal from "./editors/GroupEditorModal";
 import TestEditorModal from "./editors/TestEditorModal";
 import FisicEditorModal from "./editors/FisicEditorModal";
+import GraphEditorModal from "../graph-editor/GraphEditorModal";
 import styles from "../styles/sidebar.module.css";
 
 interface Props {
@@ -12,7 +13,7 @@ interface Props {
   onChanged: () => void; // перезагрузить список разделов
 }
 
-type EditorKind = "group" | "test" | "fisic";
+type EditorKind = "group" | "test" | "fisic" | "graph";
 type OpenEditor =
   | { kind: EditorKind; partitionId: number | null }
   | null;
@@ -21,7 +22,7 @@ type OpenEditor =
  * Панель под списком разделов: кнопки «+ Создать», «Изменить», «Удалить».
  * Логика совпадает с GeneratorWindow._build_partition_controls() из десктопа.
  *
- * constracted: 0=code-only (нет редактора), 1=fisic, 2=group, 3=test
+ * constracted: 0=code-only (нет редактора), 1=fisic, 2=group, 3=test, 4=graph
  */
 export default function PartitionControls({ subjectId, selected, onChanged }: Props) {
   const [open, setOpen] = useState<OpenEditor>(null);
@@ -33,6 +34,7 @@ export default function PartitionControls({ subjectId, selected, onChanged }: Pr
     selected?.constracted === 1 ? "fisic"
     : selected?.constracted === 2 ? "group"
     : selected?.constracted === 3 ? "test"
+    : selected?.constracted === 4 ? "graph"
     : null;
 
   const canEdit = editorKind !== null;
@@ -82,6 +84,7 @@ export default function PartitionControls({ subjectId, selected, onChanged }: Pr
               <button onClick={() => openCreate("group")}>Группу</button>
               <button onClick={() => openCreate("test")}>Тест</button>
               <button onClick={() => openCreate("fisic")}>Задачу по физике</button>
+              <button onClick={() => openCreate("graph")}>Граф</button>
             </div>
           )}
         </div>
@@ -131,6 +134,14 @@ export default function PartitionControls({ subjectId, selected, onChanged }: Pr
       )}
       {open?.kind === "fisic" && (
         <FisicEditorModal
+          subjectId={subjectId}
+          partitionId={open.partitionId}
+          onSaved={handleSaved}
+          onClose={() => setOpen(null)}
+        />
+      )}
+      {open?.kind === "graph" && (
+        <GraphEditorModal
           subjectId={subjectId}
           partitionId={open.partitionId}
           onSaved={handleSaved}
