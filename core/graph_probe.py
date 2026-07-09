@@ -8,11 +8,13 @@ docs/architecture/system_topology.md §3): generator_service (для /graph/prev
 лёгкий — plain-текст + метрики + флаги, без base64-блоков (их отдаёт preview для
 UI отдельно).
 
-Покрытие таксономии в этой фазе — детерминированные (SYM) флаги, которые
-дёшевы и не требуют ИИ: D2 (остаточные маркеры), F2 (недетерминизм при seed),
-F3 (медленный прогон), F1 (близость к лимиту попыток), B4 (низкое разнообразие,
-только при наличии random-источников). Остальные коды (HYBRID/LLM: A*, C*, E*)
-— зона агента-критика в contour_service, не probe.
+Покрытие таксономии — ПОЛНАЯ SYM-колонка critic_taxonomy.md §2
+(B4 B5 D2 E4 F1 F2 F3 F4): D2 (остаточные маркеры), F2 (недетерминизм при
+seed), F3 (медленный прогон), F1 (близость к лимиту попыток), B4 (низкое
+разнообразие при random-источниках), B5 (кучкование ответов при активной
+отбраковке), E4 (число шаблонов условия против числа ветвей case), F4
+(мёртвые подграфы вне конуса финального TASK). Остальные коды (HYBRID/LLM:
+A*, C*, …) — зона агента-критика в contour_service, не probe.
 
 Связанность с исполнителем: probe воспроизводит retry-цикл `GraphExecutor.
 run_full`, чтобы посчитать число попыток (движок его наружу не отдаёт), и
@@ -44,6 +46,8 @@ SLOW_MS = 3000.0                 # F3
 ATTEMPTS_WARN_FRACTION = 0.3     # F1: p50 > 0.3·max_attempts
 B4_MIN_STATEMENT_RATIO = 0.6     # B4
 B4_MIN_ANSWER_RATIO = 0.4
+B5_MIN_ATTEMPTS_P50 = 2          # B5: отбраковка реально активна…
+B5_MAX_RELATIVE_SPREAD = 0.05    # …а выжившие ответы в полосе < 5% величины
 
 # Типы узлов, вносящих случайность (гейт для B4: у детерминированного графа
 # distinct=1 — это норма, а не провал).
@@ -225,4 +229,84 @@ def _flags(spec_dict: dict, runs: list[dict], agg: dict, executor) -> list[dict]
                 f"различимых ответов {agg['distinct_answers']} из {k} "
                 f"(< {B4_MIN_ANSWER_RATIO:.0%})")
 
+    # B5 — деформация распределения отбраковкой: guard/constraint реально
+    # работают (медиана попыток ≥ порога), а выжившие числовые ответы
+    # кучкуются в узкой полосе. Гейт по попыткам гасит ложные срабатывания
+    # на графах без отбраковки.
+    numeric = _numeric_answers(runs)
+    if (agg["attempts_p50"] >= B5_MIN_ATTEMPTS_P50 and len(numeric) >= 4):
+        spread = max(numeric) - min(numeric)
+        scale = max(abs(v) for v in numeric)
+        if scale > 0 and spread / scale < B5_MAX_RELATIVE_SPREAD:
+            add("B5", "warn",
+                f"ответы кучкуются: разброс {spread:g} при величине {scale:g} "
+                f"(< {B5_MAX_RELATIVE_SPREAD:.0%}), медиана попыток "
+                f"{agg['attempts_p50']}")
+
+    # E4 — нестабильный тип задания между seed. Считаем ТОЛЬКО при наличии
+    # узлов case: их ветви — легитимный источник разных шаблонов, и допустимое
+    # число шаблонов известно из spec (произведение числа ветвей). Без case
+    # разные шаблоны дают и строковые пулы random_choice (один тип задания,
+    # разные функции в тексте) — это зона критика, не SYM-флага.
+    branches = _case_branch_count(spec_dict)
+    if branches is not None and agg["template_count"] > branches:
+        add("E4", "warn",
+            f"шаблонов условий {agg['template_count']} при {branches} "
+            f"ветвях case — тип задания скачет между seed")
+
+    # F4 — мёртвые подграфы: узлы вне конуса предков финального TASK-узла.
+    dead = _dead_nodes(spec_dict, executor)
+    if dead:
+        add("F4", "warn", f"узлы вне конуса финального задания: {sorted(dead)}")
+
     return flags
+
+
+def _numeric_answers(runs: list[dict]) -> list[float]:
+    """Числовые значения ответов (где парсятся): первое число plain-текста."""
+    out = []
+    for r in runs:
+        if r["error"] is not None:
+            continue
+        m = _NUM_RE.search(r["answer"] or "")
+        if m:
+            try:
+                out.append(float(m.group().replace(",", ".")))
+            except ValueError:
+                pass
+    return out
+
+
+def _case_branch_count(spec_dict: dict) -> Optional[int]:
+    """Произведение числа ветвей узлов case (ветви + default); None — нет case."""
+    total = None
+    for node in spec_dict.get("nodes") or []:
+        if node.get("type") == "case":
+            try:
+                n = max(1, int((node.get("params") or {}).get("cases", 2)))
+            except (TypeError, ValueError):
+                n = 2
+            total = (total or 1) * (n + 1)          # + ветвь default
+    return total
+
+
+def _dead_nodes(spec_dict: dict, executor: GraphExecutor) -> set[str]:
+    """Узлы вне конуса предков финального TASK (жадный исполнитель их считает,
+    на результат они не влияют — сигнал ошибки замысла, F4)."""
+    if executor.result is None:
+        return set()
+    final_node = executor.result[0]
+    preds: dict[str, set[str]] = {}
+    for e in spec_dict.get("edges") or []:
+        src = str(e.get("from", "")).split(":", 1)[0]
+        dst = str(e.get("to", "")).split(":", 1)[0]
+        preds.setdefault(dst, set()).add(src)
+    cone = {final_node}
+    stack = [final_node]
+    while stack:
+        for p in preds.get(stack.pop(), ()):
+            if p not in cone:
+                cone.add(p)
+                stack.append(p)
+    all_ids = {str(n.get("id")) for n in spec_dict.get("nodes") or []}
+    return all_ids - cone
