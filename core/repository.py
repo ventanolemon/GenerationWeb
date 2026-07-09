@@ -171,11 +171,14 @@ class Repository:
     # ---------- Partitions ----------
 
     def list_partitions_for_subject(self, subject_id: int) -> List[Partition]:
+        # Tombstones (deleted_at) скрыты: для приложения удалённый раздел
+        # не существует, строка живёт только ради offline-sync.
         with self._connect() as conn:
             rows = conn.execute(
                 "SELECT id, subject_id, partition_name, constracted, "
                 "       generation_parametrs "
-                "FROM Partitions WHERE subject_id = ? ORDER BY id",
+                "FROM Partitions WHERE subject_id = ? AND deleted_at IS NULL "
+                "ORDER BY id",
                 (subject_id,),
             ).fetchall()
         return [self._row_to_partition(r) for r in rows]
@@ -185,7 +188,7 @@ class Repository:
             row = conn.execute(
                 "SELECT id, subject_id, partition_name, constracted, "
                 "       generation_parametrs "
-                "FROM Partitions WHERE id = ?",
+                "FROM Partitions WHERE id = ? AND deleted_at IS NULL",
                 (partition_id,),
             ).fetchone()
         return self._row_to_partition(row) if row else None
@@ -217,6 +220,20 @@ class Repository:
 
     # ---------- Запись разделов ----------
 
+    @staticmethod
+    def _next_row_version(conn: sqlite3.Connection, table: str) -> int:
+        """
+        Следующий row_version — глобально монотонный per-таблица (НЕ по-строчный
+        +1): курсор sync = «максимальный полученный row_version на тип сущности»
+        (offline_sync_protocol.md §4), поэтому версии обязаны быть уникальны в
+        пределах таблицы. SQLite сериализует писателей — гонки MAX+1 нет;
+        на Postgres это станет sequence.
+        """
+        row = conn.execute(
+            f"SELECT COALESCE(MAX(row_version), 0) + 1 FROM {table}"
+        ).fetchone()
+        return int(row[0])
+
     def ensure_subject(
         self, subject_id: int, name: str, parent_name: str | None = None
     ) -> int:
@@ -237,18 +254,21 @@ class Repository:
             if row:
                 return row[0]
             parent = parent_name if parent_name is not None else name
+            ver = self._next_row_version(conn, "Subjects")
+            now = time.time()
             try:
                 conn.execute(
-                    "INSERT INTO Subjects (id, subject_name, pra_subject) "
-                    "VALUES (?, ?, ?)",
-                    (subject_id, name, parent),
+                    "INSERT INTO Subjects (id, subject_name, pra_subject, "
+                    " row_version, updated_at) VALUES (?, ?, ?, ?, ?)",
+                    (subject_id, name, parent, ver, now),
                 )
                 conn.commit()
                 return subject_id
             except sqlite3.IntegrityError:
                 cur = conn.execute(
-                    "INSERT INTO Subjects (subject_name, pra_subject) VALUES (?, ?)",
-                    (name, parent),
+                    "INSERT INTO Subjects (subject_name, pra_subject, "
+                    " row_version, updated_at) VALUES (?, ?, ?, ?)",
+                    (name, parent, ver, now),
                 )
                 conn.commit()
                 return cur.lastrowid
@@ -273,8 +293,10 @@ class Repository:
                     conn.execute(
                         "INSERT INTO Partitions "
                         "(id, subject_id, partition_name, constracted, "
-                        " generation_parametrs) VALUES (?, ?, ?, 0, '')",
-                        (partition_id, subject_id, name),
+                        " generation_parametrs, row_version, updated_at) "
+                        "VALUES (?, ?, ?, 0, '', ?, ?)",
+                        (partition_id, subject_id, name,
+                         self._next_row_version(conn, "Partitions"), time.time()),
                     )
                     conn.commit()
                 except sqlite3.IntegrityError:
@@ -282,8 +304,11 @@ class Repository:
                 return
             if row[3] == 0 and (row[1] != name or row[2] != subject_id):
                 conn.execute(
-                    "UPDATE Partitions SET partition_name = ?, subject_id = ? "
-                    "WHERE id = ?", (name, subject_id, partition_id)
+                    "UPDATE Partitions SET partition_name = ?, subject_id = ?, "
+                    "row_version = ?, updated_at = ? WHERE id = ?",
+                    (name, subject_id,
+                     self._next_row_version(conn, "Partitions"), time.time(),
+                     partition_id),
                 )
                 conn.commit()
 
@@ -306,31 +331,39 @@ class Repository:
             )
             existing = cur.fetchone()
             now = time.time()
+            ver = self._next_row_version(conn, "Partitions")
             if existing:
                 pid = existing[0]
-                # Инкремент row_version + updated_at — основа offline-sync
-                # (см. docs/architecture/offline_sync_protocol.md).
+                # Новый row_version + updated_at — основа offline-sync;
+                # deleted_at сбрасывается: пересоздание раздела под старым
+                # именем воскрешает tombstone-строку.
                 conn.execute(
                     "UPDATE Partitions SET constracted = ?, generation_parametrs = ?, "
-                    "row_version = row_version + 1, updated_at = ? WHERE id = ?",
-                    (constracted, raw, now, pid),
+                    "row_version = ?, updated_at = ?, deleted_at = NULL WHERE id = ?",
+                    (constracted, raw, ver, now, pid),
                 )
             else:
                 cur = conn.execute(
                     "INSERT INTO Partitions "
                     "(subject_id, partition_name, constracted, generation_parametrs, "
                     " row_version, updated_at) "
-                    "VALUES (?, ?, ?, ?, 1, ?)",
-                    (subject_id, name, constracted, raw, now),
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (subject_id, name, constracted, raw, ver, now),
                 )
                 pid = cur.lastrowid
             conn.commit()
         return pid
 
     def delete_partition(self, partition_id: int) -> None:
+        """Tombstone, не физическое удаление: офлайн-клиент узнаёт об
+        удалении только по строке с deleted_at и новым row_version
+        (offline_sync_protocol.md §2)."""
         with self._connect() as conn:
             conn.execute(
-                "DELETE FROM Partitions WHERE id = ?", (partition_id,)
+                "UPDATE Partitions SET deleted_at = ?, updated_at = ?, "
+                "row_version = ? WHERE id = ? AND deleted_at IS NULL",
+                (time.time(), time.time(),
+                 self._next_row_version(conn, "Partitions"), partition_id),
             )
             conn.commit()
 
@@ -526,8 +559,9 @@ class Repository:
             cur = conn.execute(
                 "INSERT INTO Subjects "
                 "(subject_name, pra_subject, owner_user_id, row_version, updated_at) "
-                "VALUES (?, ?, ?, 1, ?)",
-                (name, parent_name, owner_user_id, now),
+                "VALUES (?, ?, ?, ?, ?)",
+                (name, parent_name, owner_user_id,
+                 self._next_row_version(conn, "Subjects"), now),
             )
             conn.commit()
             return cur.lastrowid

@@ -167,9 +167,48 @@ def _m001_rbac_foundation(conn: sqlite3.Connection) -> None:
     """)
 
 
+# ---------- Миграция 002: offline-sync ----------
+
+def _m002_sync_protocol(conn: sqlite3.Connection) -> None:
+    """
+    Схема под offline_sync_protocol.md. Сами sync-колонки (row_version/
+    updated_at/deleted_at), devices и attempts(client_uuid PK) создала 001 —
+    здесь доводка семантики курсора:
+
+    1. Курсор pull = «максимальный полученный row_version на ТИП сущности»,
+       значит row_version обязан быть глобально монотонным per-таблица
+       (в Postgres — sequence). По-строчный `+1` даёт неуникальные версии,
+       и страница, разрезанная посреди «связки» одинаковых версий, теряет
+       записи (`WHERE row_version > cursor` перепрыгнет хвост связки).
+       Backfill: развязать существующие версии в уникальную возрастающую
+       нумерацию (стабильный порядок: старая версия, затем id). Дальше
+       уникальность держит запись через MAX+1 (см. Repository).
+    2. Индексы под диф-скан `row_version > cursor`.
+    """
+    for table in ("Subjects", "Partitions"):
+        if not _table_exists(conn, table):
+            continue
+        rows = conn.execute(
+            f"SELECT id FROM {table} ORDER BY row_version, id"
+        ).fetchall()
+        for i, (row_id,) in enumerate(rows, start=1):
+            conn.execute(
+                f"UPDATE {table} SET row_version = ? WHERE id = ?",
+                (i, row_id),
+            )
+    conn.executescript("""
+        CREATE INDEX IF NOT EXISTS ix_subjects_row_version
+            ON Subjects(row_version);
+        CREATE INDEX IF NOT EXISTS ix_partitions_row_version
+            ON Partitions(row_version);
+        CREATE INDEX IF NOT EXISTS ix_attempts_device ON attempts(device_id);
+    """)
+
+
 # Порядок применения. Добавлять новые кортежами (version, name, fn).
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = [
     (1, "rbac_foundation", _m001_rbac_foundation),
+    (2, "sync_protocol", _m002_sync_protocol),
 ]
 
 

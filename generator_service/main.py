@@ -44,6 +44,7 @@ from .routers import meta as meta_router
 from .routers import partitions as partitions_router
 from .routers import stats as stats_router
 from .routers import subjects as subjects_router
+from .routers import sync as sync_router
 from .session_store import SessionStore
 
 
@@ -113,3 +114,4 @@ app.include_router(partitions_router.router)
 app.include_router(stats_router.router)
 app.include_router(meta_router.router)
 app.include_router(graph_router.router)
+app.include_router(sync_router.router)
