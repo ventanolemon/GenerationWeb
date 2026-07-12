@@ -141,6 +141,8 @@ def test_password_formats():
 
 
 def test_ownership_and_visibility():
+    # Владелец предмета — логин-строка (канонический id, единый с десктопом
+    # и заголовком X-User-Id), а не числовой users.id.
     path = _tmp_db()
     try:
         repo = Repository(path)
@@ -148,29 +150,27 @@ def test_ownership_and_visibility():
         repo.create_user("teach2", "p", "T2", "", role="teacher")
         repo.create_user("adm", "p", "A", "", role="admin")
         repo.create_user("stud", "p", "S", "", role="student")
-        tid = repo.get_user_id("teach")
-        t2id = repo.get_user_id("teach2")
-        aid = repo.get_user_id("adm")
-        sid_user = repo.get_user_id("stud")
 
         sys_subj = repo.ensure_subject(1, "Линейная алгебра", "Линейная алгебра")
-        own_subj = repo.create_subject("Мой курс", "Мой курс", owner_user_id=tid)
+        own_subj = repo.create_subject("Мой курс", "Мой курс", owner_user_id="teach")
 
         # Системный предмет: редактирует только admin.
         assert repo.subject_owner(sys_subj) is None
-        assert repo.can_edit_subject(aid, "admin", sys_subj) is True
-        assert repo.can_edit_subject(tid, "teacher", sys_subj) is False
+        assert repo.can_edit_subject("adm", "admin", sys_subj) is True
+        assert repo.can_edit_subject("teach", "teacher", sys_subj) is False
         # Свой предмет: владелец да, другой преподаватель нет, student нет.
-        assert repo.can_edit_subject(tid, "teacher", own_subj) is True
-        assert repo.can_edit_subject(t2id, "teacher", own_subj) is False
-        assert repo.can_edit_subject(sid_user, "student", own_subj) is False
+        assert repo.subject_owner(own_subj) == "teach"
+        assert repo.can_edit_subject("teach", "teacher", own_subj) is True
+        assert repo.can_edit_subject("teach2", "teacher", own_subj) is False
+        assert repo.can_edit_subject("stud", "student", own_subj) is False
 
         # Видимость: teach видит системный + свой, но не чужой.
-        other_subj = repo.create_subject("Чужой курс", "Чужой курс", owner_user_id=t2id)
-        vis = repo.visible_subject_ids(tid, "teacher")
+        other_subj = repo.create_subject("Чужой курс", "Чужой курс",
+                                         owner_user_id="teach2")
+        vis = repo.visible_subject_ids("teach", "teacher")
         assert sys_subj in vis and own_subj in vis and other_subj not in vis, vis
         # admin видит все.
-        assert set(repo.visible_subject_ids(aid, "admin")) >= {
+        assert set(repo.visible_subject_ids("adm", "admin")) >= {
             sys_subj, own_subj, other_subj
         }
     finally:

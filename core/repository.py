@@ -542,8 +542,8 @@ class Repository:
     # предикаты над схемой, которыми web_layer и будущий contour_service
     # пользуются; сам сервис ролей не «решает», он их вычисляет.
 
-    def subject_owner(self, subject_id: int) -> Optional[int]:
-        """owner_user_id предмета; None — системный/встроенный предмет."""
+    def subject_owner(self, subject_id: int) -> Optional[str]:
+        """owner_user_id предмета (логин-строка); None — системный/встроенный."""
         with self._connect() as conn:
             row = conn.execute(
                 "SELECT owner_user_id FROM Subjects WHERE id = ?", (subject_id,)
@@ -551,9 +551,9 @@ class Repository:
         return row[0] if row else None
 
     def create_subject(
-        self, name: str, parent_name: str, owner_user_id: Optional[int] = None
+        self, name: str, parent_name: str, owner_user_id: Optional[str] = None
     ) -> int:
-        """Создать предмет с владельцем (None = системный). Возвращает id."""
+        """Создать предмет с владельцем-логином (None = системный). id."""
         now = time.time()
         with self._connect() as conn:
             cur = conn.execute(
@@ -566,7 +566,7 @@ class Repository:
             conn.commit()
             return cur.lastrowid
 
-    def visible_subject_ids(self, user_id: int, role: str) -> List[int]:
+    def visible_subject_ids(self, user_id: Optional[str], role: str) -> List[int]:
         """
         Какие предметы видит пользователь: admin — все; остальные — системные
         (owner IS NULL) плюс свои. Удалённые (deleted_at) исключены.
@@ -586,7 +586,7 @@ class Repository:
                 ).fetchall()
         return [r[0] for r in rows]
 
-    def can_edit_subject(self, user_id: int, role: str, subject_id: int) -> bool:
+    def can_edit_subject(self, user_id: Optional[str], role: str, subject_id: int) -> bool:
         """
         Кто может редактировать предмет: admin — всегда; teacher — только свои;
         системные предметы (owner IS NULL) — только admin; student — никогда.

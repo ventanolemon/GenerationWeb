@@ -56,7 +56,7 @@ def _visible_job(request: Request, job_id: str, ident: Identity) -> dict:
     job = _queue(request).get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail=f"Джоба {job_id} не найдена.")
-    if ident.role != "admin" and int(job["created_by"]) != ident.user_id:
+    if ident.role != "admin" and str(job["created_by"]) != ident.user_id:
         # Чужие джобы teacher не видит (contour_integration §4).
         raise HTTPException(status_code=404, detail=f"Джоба {job_id} не найдена.")
     return job

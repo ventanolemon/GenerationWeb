@@ -12,7 +12,7 @@ from typing import Optional
 
 from fastapi import Header, HTTPException
 
-current_user_id: ContextVar[Optional[int]] = ContextVar(
+current_user_id: ContextVar[Optional[str]] = ContextVar(
     "current_user_id", default=None
 )
 current_user_role: ContextVar[str] = ContextVar(
@@ -22,8 +22,9 @@ current_user_role: ContextVar[str] = ContextVar(
 
 @dataclass(frozen=True)
 class Identity:
-    """Личность запроса из заголовков web_layer."""
-    user_id: int
+    """Личность запроса из заголовков web_layer. user_id — логин-строка
+    (канонический id, единый с десктопом core.session.Session и sync-путём)."""
+    user_id: str
     role: str
 
 
@@ -37,13 +38,13 @@ def require_identity(
     sync-эндпоинты FastAPI исполняет в разных threadpool-контекстах, поэтому
     ContextVar между ними НЕ переживает; переменные ниже выставляются для
     глубинных слоёв, вызываемых из самого хендлера). 401 — если web_layer
-    не проставил личность."""
-    if not x_user_id:
+    не проставил личность.
+
+    user_id — логин-строка (X-User-Id), а не число: раньше здесь стоял
+    int(x_user_id) и десктоп с логином получал 401 «должен быть числом»."""
+    uid = (x_user_id or "").strip()
+    if not uid:
         raise HTTPException(status_code=401, detail="Нет заголовка X-User-Id.")
-    try:
-        uid = int(x_user_id)
-    except ValueError:
-        raise HTTPException(status_code=401, detail="X-User-Id должен быть числом.")
     ident = Identity(user_id=uid, role=x_user_role.strip().lower() or "student")
     current_user_id.set(ident.user_id)
     current_user_role.set(ident.role)

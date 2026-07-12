@@ -92,7 +92,10 @@ def _m001_rbac_foundation(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_users_id ON users(id)")
 
     # --- Subjects: владение + sync-колонки ---
-    _add_column_if_missing(conn, "Subjects", "owner_user_id", "INTEGER")
+    # owner_user_id — логин-строка (канонический id, единый с десктопом
+    # core.session.Session и заголовком X-User-Id). Ранее INTEGER; TEXT,
+    # чтобы владельцем выступал логин, а не rowid users.id.
+    _add_column_if_missing(conn, "Subjects", "owner_user_id", "TEXT")
     _add_column_if_missing(conn, "Subjects", "row_version", "INTEGER NOT NULL DEFAULT 1")
     _add_column_if_missing(conn, "Subjects", "updated_at", "REAL NOT NULL DEFAULT 0")
     _add_column_if_missing(conn, "Subjects", "deleted_at", "REAL")
@@ -103,6 +106,11 @@ def _m001_rbac_foundation(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "Partitions", "deleted_at", "REAL")
 
     # --- Новые таблицы (схема; логику наполняют последующие фазы/сервисы) ---
+    # NB: attempts.user_id и devices.user_id — TEXT (логин-строка, единый с
+    # десктопом X-User-Id), т.к. это sync-путь: устройство шлёт логин, а не
+    # числовой users.id. Групповые FK (groups/teacher_groups/assignments/
+    # group_members) остаются INTEGER — они вне sync-пути и приводятся к
+    # логину в задаче про группы.
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS groups (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -129,7 +137,7 @@ def _m001_rbac_foundation(conn: sqlite3.Connection) -> None:
         );
         CREATE TABLE IF NOT EXISTS attempts (
             client_uuid   TEXT PRIMARY KEY,
-            user_id       INTEGER NOT NULL,
+            user_id       TEXT NOT NULL,
             partition_id  INTEGER NOT NULL,
             assignment_id INTEGER,
             payload       TEXT NOT NULL DEFAULT '',
@@ -139,13 +147,13 @@ def _m001_rbac_foundation(conn: sqlite3.Connection) -> None:
         );
         CREATE TABLE IF NOT EXISTS devices (
             device_id          TEXT PRIMARY KEY,
-            user_id            INTEGER NOT NULL,
+            user_id            TEXT NOT NULL,
             refresh_token_hash TEXT NOT NULL DEFAULT '',
             last_sync_at       REAL NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS contour_jobs (
             id           TEXT PRIMARY KEY,
-            created_by   INTEGER,
+            created_by   TEXT,
             subject_id   INTEGER,
             status       TEXT NOT NULL DEFAULT 'queued',
             rounds       TEXT NOT NULL DEFAULT '[]',
