@@ -201,12 +201,12 @@ class AttemptIdempotencyTests(SyncTestBase):
                    "partition_id": pid, "payload": {"answer": "42"},
                    "correct": True, "created_at": 1000.0}
 
-        out1 = sync_api.push(self.repo, device_id="dev-a", user_id=7,
+        out1 = sync_api.push(self.repo, device_id="dev-a", user_id="alla",
                              attempts=[attempt])
         self.assertEqual(out1["attempts_new"], 1)
 
         # Обрыв сети → устройство шлёт тот же пакет повторно.
-        out2 = sync_api.push(self.repo, device_id="dev-a", user_id=7,
+        out2 = sync_api.push(self.repo, device_id="dev-a", user_id="alla",
                              attempts=[attempt])
         self.assertEqual(out2["attempts_received"], 1)
         self.assertEqual(out2["attempts_new"], 0, "дубль не вставился")
@@ -293,15 +293,15 @@ class ScopeTests(SyncTestBase):
     """Область pull: со скоупом чужое живое не отдаётся, tombstones — всем."""
 
     def test_scope_filters_alive_rows(self):
-        # Чужой предмет (owner=99) и партиция в нём.
+        # Чужой предмет (owner=логин «boris») и партиция в нём.
         other_subject = self.repo.create_subject("Чужой", "Чужой",
-                                                 owner_user_id=99)
+                                                 owner_user_id="boris")
         self.repo.upsert_partition(other_subject, "Чужая партиция", 0, {})
         mine = self._partition(name="Моя")
 
-        # teacher user_id=1: видит системные (owner NULL) — «Физика», но не
-        # предмет владельца 99.
-        out = sync_api.pull(self.repo, device_id="d", user_id=1,
+        # teacher «alla»: видит системные (owner NULL) — «Физика», но не
+        # предмет владельца «boris».
+        out = sync_api.pull(self.repo, device_id="d", user_id="alla",
                             role="teacher", cursors={})
         subj_ids = [s["id"] for s in out["subjects"]]
         part_ids = [p["id"] for p in out["partitions"]]

@@ -38,7 +38,7 @@ _ENTITY_TABLES = {
 # ---------- Область видимости ----------
 
 def visible_scope(
-    repo: Repository, user_id: Optional[int], role: str,
+    repo: Repository, user_id: Optional[str], role: str,
 ) -> Optional[list[int]]:
     """
     subject_id, видимые пользователю; None = «видно всё» (dev-заглушка,
@@ -58,7 +58,7 @@ def push(
     repo: Repository,
     *,
     device_id: str,
-    user_id: Optional[int],
+    user_id: Optional[str],
     role: str = "teacher",
     attempts: Optional[list[dict]] = None,
     word_stats_deltas: Optional[list[dict]] = None,
@@ -74,7 +74,7 @@ def push(
     attempts = attempts or []
     word_stats_deltas = word_stats_deltas or []
     changed_entities = changed_entities or []
-    stats_key = user_key or (str(user_id) if user_id is not None else device_id)
+    stats_key = user_key or (user_id if user_id is not None else device_id)
 
     with repo._connect() as conn:  # noqa: SLF001 — sync_api это слой данных
         _touch_device(conn, device_id, user_id, now)
@@ -91,7 +91,10 @@ def push(
                 " correct, device_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     uuid,
-                    int(user_id if user_id is not None else a.get("user_id") or 0),
+                    # user_id — логин-строка (X-User-Id); NOT NULL, поэтому для
+                    # анонима/гостя фолбэк на переданный в attempt или пусто.
+                    str(user_id if user_id is not None
+                        else a.get("user_id") or ""),
                     int(a.get("partition_id") or 0),
                     a.get("assignment_id"),
                     json.dumps(a.get("payload") or {}, ensure_ascii=False),
@@ -125,12 +128,12 @@ def push(
     }
 
 
-def _touch_device(conn, device_id: str, user_id: Optional[int], now: float) -> None:
+def _touch_device(conn, device_id: str, user_id: Optional[str], now: float) -> None:
     conn.execute(
         "INSERT INTO devices (device_id, user_id, last_sync_at) VALUES (?, ?, ?) "
         "ON CONFLICT(device_id) DO UPDATE SET last_sync_at = ?, "
         "  user_id = COALESCE(excluded.user_id, devices.user_id)",
-        (device_id, user_id if user_id is not None else 0, now, now),
+        (device_id, user_id if user_id is not None else "", now, now),
     )
 
 
@@ -329,7 +332,7 @@ def pull(
     repo: Repository,
     *,
     device_id: str,
-    user_id: Optional[int],
+    user_id: Optional[str],
     role: str = "teacher",
     cursors: Optional[dict] = None,
     limit: int = DEFAULT_PAGE_LIMIT,

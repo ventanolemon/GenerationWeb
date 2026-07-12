@@ -61,9 +61,10 @@ class JobQueue(ABC):
     """Очередь джоб контура поверх таблицы contour_jobs."""
 
     @abstractmethod
-    def enqueue(self, created_by: int, subject_id: int, description: str,
+    def enqueue(self, created_by: str, subject_id: int, description: str,
                 constraints: Optional[dict] = None) -> str:
-        """Создать джобу (status=queued). Возвращает job_id (uuid)."""
+        """Создать джобу (status=queued). created_by — логин-строка (X-User-Id).
+        Возвращает job_id (uuid)."""
 
     @abstractmethod
     def claim(self, worker_id: str) -> Optional[dict]:
@@ -79,7 +80,7 @@ class JobQueue(ABC):
         """Обновить поля джобы одной транзакцией (dict/list сериализуются)."""
 
     @abstractmethod
-    def list_for_user(self, user_id: int, role: str) -> list[dict]:
+    def list_for_user(self, user_id: str, role: str) -> list[dict]:
         """Джобы, видимые пользователю: свои; admin видит все
         (contour_integration §4)."""
 
@@ -146,7 +147,7 @@ class SqliteJobQueue(JobQueue):
                 f"UPDATE contour_jobs SET {', '.join(cols)} WHERE id = ?", vals
             )
 
-    def list_for_user(self, user_id: int, role: str) -> list[dict]:
+    def list_for_user(self, user_id: str, role: str) -> list[dict]:
         if role == "admin":
             rows = self.conn.execute(
                 "SELECT * FROM contour_jobs ORDER BY created_at DESC"
@@ -257,7 +258,7 @@ class PostgresJobQueue(JobQueue):
                 f"UPDATE contour_jobs SET {', '.join(cols)} WHERE id = %s", vals
             )
 
-    def list_for_user(self, user_id: int, role: str) -> list[dict]:
+    def list_for_user(self, user_id: str, role: str) -> list[dict]:
         if role == "admin":
             cur = self.conn.execute(
                 "SELECT * FROM contour_jobs ORDER BY created_at DESC")

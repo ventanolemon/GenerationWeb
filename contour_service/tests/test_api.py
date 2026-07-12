@@ -27,10 +27,11 @@ from exercises.graph_examples import EXAMPLES
 
 PHYSICS = EXAMPLES["physics_force"]["graph"]
 
-TEACHER = {"X-User-Id": "1", "X-User-Role": "teacher"}
-OTHER_TEACHER = {"X-User-Id": "2", "X-User-Role": "teacher"}
-ADMIN = {"X-User-Id": "9", "X-User-Role": "admin"}
-STUDENT = {"X-User-Id": "3", "X-User-Role": "student"}
+# X-User-Id — логин-строка (канонический id, единый с десктопом).
+TEACHER = {"X-User-Id": "alla", "X-User-Role": "teacher"}
+OTHER_TEACHER = {"X-User-Id": "boris", "X-User-Role": "teacher"}
+ADMIN = {"X-User-Id": "root", "X-User-Role": "admin"}
+STUDENT = {"X-User-Id": "stud", "X-User-Role": "student"}
 
 
 class ApiFullCycleTests(unittest.TestCase):

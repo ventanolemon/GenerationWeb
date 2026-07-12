@@ -50,10 +50,11 @@ class PullRequest(BaseModel):
 
 
 def _identity(x_user_id: Optional[str], x_user_role: Optional[str]):
-    try:
-        uid = int(x_user_id) if x_user_id else None
-    except ValueError:
-        uid = None
+    # Канонический id пользователя — строка-логин (X-User-Id), единая с
+    # десктопом (core.session.Session). Раньше здесь стоял int(...), что
+    # роняло идентичность в None на логин-строке и «раскрывало» витрину
+    # (scope=None → видно всё). Пустой заголовок → None (гость/аноним).
+    uid = (x_user_id or "").strip() or None
     role = (x_user_role or "teacher").strip().lower()
     return uid, role
 

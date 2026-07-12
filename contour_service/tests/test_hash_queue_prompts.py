@@ -120,12 +120,13 @@ class QueueTests(unittest.TestCase):
         self.assertEqual(job["result_graph"], {"nodes": []})
 
     def test_owner_visibility(self):
+        # created_by — логин-строка (X-User-Id), единый с десктопом.
         queue, deps, conn, gen, critic = make_env()
-        mine = queue.enqueue(1, 3, "моя")
-        queue.enqueue(2, 3, "чужая")
-        own = queue.list_for_user(1, "teacher")
+        mine = queue.enqueue("alla", 3, "моя")
+        queue.enqueue("boris", 3, "чужая")
+        own = queue.list_for_user("alla", "teacher")
         self.assertEqual([j["id"] for j in own], [mine])
-        self.assertEqual(len(queue.list_for_user(1, "admin")), 2)
+        self.assertEqual(len(queue.list_for_user("alla", "admin")), 2)
 
     def test_postgres_claim_uses_skip_locked(self):
         # Боевая очередь конкурентна через FOR UPDATE SKIP LOCKED
