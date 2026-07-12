@@ -455,6 +455,14 @@ class Repository:
             ).fetchone()
         return self._row_to_profile(row) if row else None
 
+    def list_users(self) -> List[UserProfile]:
+        """Все пользователи (админ-вьюха: список/смена роли). Без пароля."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT {self._USER_COLS} FROM users ORDER BY login"
+            ).fetchall()
+        return [self._row_to_profile(r) for r in rows]
+
     def get_user_id(self, login: str) -> Optional[int]:
         with self._connect() as conn:
             row = conn.execute(
