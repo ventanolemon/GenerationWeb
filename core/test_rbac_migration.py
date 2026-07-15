@@ -178,25 +178,24 @@ def test_ownership_and_visibility():
 
 
 def test_groups():
+    # Участник/преподаватель/автор группы — логин-строка (канонический id).
     path = _tmp_db()
     try:
         repo = Repository(path)
         repo.create_user("t", "p", "T", "", role="teacher")
         repo.create_user("s1", "p", "S1", "")
         repo.create_user("s2", "p", "S2", "")
-        tid = repo.get_user_id("t")
-        s1 = repo.get_user_id("s1")
-        s2 = repo.get_user_id("s2")
 
-        g = repo.create_group("КСБО-11-24", created_by=tid)
-        repo.add_group_member(g, s1)
-        repo.add_group_member(g, s2)
-        repo.add_group_member(g, s1)  # дубль игнорируется
-        repo.assign_teacher_to_group(tid, g)
+        g = repo.create_group("КСБО-11-24", created_by="t")
+        repo.add_group_member(g, "s1")
+        repo.add_group_member(g, "s2")
+        repo.add_group_member(g, "s1")  # дубль игнорируется
+        repo.assign_teacher_to_group("t", g)
 
-        assert repo.list_group_members(g) == sorted([s1, s2])
-        assert repo.teacher_group_ids(tid) == [g]
-        assert repo.user_group_ids(s1) == [g]
+        assert repo.list_group_members(g) == ["s1", "s2"]
+        assert repo.group_teachers(g) == ["t"]
+        assert repo.teacher_group_ids("t") == [g]
+        assert repo.user_group_ids("s1") == [g]
     finally:
         os.unlink(path)
 

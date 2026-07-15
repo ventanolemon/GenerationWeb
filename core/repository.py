@@ -76,6 +76,25 @@ _VIEW_KIND_BY_CONSTRACTED = {
 
 
 @dataclass(frozen=True)
+class Group:
+    """Структурная группа. created_by — логин автора (NULL у seed'а из
+    users."group"). Списки участников/преподавателей достаются отдельными
+    методами Repository (не денормализуем в dataclass)."""
+    id: int
+    name: str
+    created_by: Optional[str]
+    created_at: float
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "created_by": self.created_by,
+            "created_at": self.created_at,
+        }
+
+
+@dataclass(frozen=True)
 class UserProfile:
     login: str
     fio: str
@@ -503,6 +522,29 @@ class Repository:
                     "UPDATE users SET id = rowid WHERE rowid = ? AND id IS NULL",
                     (cur.lastrowid,),
                 )
+                # Метка курса из регистрации → структурная группа: создаём
+                # группу по имени (если ещё нет) и зачисляем. Так свободный
+                # users."group" и group_members остаются согласованными без
+                # ручного администрирования (см. миграцию 003).
+                label = (group or "").strip()
+                if label:
+                    grp = conn.execute(
+                        "SELECT id FROM groups WHERE name = ?", (label,)
+                    ).fetchone()
+                    if grp:
+                        gid = grp[0]
+                    else:
+                        gc = conn.execute(
+                            "INSERT INTO groups (name, created_by, created_at) "
+                            "VALUES (?, NULL, ?)",
+                            (label, time.time()),
+                        )
+                        gid = gc.lastrowid
+                    conn.execute(
+                        "INSERT OR IGNORE INTO group_members (group_id, user_id) "
+                        "VALUES (?, ?)",
+                        (gid, login),
+                    )
                 conn.commit()
                 return True
             except sqlite3.IntegrityError:
@@ -607,8 +649,14 @@ class Repository:
         return owner is not None and owner == user_id
 
     # ---------- Группы и назначения ----------
+    #
+    # Идентификатор участника/преподавателя/автора группы — логин-строка
+    # (канонический id, единый со всей системой). Структурная группа
+    # (`groups`+`group_members`) — источник истины членства; свободный
+    # `users."group"` остаётся самоописанием студента и синхронизируется с
+    # членством при регистрации (create_user) и seed'ом миграции 003.
 
-    def create_group(self, name: str, created_by: Optional[int] = None) -> int:
+    def create_group(self, name: str, created_by: Optional[str] = None) -> int:
         with self._connect() as conn:
             cur = conn.execute(
                 "INSERT INTO groups (name, created_by, created_at) VALUES (?, ?, ?)",
@@ -617,16 +665,49 @@ class Repository:
             conn.commit()
             return cur.lastrowid
 
-    def add_group_member(self, group_id: int, user_id: int) -> None:
+    def get_group(self, group_id: int) -> Optional[Group]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT id, name, created_by, created_at FROM groups WHERE id = ?",
+                (group_id,),
+            ).fetchone()
+        return Group(row[0], row[1], row[2], row[3] or 0.0) if row else None
+
+    def group_by_name(self, name: str) -> Optional[Group]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT id, name, created_by, created_at FROM groups "
+                "WHERE name = ?",
+                (name,),
+            ).fetchone()
+        return Group(row[0], row[1], row[2], row[3] or 0.0) if row else None
+
+    def list_groups(self) -> List[Group]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, name, created_by, created_at FROM groups "
+                "ORDER BY name"
+            ).fetchall()
+        return [Group(r[0], r[1], r[2], r[3] or 0.0) for r in rows]
+
+    def add_group_member(self, group_id: int, login: str) -> None:
         with self._connect() as conn:
             conn.execute(
                 "INSERT OR IGNORE INTO group_members (group_id, user_id) "
                 "VALUES (?, ?)",
-                (group_id, user_id),
+                (group_id, login),
             )
             conn.commit()
 
-    def list_group_members(self, group_id: int) -> List[int]:
+    def remove_group_member(self, group_id: int, login: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "DELETE FROM group_members WHERE group_id = ? AND user_id = ?",
+                (group_id, login),
+            )
+            conn.commit()
+
+    def list_group_members(self, group_id: int) -> List[str]:
         with self._connect() as conn:
             rows = conn.execute(
                 "SELECT user_id FROM group_members WHERE group_id = ? "
@@ -635,30 +716,49 @@ class Repository:
             ).fetchall()
         return [r[0] for r in rows]
 
-    def assign_teacher_to_group(self, teacher_id: int, group_id: int) -> None:
+    def assign_teacher_to_group(self, teacher_login: str, group_id: int) -> None:
         with self._connect() as conn:
             conn.execute(
                 "INSERT OR IGNORE INTO teacher_groups (teacher_id, group_id) "
                 "VALUES (?, ?)",
-                (teacher_id, group_id),
+                (teacher_login, group_id),
             )
             conn.commit()
 
-    def teacher_group_ids(self, teacher_id: int) -> List[int]:
+    def unassign_teacher_from_group(
+        self, teacher_login: str, group_id: int
+    ) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "DELETE FROM teacher_groups WHERE teacher_id = ? AND group_id = ?",
+                (teacher_login, group_id),
+            )
+            conn.commit()
+
+    def group_teachers(self, group_id: int) -> List[str]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT teacher_id FROM teacher_groups WHERE group_id = ? "
+                "ORDER BY teacher_id",
+                (group_id,),
+            ).fetchall()
+        return [r[0] for r in rows]
+
+    def teacher_group_ids(self, teacher_login: str) -> List[int]:
         with self._connect() as conn:
             rows = conn.execute(
                 "SELECT group_id FROM teacher_groups WHERE teacher_id = ? "
                 "ORDER BY group_id",
-                (teacher_id,),
+                (teacher_login,),
             ).fetchall()
         return [r[0] for r in rows]
 
-    def user_group_ids(self, user_id: int) -> List[int]:
+    def user_group_ids(self, login: str) -> List[int]:
         with self._connect() as conn:
             rows = conn.execute(
                 "SELECT group_id FROM group_members WHERE user_id = ? "
                 "ORDER BY group_id",
-                (user_id,),
+                (login,),
             ).fetchall()
         return [r[0] for r in rows]
 
