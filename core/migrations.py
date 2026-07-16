@@ -106,25 +106,25 @@ def _m001_rbac_foundation(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "Partitions", "deleted_at", "REAL")
 
     # --- Новые таблицы (схема; логику наполняют последующие фазы/сервисы) ---
-    # NB: attempts.user_id и devices.user_id — TEXT (логин-строка, единый с
-    # десктопом X-User-Id), т.к. это sync-путь: устройство шлёт логин, а не
-    # числовой users.id. Групповые FK (groups/teacher_groups/assignments/
-    # group_members) остаются INTEGER — они вне sync-пути и приводятся к
-    # логину в задаче про группы.
+    # NB: пользовательские FK — TEXT (логин-строка, канонический id, единый с
+    # десктопом X-User-Id и sync-путём): attempts/devices.user_id, а также
+    # групповые created_by/user_id/teacher_id/assigned_by. Ранее групповые
+    # были INTEGER (ссылались на users.id) — сведены к логину в _m003 вместе
+    # с seed'ом групп из users."group".
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS groups (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             name        TEXT    NOT NULL,
-            created_by  INTEGER,
+            created_by  TEXT,
             created_at  REAL    NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS group_members (
             group_id INTEGER NOT NULL,
-            user_id  INTEGER NOT NULL,
+            user_id  TEXT    NOT NULL,
             PRIMARY KEY (group_id, user_id)
         );
         CREATE TABLE IF NOT EXISTS teacher_groups (
-            teacher_id INTEGER NOT NULL,
+            teacher_id TEXT    NOT NULL,
             group_id   INTEGER NOT NULL,
             PRIMARY KEY (teacher_id, group_id)
         );
@@ -132,7 +132,7 @@ def _m001_rbac_foundation(conn: sqlite3.Connection) -> None:
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             partition_id INTEGER NOT NULL,
             group_id     INTEGER NOT NULL,
-            assigned_by  INTEGER,
+            assigned_by  TEXT,
             due_at       REAL
         );
         CREATE TABLE IF NOT EXISTS attempts (
@@ -213,10 +213,62 @@ def _m002_sync_protocol(conn: sqlite3.Connection) -> None:
     """)
 
 
+# ---------- Миграция 003: группы на логине + seed из users."group" ----------
+
+def _m003_groups_from_labels(conn: sqlite3.Connection) -> None:
+    """
+    Свести групповые FK к логину-строке (канонический id) и связать
+    структурные группы с уже существующими данными.
+
+    Типы: для свежих БД групповые FK создаёт _m001 сразу как TEXT; на старых
+    INTEGER-БД SQLite хранит логин-строку по type-affinity (нечисловой текст
+    остаётся текстом), а реальных данных в групповых таблицах нет — они не
+    были подключены ни к одному сервису. Пересборка таблиц не нужна.
+
+    Seed: свободный `users."group"` — это когорта, которую студент указал при
+    регистрации. Здесь она становится настоящей структурной группой
+    (`groups` + `group_members`), чтобы существующие пользователи сразу
+    оказались в группах, а не требовали ручного перезаполнения. Дальше
+    источник истины членства — `group_members`; `users."group"` остаётся
+    самоописанием, и seed держит их согласованными (имя группы = метка).
+    Repository.create_user поддерживает эту связь для новых регистраций.
+    Идемпотентно: группа ищется по имени, членство — INSERT OR IGNORE.
+    """
+    if not _table_exists(conn, "users") or not _table_exists(conn, "groups"):
+        return
+    labels = conn.execute(
+        'SELECT DISTINCT "group" FROM users '
+        'WHERE "group" IS NOT NULL AND "group" <> ""'
+    ).fetchall()
+    now = time.time()
+    for (label,) in labels:
+        row = conn.execute(
+            "SELECT id FROM groups WHERE name = ?", (label,)
+        ).fetchone()
+        if row:
+            gid = row[0]
+        else:
+            cur = conn.execute(
+                "INSERT INTO groups (name, created_by, created_at) "
+                "VALUES (?, NULL, ?)",
+                (label, now),
+            )
+            gid = cur.lastrowid
+        for (login,) in conn.execute(
+            'SELECT login FROM users WHERE "group" = ?', (label,)
+        ).fetchall():
+            conn.execute(
+                "INSERT OR IGNORE INTO group_members (group_id, user_id) "
+                "VALUES (?, ?)",
+                (gid, login),
+            )
+
+
 # Порядок применения. Добавлять новые кортежами (version, name, fn).
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = [
     (1, "rbac_foundation", _m001_rbac_foundation),
     (2, "sync_protocol", _m002_sync_protocol),
+    (3, "groups_from_labels", _m003_groups_from_labels),
 ]
 
 
