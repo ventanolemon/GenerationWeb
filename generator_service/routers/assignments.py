@@ -67,6 +67,19 @@ def teaching(
         request.app.state.repo, actor_login=uid)}
 
 
+@router.get("/{assignment_id}/progress")
+def progress(
+    assignment_id: int,
+    request: Request,
+    x_user_id: Optional[str] = Header(default=None),
+    x_user_role: Optional[str] = Header(default=None),
+) -> dict[str, Any]:
+    uid, role = _identity(x_user_id, x_user_role)
+    return _guard(lambda: assignments_api.progress(
+        request.app.state.repo, actor_login=uid, role=role,
+        assignment_id=assignment_id))
+
+
 @router.get("/mine")
 def mine(
     request: Request,

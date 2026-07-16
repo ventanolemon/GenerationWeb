@@ -886,6 +886,67 @@ class Repository:
                          (assignment_id,))
             conn.commit()
 
+    # --- Учёт выполнения (без assignment_id на попытке) ---
+    #
+    # «Сдал» = участник группы имеет ВЕРНУЮ попытку по выданной партиции.
+    # Это доменно-верный сигнал (решил ли студент задачу) и не требует
+    # прокидывать assignment_id через UI решения; связывание
+    # attempts.assignment_id с конкретной выдачей — отдельный будущий шаг.
+
+    def assignment_completion_counts(
+        self, partition_id: int, group_id: int
+    ) -> tuple[int, int]:
+        """(участников в группе, из них решивших верно эту партицию)."""
+        with self._connect() as conn:
+            members = conn.execute(
+                "SELECT COUNT(*) FROM group_members WHERE group_id = ?",
+                (group_id,),
+            ).fetchone()[0]
+            solved = conn.execute(
+                "SELECT COUNT(DISTINCT gm.user_id) "
+                "FROM group_members gm "
+                "JOIN attempts a ON a.user_id = gm.user_id "
+                "  AND a.partition_id = ? AND a.correct = 1 "
+                "WHERE gm.group_id = ?",
+                (partition_id, group_id),
+            ).fetchone()[0]
+        return int(members), int(solved)
+
+    def assignment_progress(self, assignment_id: int) -> Optional[dict]:
+        """Пофамильный прогресс по выдаче: каждый участник группы + сколько
+        попыток и решена ли задача верно. None — выдача не найдена."""
+        assignment = self.get_assignment(assignment_id)
+        if assignment is None:
+            return None
+        with self._connect() as conn:
+            rows = conn.execute(
+                'SELECT u.login, u.FIO, '
+                '       COUNT(a.client_uuid) AS attempts, '
+                '       MAX(CASE WHEN a.correct = 1 THEN 1 ELSE 0 END) AS solved, '
+                '       MAX(a.created_at) AS last_at '
+                'FROM group_members gm '
+                'JOIN users u ON u.login = gm.user_id '
+                'LEFT JOIN attempts a '
+                '  ON a.user_id = gm.user_id AND a.partition_id = ? '
+                'WHERE gm.group_id = ? '
+                'GROUP BY u.login, u.FIO '
+                'ORDER BY u.login',
+                (assignment.partition_id, assignment.group_id),
+            ).fetchall()
+        students = [
+            {"login": r[0], "fio": r[1] or "", "attempts": int(r[2] or 0),
+             "solved": bool(r[3]), "last_at": r[4]}
+            for r in rows
+        ]
+        solved = sum(1 for s in students if s["solved"])
+        attempted = sum(1 for s in students if s["attempts"] > 0)
+        return {
+            "assignment": assignment.to_dict(),
+            "students": students,
+            "summary": {"members": len(students), "attempted": attempted,
+                        "solved": solved},
+        }
+
     # ---------- WordStats ----------
 
     def ensure_word_stats_table(self) -> None:

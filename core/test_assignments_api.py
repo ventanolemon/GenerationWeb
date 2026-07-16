@@ -167,6 +167,61 @@ class DeleteTests(AssignmentsTestBase):
         self.assertEqual(out["deleted"], a["id"])
 
 
+class ProgressTests(AssignmentsTestBase):
+    def setUp(self):
+        super().setUp()
+        # Ещё один участник группы для статистики.
+        self.repo.create_user("s2", "p", "Студент 2", "")
+        self.repo.add_group_member(self.g, "s2")
+        self.a = assignments_api.create(
+            self.repo, actor_login="alla", role="teacher",
+            partition_id=self.p_alla, group_id=self.g)
+
+    def _attempt(self, login, partition_id, correct, uid):
+        import sqlite3
+        with sqlite3.connect(self.db) as conn:
+            conn.execute(
+                "INSERT INTO attempts (client_uuid, user_id, partition_id, "
+                " payload, correct, device_id, created_at) "
+                "VALUES (?, ?, ?, '{}', ?, 'd', 1.0)",
+                (uid, login, partition_id,
+                 None if correct is None else int(bool(correct))))
+            conn.commit()
+
+    def test_teaching_includes_completion_counts(self):
+        self._attempt("s1", self.p_alla, True, "u1")
+        teaching = assignments_api.list_teaching(self.repo, actor_login="alla")
+        item = teaching[0]
+        self.assertEqual(item["member_count"], 2)   # s1, s2
+        self.assertEqual(item["solved_count"], 1)   # только s1 решил
+
+    def test_progress_per_student(self):
+        self._attempt("s1", self.p_alla, False, "u1")
+        self._attempt("s1", self.p_alla, True, "u2")   # s1 в итоге решил
+        self._attempt("s2", self.p_alla, False, "u3")  # s2 пытался, не решил
+        prog = assignments_api.progress(self.repo, actor_login="alla",
+                                        role="teacher", assignment_id=self.a["id"])
+        by_login = {s["login"]: s for s in prog["students"]}
+        self.assertTrue(by_login["s1"]["solved"])
+        self.assertEqual(by_login["s1"]["attempts"], 2)
+        self.assertFalse(by_login["s2"]["solved"])
+        self.assertEqual(by_login["s2"]["attempts"], 1)
+        self.assertEqual(prog["summary"],
+                         {"members": 2, "attempted": 2, "solved": 1})
+
+    def test_progress_only_author_or_admin(self):
+        with self.assertRaisesRegex(assignments_api.AssignmentActionError,
+                                    "только автору"):
+            assignments_api.progress(self.repo, actor_login="boris",
+                                     role="teacher",
+                                     assignment_id=self.a["id"])
+        # admin — можно.
+        prog = assignments_api.progress(self.repo, actor_login="root",
+                                        role="admin",
+                                        assignment_id=self.a["id"])
+        self.assertEqual(prog["summary"]["members"], 2)
+
+
 class RouterTests(AssignmentsTestBase):
     def _client(self):
         from fastapi import FastAPI
@@ -213,6 +268,22 @@ class RouterTests(AssignmentsTestBase):
         self.assertEqual(r.status_code, 200)
         r = c.get("/assignments/teaching", headers=self._h("alla", "teacher"))
         self.assertEqual(r.json()["assignments"], [])
+
+    def test_progress_endpoint(self):
+        c = self._client()
+        r = c.post("/assignments",
+                   json={"partition_id": self.p_alla, "group_id": self.g},
+                   headers=self._h("alla", "teacher"))
+        aid = r.json()["id"]
+        r = c.get(f"/assignments/{aid}/progress",
+                  headers=self._h("alla", "teacher"))
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("students", r.json())
+        self.assertIn("summary", r.json())
+        # Чужой преподаватель — 400.
+        r = c.get(f"/assignments/{aid}/progress",
+                  headers=self._h("boris", "teacher"))
+        self.assertEqual(r.status_code, 400)
 
 
 if __name__ == "__main__":

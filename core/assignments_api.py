@@ -64,8 +64,30 @@ def create(
 
 
 def list_teaching(repo: Repository, *, actor_login: str) -> list[dict]:
-    """Выдачи, сделанные этим преподавателем."""
-    return [a.to_dict() for a in repo.list_assignments_for_teacher(actor_login)]
+    """Выдачи, сделанные этим преподавателем, со сводкой выполнения
+    (member_count / solved_count — «сдали X из Y»)."""
+    out = []
+    for a in repo.list_assignments_for_teacher(actor_login):
+        members, solved = repo.assignment_completion_counts(
+            a.partition_id, a.group_id)
+        d = a.to_dict()
+        d["member_count"] = members
+        d["solved_count"] = solved
+        out.append(d)
+    return out
+
+
+def progress(
+    repo: Repository, *, actor_login: str, role: str, assignment_id: int,
+) -> dict:
+    """Пофамильный прогресс по выдаче. Видит автор выдачи или admin."""
+    a = repo.get_assignment(assignment_id)
+    if a is None:
+        raise AssignmentActionError(f"Выдача #{assignment_id} не найдена.")
+    if role != "admin" and a.assigned_by != actor_login:
+        raise AssignmentActionError(
+            "Прогресс виден только автору выдачи.")
+    return repo.assignment_progress(assignment_id)
 
 
 def list_mine(repo: Repository, *, actor_login: str) -> list[dict]:
