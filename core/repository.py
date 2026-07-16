@@ -95,6 +95,33 @@ class Group:
 
 
 @dataclass(frozen=True)
+class Assignment:
+    """Выдача задания (партиции) группе как домашки. due_at — срок (epoch,
+    None = без срока). Поля partition_name/subject_name/group_name
+    заполняются в read-методах (join), в самой таблице их нет."""
+    id: int
+    partition_id: int
+    group_id: int
+    assigned_by: Optional[str]
+    due_at: Optional[float]
+    partition_name: str = ""
+    subject_name: str = ""
+    group_name: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "partition_id": self.partition_id,
+            "group_id": self.group_id,
+            "assigned_by": self.assigned_by,
+            "due_at": self.due_at,
+            "partition_name": self.partition_name,
+            "subject_name": self.subject_name,
+            "group_name": self.group_name,
+        }
+
+
+@dataclass(frozen=True)
 class UserProfile:
     login: str
     fio: str
@@ -761,6 +788,103 @@ class Repository:
                 (login,),
             ).fetchall()
         return [r[0] for r in rows]
+
+    # ---------- Домашки (assignments: партиция → группа) ----------
+    #
+    # Выдающий (assigned_by) — логин-строка. Пара (partition_id, group_id)
+    # уникальна по смыслу: повторная выдача той же задачи той же группе
+    # обновляет срок, а не плодит дубли. Право enforcement'а (кто кому что
+    # может выдать) живёт в assignments_api над visible_subject_ids /
+    # teacher_group_ids — Repository лишь пишет/читает.
+
+    _ASSIGN_COLS = ("a.id, a.partition_id, a.group_id, a.assigned_by, "
+                    "a.due_at, p.partition_name, s.subject_name, g.name")
+
+    @staticmethod
+    def _row_to_assignment(row) -> "Assignment":
+        return Assignment(
+            id=row[0], partition_id=row[1], group_id=row[2],
+            assigned_by=row[3], due_at=row[4],
+            partition_name=row[5] or "", subject_name=row[6] or "",
+            group_name=row[7] or "",
+        )
+
+    def create_assignment(
+        self, partition_id: int, group_id: int,
+        assigned_by: Optional[str], due_at: Optional[float] = None,
+    ) -> int:
+        """Выдать задание группе (или обновить срок существующей выдачи).
+        Возвращает id."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT id FROM assignments "
+                "WHERE partition_id = ? AND group_id = ?",
+                (partition_id, group_id),
+            ).fetchone()
+            if row:
+                conn.execute(
+                    "UPDATE assignments SET due_at = ?, assigned_by = ? "
+                    "WHERE id = ?",
+                    (due_at, assigned_by, row[0]),
+                )
+                conn.commit()
+                return row[0]
+            cur = conn.execute(
+                "INSERT INTO assignments "
+                "(partition_id, group_id, assigned_by, due_at) "
+                "VALUES (?, ?, ?, ?)",
+                (partition_id, group_id, assigned_by, due_at),
+            )
+            conn.commit()
+            return cur.lastrowid
+
+    def get_assignment(self, assignment_id: int) -> Optional[Assignment]:
+        with self._connect() as conn:
+            row = conn.execute(
+                f"SELECT {self._ASSIGN_COLS} FROM assignments a "
+                "LEFT JOIN Partitions p ON p.id = a.partition_id "
+                "LEFT JOIN Subjects s ON s.id = p.subject_id "
+                "LEFT JOIN groups g ON g.id = a.group_id "
+                "WHERE a.id = ?",
+                (assignment_id,),
+            ).fetchone()
+        return self._row_to_assignment(row) if row else None
+
+    def list_assignments_for_teacher(self, teacher_login: str) -> List[Assignment]:
+        """Выданные этим преподавателем (assigned_by = логин)."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT {self._ASSIGN_COLS} FROM assignments a "
+                "LEFT JOIN Partitions p ON p.id = a.partition_id "
+                "LEFT JOIN Subjects s ON s.id = p.subject_id "
+                "LEFT JOIN groups g ON g.id = a.group_id "
+                "WHERE a.assigned_by = ? "
+                "ORDER BY a.due_at IS NULL, a.due_at, a.id",
+                (teacher_login,),
+            ).fetchall()
+        return [self._row_to_assignment(r) for r in rows]
+
+    def list_assignments_for_student(self, login: str) -> List[Assignment]:
+        """Домашки студента: выдачи на группы, в которых он состоит. Скрываем
+        задания удалённых партиций (deleted_at) — решать нечего."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT {self._ASSIGN_COLS} FROM assignments a "
+                "JOIN group_members gm ON gm.group_id = a.group_id "
+                "JOIN Partitions p ON p.id = a.partition_id "
+                "LEFT JOIN Subjects s ON s.id = p.subject_id "
+                "LEFT JOIN groups g ON g.id = a.group_id "
+                "WHERE gm.user_id = ? AND p.deleted_at IS NULL "
+                "ORDER BY a.due_at IS NULL, a.due_at, a.id",
+                (login,),
+            ).fetchall()
+        return [self._row_to_assignment(r) for r in rows]
+
+    def delete_assignment(self, assignment_id: int) -> None:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM assignments WHERE id = ?",
+                         (assignment_id,))
+            conn.commit()
 
     # ---------- WordStats ----------
 

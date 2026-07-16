@@ -36,6 +36,7 @@ from core import Repository, WordStatsStore
 
 from .context import current_user_id as current_user_id_var
 from .routers import admin as admin_router
+from .routers import assignments as assignments_router
 from .routers import analytics as analytics_router
 from .routers import auth as auth_router
 from .routers import groups as groups_router
@@ -121,3 +122,4 @@ app.include_router(sync_router.router)
 app.include_router(analytics_router.router)
 app.include_router(admin_router.router)
 app.include_router(groups_router.router)
+app.include_router(assignments_router.router)
