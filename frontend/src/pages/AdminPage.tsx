@@ -278,6 +278,13 @@ function GroupsPanel() {
 
   return (
     <>
+      <CreateGroupForm
+        onCreated={(g) => {
+          setCurId(g.id);
+          reload();
+        }}
+      />
+
       {error && <div className={styles.error}>Не удалось загрузить группы: {error}</div>}
       {loading && !data && <div className={styles.state}>Загрузка…</div>}
       {data && groups.length === 0 && (
@@ -306,6 +313,54 @@ function GroupsPanel() {
         </div>
       )}
     </>
+  );
+}
+
+function CreateGroupForm({ onCreated }: { onCreated: (group: Group) => void }) {
+  const { identity } = useSession();
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function submit() {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const group = await api.adminCreateGroup(identity!, trimmed);
+      setName("");
+      onCreated(group);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className={styles.card} style={{ marginBottom: 16 }}>
+      <p className={styles.cardTitle}>Новая группа</p>
+      {err && <div className={styles.error}>{err}</div>}
+      <div className={styles.addRow}>
+        <input
+          className={styles.input}
+          style={{ flex: 1 }}
+          placeholder="Название группы"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && submit()}
+        />
+        <button
+          type="button"
+          className={`${styles.btn} ${styles.primary}`}
+          disabled={!name.trim() || busy}
+          onClick={submit}
+        >
+          Создать
+        </button>
+      </div>
+    </div>
   );
 }
 
