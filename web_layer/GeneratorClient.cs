@@ -292,6 +292,36 @@ public sealed class GeneratorClient
         return true;
     }
 
+    // ─── RBAC-прокси (/analytics, /admin, /assignments, /groups) ──────────
+
+    /// <summary>
+    /// Тонкий прокси к FastAPI-эндпоинтам, требующим identity. Пробрасывает
+    /// X-User-Id / X-User-Role и возвращает статус + сырое тело как есть —
+    /// маппинг формы делает фронт (как со /stats). Тело ошибок FastAPI
+    /// ({"detail": ...}) переводит в контракт web-слоя ({"error": ...}) на
+    /// уровне эндпоинта.
+    ///
+    /// Полагается на HttpClientFactory-пул: новый HttpRequestMessage на вызов
+    /// корректно живёт в рамках типизированного клиента.
+    /// </summary>
+    public async Task<(int Status, string Body)> ProxyAsync(
+        HttpMethod method, string path, string? userId, string? role,
+        string? jsonBody, CancellationToken ct)
+    {
+        using var req = new HttpRequestMessage(method, path);
+        if (!string.IsNullOrWhiteSpace(userId))
+            req.Headers.TryAddWithoutValidation("X-User-Id", userId);
+        if (!string.IsNullOrWhiteSpace(role))
+            req.Headers.TryAddWithoutValidation("X-User-Role", role);
+        if (jsonBody is not null)
+            req.Content = new StringContent(
+                jsonBody, System.Text.Encoding.UTF8, "application/json");
+
+        using var resp = await _http.SendAsync(req, ct);
+        var body = await resp.Content.ReadAsStringAsync(ct);
+        return ((int)resp.StatusCode, body);
+    }
+
     // ─── Служебное ─────────────────────────────────────────────────────
 
     public async Task<HealthResponse?> HealthAsync(CancellationToken ct)

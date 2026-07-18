@@ -76,6 +76,7 @@ app.MapExportEndpoints();
 app.MapPartitionEndpoints();
 app.MapStatsEndpoints();
 app.MapMetaEndpoints();
+app.MapDashboardEndpoints();
 
 // Корневой эндпоинт — подсказка, что и где
 app.MapGet("/", () => Results.Json(new
