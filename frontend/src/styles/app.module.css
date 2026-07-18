@@ -1,7 +1,10 @@
+/* Генератор живёт под глобальной верхней панелью (AppLayout), поэтому
+   высоту берёт из родителя (shell main), а не из 100vh. */
 .app {
   display: grid;
   grid-template-columns: 290px 1fr;
-  height: 100vh;
+  height: 100%;
+  min-height: 0;
 }
 
 .sidebar {

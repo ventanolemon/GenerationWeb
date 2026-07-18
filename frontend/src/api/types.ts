@@ -140,10 +140,20 @@ export interface ExportRequest {
 
 // ─── Авторизация и профиль ────────────────────────────────────────────────
 
+// Роль пользователя. Иерархия аддитивна: admin ⊃ teacher ⊃ student
+// (та же, что в core/repository.py ROLES). Приходит из профиля FastAPI.
+export type Role = "student" | "teacher" | "admin";
+
 export interface UserInfo {
   login: string;
   fio: string;
   group: string;
+  // role приходит из профиля (login/register/GET profile отдают
+  // UserProfile.to_dict, где role есть всегда). Держим опциональным ради
+  // обратной совместимости со старым localStorage — отсутствие трактуем
+  // как "student" (наименьшие права для UX-гейтинга; сервер всё равно
+  // авторитетен и вернёт 403 при попытке лишнего).
+  role?: Role;
   // Расширенные поля профиля (приходят при GET /profile, могут отсутствовать при login)
   email?: string;
   about?: string;
@@ -221,4 +231,130 @@ export interface UpsertPartitionRequest {
   name: string;
   constracted: number;
   generation_params: unknown;
+}
+
+
+// ─── Аналитика (GET /analytics/overview) ───────────────────────────────────
+// Форма ответа зафиксирована в core/analytics_api.py.
+
+export interface AnalyticsTotals {
+  attempts: number;
+  students_active: number;
+  correct_rate: number;          // доля 0..1
+  tasks_active: number;
+  attempts_delta_pct: number | null;   // null — нет предыдущего периода
+  correct_rate_delta: number | null;   // разница долей (п.п. /100)
+}
+
+export interface TimeseriesPoint {
+  date: string;      // YYYY-MM-DD (UTC)
+  attempts: number;
+  correct: number;
+}
+
+export interface DistributionBucket {
+  bucket: string;    // "0–20%" … "80–100%"
+  students: number;
+}
+
+export interface TaskStat {
+  partition_id: number;
+  name: string;
+  subject: string;
+  type: "graph" | "test";
+  attempts: number;
+  correct_rate: number;
+  avg_attempts_to_correct: number | null;
+  students: number;
+  last_activity: string;   // ISO, "" если не было
+  difficulty: "easy" | "medium" | "hard";
+}
+
+export interface StudentStat {
+  login: string;
+  fio: string;
+  group: string;
+  attempts: number;
+  correct_rate: number;
+  last_seen: string;       // ISO
+  status: "struggling" | "steady" | "strong";
+}
+
+export interface GroupStat {
+  group: string;
+  students: number;
+  correct_rate: number;
+  attempts: number;
+  coverage: number;        // доля 0..1
+}
+
+export interface AnalyticsOverview {
+  generated_at: string;
+  scope: { role: string; owner: string; range_days: number; group: string | null };
+  totals: AnalyticsTotals;
+  timeseries: TimeseriesPoint[];
+  correctness_distribution: DistributionBucket[];
+  tasks: TaskStat[];
+  students: StudentStat[];
+  groups: GroupStat[];
+}
+
+
+// ─── Администрирование (/admin/*) ──────────────────────────────────────────
+
+export interface AdminUser {
+  id: number;
+  login: string;
+  role: Role;
+  fio: string;
+  group: string;
+  email: string;
+  about: string;
+  avatar_color: string;
+  created_at: number;
+}
+
+// Группа с составом (из core/groups_api._group_dict).
+export interface Group {
+  id: number;
+  name: string;
+  created_by: string | null;
+  created_at: number;
+  members: string[];    // логины студентов
+  teachers: string[];   // логины преподавателей
+  member_count: number;
+}
+
+
+// ─── Домашки (/assignments/*, /groups/mine) ────────────────────────────────
+
+export interface Assignment {
+  id: number;
+  partition_id: number;
+  group_id: number;
+  assigned_by: string | null;
+  due_at: number | null;   // epoch-секунды, null — без срока
+  partition_name: string;
+  subject_name: string;
+  group_name: string;
+}
+
+// Выдача преподавателя, обогащённая сводкой «сдали X из Y».
+export interface TeachingAssignment extends Assignment {
+  member_count: number;
+  solved_count: number;
+}
+
+export interface AssignmentProgressStudent {
+  login: string;
+  fio: string;
+  attempts: number;
+  solved: boolean;
+  last_at: number | null;
+}
+
+export interface AssignmentProgress {
+  assignment: Assignment;
+  students: AssignmentProgressStudent[];
+  summary: { members: number; attempted: number; solved: number };
 }

@@ -4,20 +4,39 @@
 // это сделало бы deploy невозможным без правок.
 
 import type {
+  AdminUser,
+  AnalyticsOverview,
+  Assignment,
+  AssignmentProgress,
   ChangePasswordRequest,
   ExportRequest,
   GenerateResponse,
+  Group,
   Partition,
   PartitionCandidates,
   PartitionEditData,
   RegisterRequest,
+  Role,
   Subject,
+  TeachingAssignment,
   TurnResultResponse,
   UpdateProfileRequest,
   UpsertPartitionRequest,
   UserInfo,
   UserStats,
 } from "./types";
+
+// Идентичность для RBAC-эндпоинтов (/analytics, /admin, /assignments,
+// /groups). FastAPI читает X-User-Id (обязателен) и X-User-Role; web_layer
+// их пробрасывает. Гость (login отсутствует) в эти витрины не ходит.
+export interface Identity {
+  login: string;
+  role?: Role;
+}
+
+function idHeaders(id: Identity): Record<string, string> {
+  return { "X-User-Id": id.login, "X-User-Role": id.role ?? "student" };
+}
 
 // Базовая обёртка вокруг fetch с двумя задачами: распарсить JSON и
 // дать осмысленную ошибку. ASP.NET-слой при ошибках отдаёт JSON
@@ -175,6 +194,132 @@ export const api = {
       throw new ApiError(detail, response.status);
     }
     return await response.blob();
+  },
+
+  // ─── Аналитика (RBAC — teacher/admin) ────────────────────────────────────
+
+  analyticsOverview(
+    id: Identity,
+    opts: { rangeDays?: number; group?: string | null } = {},
+  ): Promise<AnalyticsOverview> {
+    const q = new URLSearchParams();
+    if (opts.rangeDays) q.set("range_days", String(opts.rangeDays));
+    if (opts.group) q.set("group", opts.group);
+    const qs = q.toString();
+    return request<AnalyticsOverview>(
+      `/api/analytics/overview${qs ? `?${qs}` : ""}`,
+      { headers: idHeaders(id) },
+    );
+  },
+
+  // ─── Администрирование (RBAC — admin) ────────────────────────────────────
+
+  adminListUsers(id: Identity): Promise<{ users: AdminUser[] }> {
+    return request<{ users: AdminUser[] }>("/api/admin/users", {
+      headers: idHeaders(id),
+    });
+  },
+
+  adminChangeRole(
+    id: Identity,
+    login: string,
+    role: Role,
+  ): Promise<{ login: string; role: Role }> {
+    return request(`/api/admin/users/${encodeURIComponent(login)}/role`, {
+      method: "POST",
+      headers: idHeaders(id),
+      body: JSON.stringify({ role }),
+    });
+  },
+
+  adminListGroups(id: Identity): Promise<{ groups: Group[] }> {
+    return request<{ groups: Group[] }>("/api/admin/groups", {
+      headers: idHeaders(id),
+    });
+  },
+
+  adminCreateGroup(id: Identity, name: string): Promise<Group> {
+    return request<Group>("/api/admin/groups", {
+      method: "POST",
+      headers: idHeaders(id),
+      body: JSON.stringify({ name }),
+    });
+  },
+
+  adminAddMember(id: Identity, groupId: number, login: string): Promise<Group> {
+    return request<Group>(`/api/admin/groups/${groupId}/members`, {
+      method: "POST",
+      headers: idHeaders(id),
+      body: JSON.stringify({ login }),
+    });
+  },
+
+  adminRemoveMember(id: Identity, groupId: number, login: string): Promise<Group> {
+    return request<Group>(
+      `/api/admin/groups/${groupId}/members/${encodeURIComponent(login)}`,
+      { method: "DELETE", headers: idHeaders(id) },
+    );
+  },
+
+  adminAssignTeacher(id: Identity, groupId: number, login: string): Promise<Group> {
+    return request<Group>(`/api/admin/groups/${groupId}/teachers`, {
+      method: "POST",
+      headers: idHeaders(id),
+      body: JSON.stringify({ login }),
+    });
+  },
+
+  adminUnassignTeacher(id: Identity, groupId: number, login: string): Promise<Group> {
+    return request<Group>(
+      `/api/admin/groups/${groupId}/teachers/${encodeURIComponent(login)}`,
+      { method: "DELETE", headers: idHeaders(id) },
+    );
+  },
+
+  // ─── Домашки (/assignments, /groups/mine) ────────────────────────────────
+
+  groupsMine(id: Identity): Promise<{ groups: Group[] }> {
+    return request<{ groups: Group[] }>("/api/groups/mine", {
+      headers: idHeaders(id),
+    });
+  },
+
+  createAssignment(
+    id: Identity,
+    body: { partition_id: number; group_id: number; due_at?: number | null },
+  ): Promise<Assignment> {
+    return request<Assignment>("/api/assignments", {
+      method: "POST",
+      headers: idHeaders(id),
+      body: JSON.stringify(body),
+    });
+  },
+
+  teachingAssignments(id: Identity): Promise<{ assignments: TeachingAssignment[] }> {
+    return request<{ assignments: TeachingAssignment[] }>(
+      "/api/assignments/teaching",
+      { headers: idHeaders(id) },
+    );
+  },
+
+  assignmentProgress(id: Identity, assignmentId: number): Promise<AssignmentProgress> {
+    return request<AssignmentProgress>(
+      `/api/assignments/${assignmentId}/progress`,
+      { headers: idHeaders(id) },
+    );
+  },
+
+  myAssignments(id: Identity): Promise<{ assignments: Assignment[] }> {
+    return request<{ assignments: Assignment[] }>("/api/assignments/mine", {
+      headers: idHeaders(id),
+    });
+  },
+
+  deleteAssignment(id: Identity, assignmentId: number): Promise<{ deleted: number }> {
+    return request<{ deleted: number }>(`/api/assignments/${assignmentId}`, {
+      method: "DELETE",
+      headers: idHeaders(id),
+    });
   },
 };
 

@@ -85,6 +85,9 @@ public record UserDto(
     string Login,
     string Fio,
     string Group,
+    // Роль (student/teacher/admin) приходит из FastAPI (profile.to_dict).
+    // Нужна фронту для гейтинга витрин и заголовка X-User-Role.
+    string Role = "student",
     string Email = "",
     string About = "",
     [property: JsonPropertyName("avatar_color")] string AvatarColor = "",
