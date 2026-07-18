@@ -46,7 +46,9 @@ export default function AppLayout() {
   const isGuest = user === null;
 
   const [profileOpen, setProfileOpen] = useState(false);
-  const [authOpen, setAuthOpen] = useState(false);
+  // null — закрыта; иначе вкладка, с которой открыть (регистрация из
+  // профиля гостя vs. вход по кнопке «Войти» в плашке пользователя).
+  const [authTab, setAuthTab] = useState<"login" | "register" | null>(null);
 
   const displayName = user ? user.fio || user.login : "Гость";
   const roleLabel = isGuest ? "гостевой режим" : ROLE_RU[role];
@@ -82,8 +84,7 @@ export default function AppLayout() {
         <span className={styles.spacer} />
         <ThemeToggle />
 
-        <button
-          type="button"
+        <div
           className={styles.whoami}
           onClick={() => setProfileOpen(true)}
           title="Открыть профиль"
@@ -100,7 +101,26 @@ export default function AppLayout() {
               {isGuest ? roleLabel : `${user!.login} · ${roleLabel}`}
             </span>
           </span>
-        </button>
+          <button
+            type="button"
+            className={styles.logoutBtn}
+            title={isGuest ? "Войти в аккаунт" : "Выйти из аккаунта"}
+            onClick={(e) => {
+              // Не всплывать до onClick плашки — иначе вместо выхода
+              // откроется профиль.
+              e.stopPropagation();
+              if (isGuest) {
+                setAuthTab("login");
+                return;
+              }
+              if (window.confirm("Выйти из аккаунта?")) {
+                session.logout();
+              }
+            }}
+          >
+            {isGuest ? "Войти" : "Выйти"}
+          </button>
+        </div>
       </header>
 
       <main className={styles.main}>
@@ -115,19 +135,19 @@ export default function AppLayout() {
           onUserUpdated={session.updateUser}
           onRequestRegister={() => {
             setProfileOpen(false);
-            setAuthOpen(true);
+            setAuthTab("register");
           }}
         />
       )}
 
-      {authOpen && (
+      {authTab && (
         <AuthModal
-          initialTab="register"
+          initialTab={authTab}
           onLogin={(u) => {
-            setAuthOpen(false);
+            setAuthTab(null);
             if (u) session.updateUser(u);
           }}
-          onClose={() => setAuthOpen(false)}
+          onClose={() => setAuthTab(null)}
         />
       )}
     </div>
