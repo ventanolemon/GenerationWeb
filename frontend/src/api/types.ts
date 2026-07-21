@@ -444,3 +444,49 @@ export interface ContourJobDetail extends ContourJobSummary {
   rounds: unknown[];
   result_graph: unknown;
 }
+
+
+// ─── Корпус обучающих примеров (/corpus/*, admin) ──────────────────────────
+// Формы из contour_service/corpus.py (свёрнутые поля записи + курация).
+
+export type Curation = "auto" | "gold" | "excluded";
+
+export interface CorpusRecordSummary {
+  id: string;
+  kind: "generate" | "repair";
+  created_at: string;
+  description: string;
+  tags: string[];
+  validator_passed: boolean;
+  seeds: number;
+  verdict: "accept" | "revise" | "reject" | null;
+  confidence: number | null;
+  codes: string[];
+  human_approved: boolean;
+  model: string;
+  curation: Curation;
+  comment: string;
+  curated_by: string | null;
+  curated_at: string | null;
+}
+
+export interface CorpusSummary {
+  total: number;
+  generate: number;
+  repair: number;
+  escalations: number;
+  gold: number;
+  excluded: number;
+  auto: number;
+  code_distribution: { code: string; count: number }[];
+}
+
+export interface CorpusListResponse {
+  records: CorpusRecordSummary[];
+  total: number;
+  summary: CorpusSummary;
+}
+
+export interface CorpusRecordDetail extends CorpusRecordSummary {
+  record: unknown; // полный training_example (target_graph, provenance, …)
+}

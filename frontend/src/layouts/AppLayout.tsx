@@ -37,6 +37,7 @@ const TABS: Tab[] = [
     visible: (role) => role === "teacher" || role === "admin",
   },
   { to: "/admin", label: "Администрирование", visible: (role) => role === "admin" },
+  { to: "/corpus", label: "Корпус", visible: (role) => role === "admin" },
   { to: "/homework", label: "Домашки", visible: (_role, isGuest) => !isGuest },
 ];
 

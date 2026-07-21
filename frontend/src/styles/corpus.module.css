@@ -1,0 +1,168 @@
+/* Куратор корпуса: специфика поверх screens.module.css. */
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+@media (max-width: 900px) {
+  .summaryGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.stateGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px 20px;
+}
+.stateVal {
+  font-size: 26px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.stateLabel {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.gold {
+  color: var(--accent);
+}
+.excluded {
+  color: var(--danger);
+}
+.warnText {
+  color: var(--warn);
+}
+
+/* Горизонтальный бар-чарт распределения по кодам (одноцветная магнитуда) */
+.codeRow {
+  display: grid;
+  grid-template-columns: 34px 1fr 34px;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 0;
+}
+.codeTag {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.codeBarTrack {
+  height: 12px;
+  border-radius: 4px;
+  background: var(--track);
+  overflow: hidden;
+}
+.codeBar {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 4px;
+}
+.codeCount {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* Чипы тегов */
+.tagChip {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border-radius: 5px;
+  padding: 1px 6px;
+  margin-right: 4px;
+}
+.codeChip {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--warn);
+  background: var(--warn-bg);
+  border-radius: 5px;
+  padding: 1px 6px;
+  margin-right: 4px;
+}
+
+/* Пилюли курации */
+.curPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.curGold {
+  color: var(--accent);
+  background: var(--ok-bg);
+}
+.curExcluded {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+.curAuto {
+  color: var(--text-muted);
+  background: var(--surface-2);
+}
+
+/* Боковой дровер с деталью записи */
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(560px, 96vw);
+  background: var(--surface);
+  border-left: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-lg);
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+}
+.drawerHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.drawerBody {
+  overflow-y: auto;
+  padding: 16px 18px;
+  flex: 1;
+}
+.jsonBlock {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  white-space: pre;
+  max-height: 320px;
+  margin: 0;
+}
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.5);
+  z-index: 65;
+}
+.curActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}

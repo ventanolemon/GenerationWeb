@@ -11,6 +11,9 @@ import type {
   ChangePasswordRequest,
   ContourJobDetail,
   ContourJobSummary,
+  CorpusListResponse,
+  CorpusRecordDetail,
+  Curation,
   ExportRequest,
   GenerateResponse,
   Group,
@@ -371,6 +374,40 @@ export const api = {
       method: "POST",
       headers: idHeaders(id),
       body: JSON.stringify({ reason }),
+    });
+  },
+
+  // ─── Куратор корпуса (/corpus/*, admin) ──────────────────────────────────
+
+  corpusList(
+    id: Identity,
+    opts: { curation?: Curation; kind?: "generate" | "repair" } = {},
+  ): Promise<CorpusListResponse> {
+    const q = new URLSearchParams();
+    if (opts.curation) q.set("curation", opts.curation);
+    if (opts.kind) q.set("kind", opts.kind);
+    const qs = q.toString();
+    return request<CorpusListResponse>(`/api/corpus${qs ? `?${qs}` : ""}`, {
+      headers: idHeaders(id),
+    });
+  },
+
+  corpusGet(id: Identity, recordId: string): Promise<CorpusRecordDetail> {
+    return request<CorpusRecordDetail>(
+      `/api/corpus/${encodeURIComponent(recordId)}`,
+      { headers: idHeaders(id) },
+    );
+  },
+
+  corpusSetCuration(
+    id: Identity,
+    recordId: string,
+    body: { curation: Curation; comment?: string },
+  ): Promise<{ record_id: string; curation: Curation }> {
+    return request(`/api/corpus/${encodeURIComponent(recordId)}/curation`, {
+      method: "PATCH",
+      headers: idHeaders(id),
+      body: JSON.stringify(body),
     });
   },
 };

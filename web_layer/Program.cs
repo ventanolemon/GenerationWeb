@@ -96,6 +96,7 @@ app.MapStatsEndpoints();
 app.MapMetaEndpoints();
 app.MapDashboardEndpoints();
 app.MapContourEndpoints();
+app.MapCorpusEndpoints();
 
 // Корневой эндпоинт — подсказка, что и где
 app.MapGet("/", () => Results.Json(new
