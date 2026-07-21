@@ -91,6 +91,16 @@ class ApiFullCycleTests(unittest.TestCase):
         self.assertEqual(len(body["rounds"]), 1)
         self.assertNotIn("graph", body["rounds"][0], "раунды в ответе компактны")
 
+        # Полный probe-отчёт для веб-экрана S6: таблица прогонов и агрегаты.
+        self.assertIn("probe", body)
+        self.assertGreaterEqual(len(body["probe"]["runs"]), 3)
+        run0 = body["probe"]["runs"][0]
+        for key in ("seed", "statement", "answer", "attempts", "wall_ms", "error"):
+            self.assertIn(key, run0)
+        agg = body["probe"]["aggregates"]
+        self.assertIn("attempts_p50", agg)
+        self.assertIn("distinct_statements", agg)
+
         # 4. Утверждение: партиция constracted=4 + корпус generate.
         resp = self.client.post(f"/contour/jobs/{job_id}/approve",
                                 headers=TEACHER,
@@ -164,6 +174,55 @@ class ApiFullCycleTests(unittest.TestCase):
         ).fetchone()
         record = json.loads(row["record"])
         self.assertIn("слишком просто", record["reason"])
+
+    def _seed_approved_record(self) -> None:
+        """Прогнать цикл до approve — в корпусе появляется generate-запись."""
+        job_id = self.client.post("/contour/jobs", headers=TEACHER, json={
+            "description": "Задачи на силу F=ma", "subject_id": 3}).json()["job_id"]
+        self._run_worker()
+        self.client.post(f"/contour/jobs/{job_id}/approve",
+                         headers=TEACHER, json={"partition_name": "Сила"})
+
+    def test_corpus_list_detail_and_curation(self):
+        self._seed_approved_record()
+
+        # Список: admin видит обучающие записи + сводку.
+        resp = self.client.get("/corpus", headers=ADMIN)
+        self.assertEqual(resp.status_code, 200, resp.text)
+        body = resp.json()
+        self.assertGreaterEqual(body["total"], 1)
+        rec = body["records"][0]
+        for key in ("id", "kind", "description", "validator_passed",
+                    "verdict", "codes", "curation"):
+            self.assertIn(key, rec)
+        self.assertEqual(rec["curation"], "auto")           # ещё не размечено
+        self.assertIn("gold", body["summary"])
+        self.assertEqual(body["summary"]["gold"], 0)
+
+        rec_id = rec["id"]
+
+        # Деталь: полная запись с target_graph.
+        resp = self.client.get(f"/corpus/{rec_id}", headers=ADMIN)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("target_graph", resp.json()["record"])
+
+        # Разметка «золотой эталон» + коммент.
+        resp = self.client.patch(f"/corpus/{rec_id}/curation", headers=ADMIN,
+                                 json={"curation": "gold", "comment": "чистый пример"})
+        self.assertEqual(resp.status_code, 200, resp.text)
+
+        # Сводка и фильтр отражают разметку.
+        body = self.client.get("/corpus", headers=ADMIN).json()
+        self.assertEqual(body["summary"]["gold"], 1)
+        gold = self.client.get("/corpus?curation=gold", headers=ADMIN).json()
+        self.assertEqual(gold["total"], 1)
+        self.assertEqual(gold["records"][0]["comment"], "чистый пример")
+
+        # Курация — admin-only; несуществующая запись → 404.
+        self.assertEqual(self.client.get("/corpus", headers=TEACHER).status_code, 403)
+        self.assertEqual(
+            self.client.patch("/corpus/нет-такой/curation", headers=ADMIN,
+                              json={"curation": "gold"}).status_code, 404)
 
 
 @unittest.skipUnless(os.environ.get("CONTOUR_PG_DSN"),

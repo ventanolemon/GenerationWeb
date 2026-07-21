@@ -358,3 +358,135 @@ export interface AssignmentProgress {
   students: AssignmentProgressStudent[];
   summary: { members: number; attempted: number; solved: number };
 }
+
+
+// ─── Контур ИИ-генерации (/contour/*) ──────────────────────────────────────
+// Формы из contour_service/routers/jobs.py + core/graph_probe.py.
+
+export type ContourStatus =
+  | "queued"
+  | "generating"
+  | "validating"
+  | "critic"
+  | "awaiting_human"
+  | "approved"
+  | "rejected"
+  | "escalated"
+  | "failed";
+
+export interface ContourJobSummary {
+  job_id: string;
+  status: ContourStatus;
+  subject_id: number;
+  description: string;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface ProbePreview {
+  seed: number;
+  statement: string;
+  answer: string;
+}
+
+// Один прогон probe (statement/answer — простой текст, render_plain).
+export interface ProbeRun {
+  seed: number;
+  statement: string;
+  answer: string;
+  attempts: number;
+  wall_ms: number;
+  error: string | null;
+  double_run_mismatch: boolean;
+}
+
+export interface ProbeAggregates {
+  runs_ok: number;
+  runs_total: number;
+  distinct_statements: number;
+  distinct_answers: number;
+  templates: string[];
+  template_count: number;
+  attempts_p50: number;
+  attempts_max: number;
+  double_run_mismatch: boolean;
+  wall_ms_max: number;
+}
+
+// Сработавший SYM-флаг (severity: "block" | "warn").
+export interface ProbeFlag {
+  code: string;
+  severity: string;
+  detail: string;
+}
+
+// Провал из вердикта критика — всегда с evidence (без него отбрасывается).
+export interface CriticFailure {
+  code: string;
+  severity: string;
+  evidence: string;
+  detail?: string;
+}
+
+export interface CriticVerdict {
+  verdict: "accept" | "revise" | "reject";
+  confidence: number;
+  summary: string;
+  failures: CriticFailure[];
+}
+
+export interface ContourJobDetail extends ContourJobSummary {
+  error: string | null;
+  previews: ProbePreview[];
+  flags: ProbeFlag[];
+  probe: { runs: ProbeRun[]; aggregates: ProbeAggregates };
+  critic: CriticVerdict | null;
+  rounds: unknown[];
+  result_graph: unknown;
+}
+
+
+// ─── Корпус обучающих примеров (/corpus/*, admin) ──────────────────────────
+// Формы из contour_service/corpus.py (свёрнутые поля записи + курация).
+
+export type Curation = "auto" | "gold" | "excluded";
+
+export interface CorpusRecordSummary {
+  id: string;
+  kind: "generate" | "repair";
+  created_at: string;
+  description: string;
+  tags: string[];
+  validator_passed: boolean;
+  seeds: number;
+  verdict: "accept" | "revise" | "reject" | null;
+  confidence: number | null;
+  codes: string[];
+  human_approved: boolean;
+  model: string;
+  curation: Curation;
+  comment: string;
+  curated_by: string | null;
+  curated_at: string | null;
+}
+
+export interface CorpusSummary {
+  total: number;
+  generate: number;
+  repair: number;
+  escalations: number;
+  gold: number;
+  excluded: number;
+  auto: number;
+  code_distribution: { code: string; count: number }[];
+}
+
+export interface CorpusListResponse {
+  records: CorpusRecordSummary[];
+  total: number;
+  summary: CorpusSummary;
+}
+
+export interface CorpusRecordDetail extends CorpusRecordSummary {
+  record: unknown; // полный training_example (target_graph, provenance, …)
+}

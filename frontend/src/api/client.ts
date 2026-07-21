@@ -9,6 +9,11 @@ import type {
   Assignment,
   AssignmentProgress,
   ChangePasswordRequest,
+  ContourJobDetail,
+  ContourJobSummary,
+  CorpusListResponse,
+  CorpusRecordDetail,
+  Curation,
   ExportRequest,
   GenerateResponse,
   Group,
@@ -319,6 +324,90 @@ export const api = {
     return request<{ deleted: number }>(`/api/assignments/${assignmentId}`, {
       method: "DELETE",
       headers: idHeaders(id),
+    });
+  },
+
+  // ─── Контур ИИ-генерации (/contour/*, teacher/admin) ─────────────────────
+
+  contourListJobs(id: Identity): Promise<{ jobs: ContourJobSummary[] }> {
+    return request<{ jobs: ContourJobSummary[] }>("/api/contour/jobs", {
+      headers: idHeaders(id),
+    });
+  },
+
+  contourGetJob(id: Identity, jobId: string): Promise<ContourJobDetail> {
+    return request<ContourJobDetail>(
+      `/api/contour/jobs/${encodeURIComponent(jobId)}`,
+      { headers: idHeaders(id) },
+    );
+  },
+
+  contourCreateJob(
+    id: Identity,
+    body: { description: string; subject_id: number; constraints?: Record<string, unknown> },
+  ): Promise<{ job_id: string; status: string }> {
+    return request<{ job_id: string; status: string }>("/api/contour/jobs", {
+      method: "POST",
+      headers: idHeaders(id),
+      body: JSON.stringify(body),
+    });
+  },
+
+  contourApprove(
+    id: Identity,
+    jobId: string,
+    body: { partition_name?: string; note?: string },
+  ): Promise<{ job_id: string; status: string; partition_id: number; corpus_deduplicated: boolean }> {
+    return request(`/api/contour/jobs/${encodeURIComponent(jobId)}/approve`, {
+      method: "POST",
+      headers: idHeaders(id),
+      body: JSON.stringify(body),
+    });
+  },
+
+  contourReject(
+    id: Identity,
+    jobId: string,
+    reason: string,
+  ): Promise<{ job_id: string; status: string }> {
+    return request(`/api/contour/jobs/${encodeURIComponent(jobId)}/reject`, {
+      method: "POST",
+      headers: idHeaders(id),
+      body: JSON.stringify({ reason }),
+    });
+  },
+
+  // ─── Куратор корпуса (/corpus/*, admin) ──────────────────────────────────
+
+  corpusList(
+    id: Identity,
+    opts: { curation?: Curation; kind?: "generate" | "repair" } = {},
+  ): Promise<CorpusListResponse> {
+    const q = new URLSearchParams();
+    if (opts.curation) q.set("curation", opts.curation);
+    if (opts.kind) q.set("kind", opts.kind);
+    const qs = q.toString();
+    return request<CorpusListResponse>(`/api/corpus${qs ? `?${qs}` : ""}`, {
+      headers: idHeaders(id),
+    });
+  },
+
+  corpusGet(id: Identity, recordId: string): Promise<CorpusRecordDetail> {
+    return request<CorpusRecordDetail>(
+      `/api/corpus/${encodeURIComponent(recordId)}`,
+      { headers: idHeaders(id) },
+    );
+  },
+
+  corpusSetCuration(
+    id: Identity,
+    recordId: string,
+    body: { curation: Curation; comment?: string },
+  ): Promise<{ record_id: string; curation: Curation }> {
+    return request(`/api/corpus/${encodeURIComponent(recordId)}/curation`, {
+      method: "PATCH",
+      headers: idHeaders(id),
+      body: JSON.stringify(body),
     });
   },
 };

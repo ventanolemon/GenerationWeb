@@ -192,3 +192,170 @@ class CorpusStore:
             return int(self.conn.execute(q, args).fetchone()[0])
         cur = self.conn.execute(q, args)
         return int(cur.fetchone()[0])
+
+    # ---------- Курация (training_plan.md §1) ----------
+    #
+    # Витрина куратора корпуса: список с фильтрами, детальная запись, разметка
+    # «золотой эталон / исключить / коммент». curation живёт отдельной таблицей
+    # corpus_curation (LEFT JOIN); отсутствие строки = 'auto' (не размечено).
+
+    # Что показываем по умолчанию — обучающие записи (не сырые escalation-логи).
+    TRAINING_KINDS = ("generate", "repair")
+
+    def _q(self, sql: str, args: tuple = ()):
+        """Выполнить SELECT независимо от бэкенда. SQL пишем с '?';
+        для Postgres конвертируем в '%s' (в наших запросах '?' не встречается
+        в строковых литералах). Доступ к полям — по индексу: работает и для
+        sqlite3.Row, и для tuple'ов DB-API Postgres."""
+        if self._sqlite:
+            return self.conn.execute(sql, args).fetchall()
+        cur = self.conn.execute(sql.replace("?", "%s"), args)
+        return cur.fetchall()
+
+    @staticmethod
+    def _summary_fields(rec: dict) -> dict:
+        """Плоские поля записи для таблицы/детали куратора."""
+        prov = rec.get("provenance") or {}
+        validator = prov.get("validator") or {}
+        critic = prov.get("critic") or {}
+        probe_flags = prov.get("probe_flags") or []
+        failures = [c for c in (critic.get("failures") or []) if c]
+        codes = sorted(set(probe_flags) | set(failures))
+        human = prov.get("human") or {}
+        return {
+            "description": (rec.get("input") or {}).get("description", ""),
+            "tags": rec.get("tags") or [],
+            "validator_passed": bool(validator.get("passed")),
+            "seeds": len(validator.get("seeds") or []),
+            "verdict": critic.get("verdict"),
+            "confidence": critic.get("confidence"),
+            "codes": codes,
+            "human_approved": bool(human.get("approved")),
+            "model": prov.get("model", ""),
+        }
+
+    def list_curated(self, *, curation: Optional[str] = None,
+                     kinds: Optional[tuple] = None,
+                     limit: int = 500) -> dict:
+        """Список обучающих записей + разметка курации, свёрнутые в поля для
+        таблицы. Фильтр по curation ('auto'|'gold'|'excluded') применяем в
+        Python (auto = нет строки в corpus_curation). MVP-оговорка: грузим
+        пачкой и фильтруем в памяти — при академическом масштабе достаточно."""
+        kinds = kinds or self.TRAINING_KINDS
+        ph = ",".join("?" * len(kinds))
+        rows = self._q(
+            f"SELECT r.id, r.kind, r.created_at, r.record, "
+            f"       c.curation, c.comment, c.curated_by, c.curated_at "
+            f"FROM corpus_records r "
+            f"LEFT JOIN corpus_curation c ON c.record_id = r.id "
+            f"WHERE r.kind IN ({ph}) "
+            f"ORDER BY r.created_at DESC LIMIT ?",
+            (*kinds, int(limit)),
+        )
+        out = []
+        for r in rows:
+            rec = r[3] if isinstance(r[3], dict) else json.loads(r[3])
+            cur_state = r[4] or "auto"
+            if curation and cur_state != curation:
+                continue
+            out.append({
+                "id": r[0], "kind": r[1], "created_at": r[2],
+                "curation": cur_state, "comment": r[5] or "",
+                "curated_by": r[6], "curated_at": r[7],
+                **self._summary_fields(rec),
+            })
+        return {"records": out, "total": len(out)}
+
+    def get_curated(self, record_id: str) -> Optional[dict]:
+        """Полная запись + её курация. None — записи нет."""
+        rows = self._q(
+            "SELECT r.id, r.kind, r.created_at, r.record, "
+            "       c.curation, c.comment, c.curated_by, c.curated_at "
+            "FROM corpus_records r "
+            "LEFT JOIN corpus_curation c ON c.record_id = r.id "
+            "WHERE r.id = ?",
+            (record_id,),
+        )
+        if not rows:
+            return None
+        r = rows[0]
+        rec = r[3] if isinstance(r[3], dict) else json.loads(r[3])
+        return {
+            "id": r[0], "kind": r[1], "created_at": r[2],
+            "curation": r[4] or "auto", "comment": r[5] or "",
+            "curated_by": r[6], "curated_at": r[7],
+            "record": rec,
+            **self._summary_fields(rec),
+        }
+
+    def set_curation(self, record_id: str, curation: str, *,
+                     comment: str = "", curator: str = "") -> bool:
+        """Разметить запись (upsert corpus_curation). False — записи нет."""
+        if curation not in ("auto", "gold", "excluded"):
+            raise ValueError(f"недопустимая курация {curation!r}")
+        exists = self._q("SELECT 1 FROM corpus_records WHERE id = ?", (record_id,))
+        if not exists:
+            return False
+        now = _now()
+        if self._sqlite:
+            with self.conn:
+                self.conn.execute(
+                    "INSERT INTO corpus_curation "
+                    "(record_id, curation, comment, curated_by, curated_at) "
+                    "VALUES (?, ?, ?, ?, ?) "
+                    "ON CONFLICT(record_id) DO UPDATE SET "
+                    "curation=excluded.curation, comment=excluded.comment, "
+                    "curated_by=excluded.curated_by, curated_at=excluded.curated_at",
+                    (record_id, curation, comment, curator, now))
+        else:
+            with self.conn.transaction():
+                self.conn.execute(
+                    "INSERT INTO corpus_curation "
+                    "(record_id, curation, comment, curated_by, curated_at) "
+                    "VALUES (%s, %s, %s, %s, %s) "
+                    "ON CONFLICT(record_id) DO UPDATE SET "
+                    "curation=EXCLUDED.curation, comment=EXCLUDED.comment, "
+                    "curated_by=EXCLUDED.curated_by, curated_at=EXCLUDED.curated_at",
+                    (record_id, curation, comment, curator, now))
+        return True
+
+    def curation_summary(self) -> dict:
+        """Сводка для верхней панели: счётчики по виду/курации + распределение
+        провалов по кодам таксономии (probe_flags + provenance.critic)."""
+        rows = self._q(
+            "SELECT r.kind, r.record, c.curation "
+            "FROM corpus_records r "
+            "LEFT JOIN corpus_curation c ON c.record_id = r.id "
+            "WHERE r.kind IN ('generate', 'repair')",
+        )
+        gold = excluded = auto = generate = repair = 0
+        code_counts: dict[str, int] = {}
+        for r in rows:
+            kind = r[0]
+            rec = r[1] if isinstance(r[1], dict) else json.loads(r[1])
+            state = r[2] or "auto"
+            if kind == "generate":
+                generate += 1
+            elif kind == "repair":
+                repair += 1
+            if state == "gold":
+                gold += 1
+            elif state == "excluded":
+                excluded += 1
+            else:
+                auto += 1
+            for code in self._summary_fields(rec)["codes"]:
+                code_counts[code] = code_counts.get(code, 0) + 1
+        distribution = sorted(
+            ({"code": k, "count": v} for k, v in code_counts.items()),
+            key=lambda d: d["count"], reverse=True)
+        return {
+            "total": generate + repair,
+            "generate": generate,
+            "repair": repair,
+            "escalations": self.count("escalation"),
+            "gold": gold,
+            "excluded": excluded,
+            "auto": auto,
+            "code_distribution": distribution,
+        }

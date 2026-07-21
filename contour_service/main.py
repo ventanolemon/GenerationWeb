@@ -43,6 +43,7 @@ from .db import apply_migrations, connect_sqlite
 from .loop import LoopDeps
 from .providers import build_registry
 from .queue import PostgresJobQueue, SqliteJobQueue
+from .routers import corpus as corpus_router
 from .routers import jobs as jobs_router
 from .worker import process_one
 
@@ -114,3 +115,4 @@ app = FastAPI(
 )
 
 app.include_router(jobs_router.router)
+app.include_router(corpus_router.router)
