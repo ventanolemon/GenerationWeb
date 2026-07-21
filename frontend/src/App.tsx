@@ -10,6 +10,7 @@ import GeneratorPage from "./pages/GeneratorPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
 import AdminPage from "./pages/AdminPage";
 import HomeworkPage from "./pages/HomeworkPage";
+import ContourPage from "./pages/ContourPage";
 
 const USER_STORAGE_KEY = "generator_user";
 const GUEST_ID_KEY = "generator_guest_id";
@@ -106,6 +107,14 @@ export default function App() {
             element={
               <RequireRole roles={["teacher", "admin"]}>
                 <AnalyticsPage />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="contour"
+            element={
+              <RequireRole roles={["teacher", "admin"]}>
+                <ContourPage />
               </RequireRole>
             }
           />

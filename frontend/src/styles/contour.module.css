@@ -1,0 +1,242 @@
+/* Экран контура ИИ-генерации: специфика поверх screens.module.css
+   (степпер петли S0–S6, посидовые чипы probe, поверхность решения). */
+
+.stepper {
+  display: flex;
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+  margin-bottom: 16px;
+  overflow-x: auto;
+}
+.step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.stepDot {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-faint);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+}
+.stepLabel {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.stepSub {
+  font-size: 10px;
+  color: var(--text-faint);
+}
+.stepDone .stepDot {
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border-color: transparent;
+}
+.stepActive .stepDot {
+  color: var(--warn);
+  background: var(--warn-bg);
+  border-color: color-mix(in srgb, var(--warn) 55%, transparent);
+  box-shadow: 0 0 0 3px var(--warn-bg);
+}
+.stepActive .stepLabel {
+  color: var(--text);
+  font-weight: 600;
+}
+.stepLine {
+  flex: 1;
+  height: 2px;
+  background: var(--border);
+  margin: 0 6px;
+  min-width: 24px;
+  align-self: flex-start;
+  margin-top: 12px;
+}
+.stepLineDone {
+  background: var(--accent);
+}
+
+/* Посидовые чипы probe */
+.seedRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.seedChip {
+  appearance: none;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  width: 28px;
+  height: 26px;
+  border-radius: 7px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.seedChip[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  border-color: transparent;
+}
+.eyebrow {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-faint);
+  margin: 10px 0 4px;
+}
+.stText {
+  margin: 0;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+.answerBox {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  background: var(--surface-2);
+  padding: 10px 12px;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+.runMeta {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Строка флага (сработавший SYM) */
+.flagRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+}
+.flagRow:last-child {
+  border-bottom: none;
+}
+.flagCode {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.flagWarn {
+  color: var(--warn);
+  background: var(--warn-bg);
+}
+.flagBlock {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+.flagDetail {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+.allClear {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent);
+  font-size: 13px;
+  padding: 6px 0;
+}
+
+/* Агрегаты probe */
+.aggGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px 16px;
+}
+.aggVal {
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.aggLabel {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Вердикт критика */
+.verdictHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.confMeter {
+  height: 7px;
+  width: 120px;
+  border-radius: 999px;
+  background: var(--track);
+  overflow: hidden;
+}
+.confMeter > i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+/* Поверхность решения */
+.decisionBar {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  margin-top: 16px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.decisionInputs {
+  display: flex;
+  gap: 10px;
+  flex: 1;
+  min-width: 260px;
+  flex-wrap: wrap;
+}
+.footNote {
+  font-size: 12px;
+  color: var(--text-faint);
+  margin-top: 10px;
+}
+.backLink {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  padding: 0;
+  margin-bottom: 10px;
+}
+.backLink:hover {
+  color: var(--text);
+}

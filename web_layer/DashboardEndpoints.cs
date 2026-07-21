@@ -1,4 +1,3 @@
-using System.Text.Json;
 using WebLayer.Services;
 
 namespace WebLayer.Endpoints;
@@ -89,51 +88,17 @@ public static class DashboardEndpoints
     private static async Task<IResult> Get(
         GeneratorClient client, string path, HttpRequest req, CancellationToken ct)
     {
-        var (uid, role) = Identity(req);
+        var (uid, role) = ProxyRelay.Identity(req);
         var (status, body) = await client.ProxyAsync(HttpMethod.Get, path, uid, role, null, ct);
-        return Relay(status, body);
+        return ProxyRelay.Relay(status, body);
     }
 
     private static async Task<IResult> Send(
         HttpMethod method, GeneratorClient client, string path, HttpRequest req, CancellationToken ct)
     {
-        var (uid, role) = Identity(req);
-        var jsonBody = await ReadBodyAsync(req);
+        var (uid, role) = ProxyRelay.Identity(req);
+        var jsonBody = await ProxyRelay.ReadBodyAsync(req);
         var (status, body) = await client.ProxyAsync(method, path, uid, role, jsonBody, ct);
-        return Relay(status, body);
-    }
-
-    private static (string? uid, string? role) Identity(HttpRequest req) =>
-        (req.Headers["X-User-Id"].FirstOrDefault(), req.Headers["X-User-Role"].FirstOrDefault());
-
-    private static async Task<string?> ReadBodyAsync(HttpRequest req)
-    {
-        if (req.ContentLength is 0) return null;
-        using var reader = new StreamReader(req.Body);
-        var s = await reader.ReadToEndAsync();
-        return string.IsNullOrWhiteSpace(s) ? null : s;
-    }
-
-    /// <summary>
-    /// 2xx — тело как есть. Иначе {"detail": ...} FastAPI → {"error": ...}
-    /// web-слоя (тот же контракт, что читает фронтовый ApiError).
-    /// </summary>
-    private static IResult Relay(int status, string body)
-    {
-        if (status is >= 200 and < 300)
-            return Results.Content(body, "application/json", statusCode: status);
-
-        var error = "Ошибка сервиса";
-        try
-        {
-            using var doc = JsonDocument.Parse(body);
-            if (doc.RootElement.TryGetProperty("detail", out var d))
-                error = d.ValueKind == JsonValueKind.String ? d.GetString() ?? error : d.ToString();
-        }
-        catch
-        {
-            // тело не JSON — оставляем общий текст
-        }
-        return Results.Json(new { error }, statusCode: status);
+        return ProxyRelay.Relay(status, body);
     }
 }

@@ -91,6 +91,16 @@ class ApiFullCycleTests(unittest.TestCase):
         self.assertEqual(len(body["rounds"]), 1)
         self.assertNotIn("graph", body["rounds"][0], "раунды в ответе компактны")
 
+        # Полный probe-отчёт для веб-экрана S6: таблица прогонов и агрегаты.
+        self.assertIn("probe", body)
+        self.assertGreaterEqual(len(body["probe"]["runs"]), 3)
+        run0 = body["probe"]["runs"][0]
+        for key in ("seed", "statement", "answer", "attempts", "wall_ms", "error"):
+            self.assertIn(key, run0)
+        agg = body["probe"]["aggregates"]
+        self.assertIn("attempts_p50", agg)
+        self.assertIn("distinct_statements", agg)
+
         # 4. Утверждение: партиция constracted=4 + корпус generate.
         resp = self.client.post(f"/contour/jobs/{job_id}/approve",
                                 headers=TEACHER,

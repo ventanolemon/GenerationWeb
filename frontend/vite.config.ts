@@ -27,6 +27,18 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ""),
       },
+      // Контур — отдельный микросервис (:8001). В прямом режиме (без .NET)
+      // ходим напрямую на него со срезанным /api; в обычном режиме этот
+      // блок неактивен — web_layer сам проксирует /api/contour дальше.
+      ...(direct
+        ? {
+            "/api/contour": {
+              target: "http://localhost:8001",
+              changeOrigin: true,
+              rewrite: (path: string) => path.replace(/^\/api/, ""),
+            },
+          }
+        : {}),
       "/api": direct
         ? {
             target: "http://localhost:8000",

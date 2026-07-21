@@ -9,6 +9,8 @@ import type {
   Assignment,
   AssignmentProgress,
   ChangePasswordRequest,
+  ContourJobDetail,
+  ContourJobSummary,
   ExportRequest,
   GenerateResponse,
   Group,
@@ -319,6 +321,56 @@ export const api = {
     return request<{ deleted: number }>(`/api/assignments/${assignmentId}`, {
       method: "DELETE",
       headers: idHeaders(id),
+    });
+  },
+
+  // ─── Контур ИИ-генерации (/contour/*, teacher/admin) ─────────────────────
+
+  contourListJobs(id: Identity): Promise<{ jobs: ContourJobSummary[] }> {
+    return request<{ jobs: ContourJobSummary[] }>("/api/contour/jobs", {
+      headers: idHeaders(id),
+    });
+  },
+
+  contourGetJob(id: Identity, jobId: string): Promise<ContourJobDetail> {
+    return request<ContourJobDetail>(
+      `/api/contour/jobs/${encodeURIComponent(jobId)}`,
+      { headers: idHeaders(id) },
+    );
+  },
+
+  contourCreateJob(
+    id: Identity,
+    body: { description: string; subject_id: number; constraints?: Record<string, unknown> },
+  ): Promise<{ job_id: string; status: string }> {
+    return request<{ job_id: string; status: string }>("/api/contour/jobs", {
+      method: "POST",
+      headers: idHeaders(id),
+      body: JSON.stringify(body),
+    });
+  },
+
+  contourApprove(
+    id: Identity,
+    jobId: string,
+    body: { partition_name?: string; note?: string },
+  ): Promise<{ job_id: string; status: string; partition_id: number; corpus_deduplicated: boolean }> {
+    return request(`/api/contour/jobs/${encodeURIComponent(jobId)}/approve`, {
+      method: "POST",
+      headers: idHeaders(id),
+      body: JSON.stringify(body),
+    });
+  },
+
+  contourReject(
+    id: Identity,
+    jobId: string,
+    reason: string,
+  ): Promise<{ job_id: string; status: string }> {
+    return request(`/api/contour/jobs/${encodeURIComponent(jobId)}/reject`, {
+      method: "POST",
+      headers: idHeaders(id),
+      body: JSON.stringify({ reason }),
     });
   },
 };

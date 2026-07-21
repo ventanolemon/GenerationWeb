@@ -104,16 +104,24 @@ def get_job(job_id: str, request: Request,
     warn-флаги, summary/confidence критика, история раундов."""
     job = _visible_job(request, job_id, ident)
     probe = job.get("result_probe") or {}
-    runs = [r for r in (probe.get("runs") or []) if r.get("error") is None]
+    ok_runs = [r for r in (probe.get("runs") or []) if r.get("error") is None]
     previews = [
         {"seed": r["seed"], "statement": r["statement"], "answer": r["answer"]}
-        for r in runs[:5]
+        for r in ok_runs[:5]
     ]
     return {
         **_job_summary(job),
         "error": job.get("error"),
         "previews": previews,                       # 3–5 заданий для человека
-        "flags": (probe.get("flags") or []),        # warn-флаги SYM-проб
+        "flags": (probe.get("flags") or []),        # сработавшие SYM-флаги
+        # Полный probe-отчёт для веб-экрана S6: таблица прогонов (attempts/
+        # wall/error по seed) + агрегаты. Данные уже посчитаны воркером и
+        # лежат в job.result_probe — просто прокидываем наружу (десктоп
+        # использует previews/flags, веб — ещё и это).
+        "probe": {
+            "runs": probe.get("runs") or [],
+            "aggregates": probe.get("aggregates") or {},
+        },
         "critic": job.get("critic"),
         "rounds": [
             {k: v for k, v in rnd.items() if k != "graph"}   # компактно

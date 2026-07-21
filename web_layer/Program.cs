@@ -13,6 +13,14 @@ var generatorBaseUrl = builder.Configuration["Generator:BaseUrl"]
 var generatorTimeout = TimeSpan.FromSeconds(
     builder.Configuration.GetValue("Generator:TimeoutSeconds", 30));
 
+// contour_service — отдельный upstream (LLM-контур, :8001). Отдельный
+// BaseUrl и таймаут пощедрее: там синхронный прогон графа при approve.
+var contourBaseUrl = builder.Configuration["Contour:BaseUrl"]
+    ?? throw new InvalidOperationException(
+        "Contour:BaseUrl is not configured. Check appsettings.json.");
+var contourTimeout = TimeSpan.FromSeconds(
+    builder.Configuration.GetValue("Contour:TimeoutSeconds", 60));
+
 var corsOrigins = builder.Configuration
     .GetSection("Cors:AllowedOrigins")
     .Get<string[]>() ?? Array.Empty<string>();
@@ -40,6 +48,16 @@ builder.Services
             retryCount: 3,
             sleepDurationProvider: attempt =>
                 TimeSpan.FromMilliseconds(200 * Math.Pow(2, attempt))));
+
+// Typed HttpClient к contour_service (второй upstream). Без Polly-ретраев
+// на approve: там неидемпотентная запись партиции — повтор при таймауте
+// мог бы создать дубликат; читатели (GET) при желании переспросит фронт.
+builder.Services
+    .AddHttpClient<ContourClient>(http =>
+    {
+        http.BaseAddress = new Uri(contourBaseUrl);
+        http.Timeout = contourTimeout;
+    });
 
 // CORS. Браузер ходит во Web Layer, дев-сервер Vite — на :5173.
 // Список разрешённых origin'ов хранится в appsettings (в Development
@@ -77,6 +95,7 @@ app.MapPartitionEndpoints();
 app.MapStatsEndpoints();
 app.MapMetaEndpoints();
 app.MapDashboardEndpoints();
+app.MapContourEndpoints();
 
 // Корневой эндпоинт — подсказка, что и где
 app.MapGet("/", () => Results.Json(new
