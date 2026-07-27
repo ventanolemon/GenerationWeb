@@ -151,25 +151,11 @@ def _m001_rbac_foundation(conn: sqlite3.Connection) -> None:
             refresh_token_hash TEXT NOT NULL DEFAULT '',
             last_sync_at       REAL NOT NULL DEFAULT 0
         );
-        CREATE TABLE IF NOT EXISTS contour_jobs (
-            id           TEXT PRIMARY KEY,
-            created_by   TEXT,
-            subject_id   INTEGER,
-            status       TEXT NOT NULL DEFAULT 'queued',
-            rounds       TEXT NOT NULL DEFAULT '[]',
-            result_graph TEXT,
-            created_at   REAL NOT NULL DEFAULT 0,
-            updated_at   REAL NOT NULL DEFAULT 0
-        );
-        CREATE TABLE IF NOT EXISTS corpus_records (
-            id         TEXT PRIMARY KEY,
-            job_id     TEXT,
-            kind       TEXT NOT NULL,
-            record     TEXT NOT NULL,
-            graph_hash TEXT,
-            created_at REAL NOT NULL DEFAULT 0
-        );
-        CREATE INDEX IF NOT EXISTS ix_corpus_graph_hash ON corpus_records(graph_hash);
+        -- contour_jobs / corpus_records здесь СОЗНАТЕЛЬНО не создаются:
+        -- владелец их схемы — contour_service/migrations/001_contour.sql.
+        -- Ядро эти таблицы не читает и не пишет, а «скелетная» копия молча
+        -- выигрывала гонку CREATE TABLE IF NOT EXISTS и ломала contour_service
+        -- (no such column: description). Уборка старых копий — миграция 004.
         CREATE INDEX IF NOT EXISTS ix_attempts_user     ON attempts(user_id);
         CREATE INDEX IF NOT EXISTS ix_partitions_subject ON Partitions(subject_id);
     """)
@@ -264,11 +250,85 @@ def _m003_groups_from_labels(conn: sqlite3.Connection) -> None:
             )
 
 
+# ---------- Миграция 004: таблицы контура — единственный владелец ----------
+
+# Колонки, по наличию которых узнаётся канон contour_service (их не было в
+# скелетной копии, которую до этой миграции создавала _m001).
+_CANON_MARKER = {"contour_jobs": "description", "corpus_records": "job_id"}
+
+
+def _m004_drop_shadow_contour_tables(conn: sqlite3.Connection) -> None:
+    """
+    Убрать «скелетные» contour_jobs/corpus_records, созданные ранней _m001.
+
+    Схему этих таблиц описывает contour_service/migrations/001_contour.sql, и
+    там она богаче: description, constraints, result_probe, critic, error,
+    locked_by/locked_at, FK corpus_records→contour_jobs и UNIQUE-индекс
+    дедупа (kind, graph_hash). Обе стороны создавали таблицы через
+    CREATE TABLE IF NOT EXISTS, поэтому выигрывал тот, кто открыл файл
+    первым: если это было ядро, contour_service падал на первом же enqueue
+    («table contour_jobs has no column named description»).
+
+    Ядро эти таблицы не читает и не пишет — значит владелец один,
+    contour_service. Здесь просто освобождаем имена, чтобы его миграция
+    отработала на чистом месте.
+
+    Данные не теряются: непустая скелетная таблица переименовывается в
+    *_legacy_001 (её нельзя было наполнить контуром, но БД пользователя мы
+    не удаляем молча); пустая — удаляется.
+    """
+    for table in ("corpus_records", "contour_jobs"):   # сначала зависимая
+        if not _table_exists(conn, table):
+            continue
+        if _has_column(conn, table, _CANON_MARKER[table]):
+            continue                                   # уже канон — не трогаем
+        rows = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+        if rows:
+            conn.execute(f"ALTER TABLE {table} RENAME TO {table}_legacy_001")
+        else:
+            conn.execute(f"DROP TABLE {table}")
+    # индекс скелетной копии уезжает вместе с таблицей, но на всякий случай
+    conn.execute("DROP INDEX IF EXISTS ix_corpus_graph_hash")
+
+
+# ---------- Миграция 005: индексы горячих путей ----------
+
+def _m005_hot_path_indexes(conn: sqlite3.Connection) -> None:
+    """
+    Индексы под фактические запросы сервисов. До неё EXPLAIN QUERY PLAN давал
+    SCAN на всех четырёх:
+
+      * attempts(partition_id)   — выборка аналитики (analytics_api._load);
+      * attempts(assignment_id)  — прогресс по домашке;
+      * group_members(user_id)   — «мои группы» (PK (group_id,user_id) не
+                                   помогает при поиске по второму столбцу);
+      * assignments(group_id)    — домашки группы;
+      * assignments(assigned_by) — домашки преподавателя;
+      * teacher_groups(group_id) — кто ведёт группу (та же беда с PK).
+    """
+    conn.executescript("""
+        CREATE INDEX IF NOT EXISTS ix_attempts_partition
+            ON attempts(partition_id);
+        CREATE INDEX IF NOT EXISTS ix_attempts_assignment
+            ON attempts(assignment_id);
+        CREATE INDEX IF NOT EXISTS ix_group_members_user
+            ON group_members(user_id);
+        CREATE INDEX IF NOT EXISTS ix_assignments_group
+            ON assignments(group_id);
+        CREATE INDEX IF NOT EXISTS ix_assignments_author
+            ON assignments(assigned_by);
+        CREATE INDEX IF NOT EXISTS ix_teacher_groups_group
+            ON teacher_groups(group_id);
+    """)
+
+
 # Порядок применения. Добавлять новые кортежами (version, name, fn).
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = [
     (1, "rbac_foundation", _m001_rbac_foundation),
     (2, "sync_protocol", _m002_sync_protocol),
     (3, "groups_from_labels", _m003_groups_from_labels),
+    (4, "drop_shadow_contour_tables", _m004_drop_shadow_contour_tables),
+    (5, "hot_path_indexes", _m005_hot_path_indexes),
 ]
 
 

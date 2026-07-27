@@ -169,6 +169,15 @@ class Repository:
                 )
                 self.db_path.unlink()
         with sqlite3.connect(str(self.db_path)) as conn:
+            # WAL: на файле работают три процесса (веб-сервис, десктоп,
+            # contour_service). В журнале по умолчанию (delete) читатель и
+            # писатель блокируют друг друга — с WAL читатели не ждут писателя.
+            # Режим хранится в самом файле: достаточно выставить один раз.
+            # На сетевых ФС WAL не поддерживается — тогда остаёмся на delete.
+            try:
+                conn.execute("PRAGMA journal_mode = WAL")
+            except sqlite3.DatabaseError:
+                pass
             conn.executescript("""
                 CREATE TABLE IF NOT EXISTS Subjects (
                     id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -191,6 +200,10 @@ class Repository:
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
         conn = sqlite3.connect(str(self.db_path))
+        # foreign_keys — настройка соединения, а не файла: без неё SQLite
+        # разбирает объявленные REFERENCES, но не проверяет их, и в БД
+        # копятся висячие ссылки. Ставим на каждом соединении.
+        conn.execute("PRAGMA foreign_keys = ON")
         try:
             yield conn
         finally:

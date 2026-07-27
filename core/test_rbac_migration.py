@@ -46,8 +46,12 @@ def _tmp_db() -> str:
 _EXPECTED_TABLES = {
     "users", "Subjects", "Partitions", "groups", "group_members",
     "teacher_groups", "assignments", "attempts", "devices",
-    "contour_jobs", "corpus_records", "schema_migrations",
+    "schema_migrations",
 }
+
+# Таблицы контура ядро не создаёт: их схемой владеет contour_service
+# (миграция 004). Раньше ядро заводило скелетные копии и ломало сервис.
+_NOT_OWNED_BY_CORE = {"contour_jobs", "corpus_records"}
 
 
 def test_fresh_db_and_idempotency():
@@ -61,6 +65,8 @@ def test_fresh_db_and_idempotency():
                 )
             }
             assert _EXPECTED_TABLES <= tables, f"нет таблиц: {_EXPECTED_TABLES - tables}"
+            stray = _NOT_OWNED_BY_CORE & tables
+            assert not stray, f"ядро снова создаёт таблицы контура: {stray}"
             ucols = {r[1] for r in conn.execute("PRAGMA table_info(users)")}
             assert {"id", "role", "password_hash"} <= ucols, ucols
             scols = {r[1] for r in conn.execute("PRAGMA table_info(Subjects)")}
