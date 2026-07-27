@@ -1,0 +1,29 @@
+# Зависимости Python-части монорепо (generator_service, contour_service, core).
+#     pip install -r requirements.txt
+#
+# Версии — те, на которых прогоняются тесты. Фронтенд ставится отдельно
+# (cd frontend && npm install), web_layer — через dotnet restore.
+
+# ── Веб-сервисы ──────────────────────────────────────────────────────────────
+fastapi==0.139.0
+pydantic==2.13.4
+uvicorn[standard]>=0.30          # ASGI-сервер: uvicorn generator_service.main:app
+httpx==0.28.1                    # клиент в тестах API
+
+# ── Рендеринг заданий ────────────────────────────────────────────────────────
+# core/rendering.py тянет Qt даже на сервере (общий код с десктопом): на
+# headless-машине нужен QT_QPA_PLATFORM=offscreen.
+PyQt6==6.11.0
+matplotlib==3.11.0
+pillow==12.3.0
+sympy==1.14.0
+python-docx==1.2.0               # generator_service/routers/export.py
+
+# ── Опционально ──────────────────────────────────────────────────────────────
+# Боевой LLM-провайдер контура (без него CONTOUR_PROVIDER=mock — так гоняются
+# тесты и работает демо).
+# anthropic>=0.40
+#
+# Postgres вместо SQLite для очереди контура (CONTOUR_PG_DSN),
+# FOR UPDATE SKIP LOCKED в queue.PostgresJobQueue.
+# psycopg[binary]>=3.1
