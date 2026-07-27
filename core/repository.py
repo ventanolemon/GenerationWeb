@@ -156,18 +156,40 @@ class Repository:
 
     def _init_db(self) -> None:
         """Создаёт файл БД и все таблицы, если они отсутствуют.
-        Если файл повреждён — удаляет его и пересоздаёт."""
+        Повреждённый файл отводится в резервную копию и создаётся заново."""
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        if self.db_path.exists():
-            try:
-                with sqlite3.connect(str(self.db_path)) as conn:
-                    conn.execute("PRAGMA integrity_check")
-            except sqlite3.DatabaseError:
-                import logging
-                logging.getLogger(__name__).warning(
-                    "Database %s is malformed, recreating…", self.db_path
-                )
-                self.db_path.unlink()
+        if self.db_path.exists() and not self._is_healthy():
+            # Раньше здесь был unlink() — данные пользователя удалялись
+            # безвозвратно, в том числе если открыть файл помешала
+            # временная причина (права, блокировка другим процессом).
+            # Отводим в сторону: восстановить можно, а старт не блокируем.
+            import logging
+            backup = self.db_path.with_name(
+                f"{self.db_path.name}.bak-{int(time.time())}")
+            self.db_path.rename(backup)
+            logging.getLogger(__name__).warning(
+                "БД %s повреждена; сохранена как %s, создаётся новая.",
+                self.db_path, backup,
+            )
+        self._create_schema()
+
+    def _is_healthy(self) -> bool:
+        """
+        Проходит ли файл PRAGMA integrity_check.
+
+        Важно читать результат, а не только ловить исключение: повреждение
+        внутри читаемого файла integrity_check возвращает строками, ничего
+        не выбрасывая, — прежняя проверка такие БД считала здоровыми.
+        """
+        try:
+            with sqlite3.connect(str(self.db_path)) as conn:
+                rows = conn.execute("PRAGMA integrity_check").fetchall()
+        except sqlite3.DatabaseError:
+            return False        # файл не открывается как БД
+        return len(rows) == 1 and rows[0][0] == "ok"
+
+    def _create_schema(self) -> None:
+        """Создать таблицы и прогнать миграции. Идемпотентно."""
         with sqlite3.connect(str(self.db_path)) as conn:
             # WAL: на файле работают три процесса (веб-сервис, десктоп,
             # contour_service). В журнале по умолчанию (delete) читатель и

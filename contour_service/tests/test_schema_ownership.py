@@ -23,6 +23,7 @@ import sqlite3
 import sys
 import tempfile
 import traceback
+from pathlib import Path
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if _ROOT not in sys.path:
@@ -83,7 +84,13 @@ def test_contour_works_on_core_created_db():
 
 
 def test_core_does_not_create_contour_tables():
-    """Ядро больше не заводит таблицы контура — владелец схемы один."""
+    """
+    Ядро больше не заводит таблицы контура — владелец схемы один.
+
+    Проверяем и обратное: свои таблицы ядро создать обязано. Без этого
+    тест зелёный и у полностью сломанного Repository, который не создаёт
+    вообще ничего (именно так и случилось при рефакторинге _init_db).
+    """
     path = _tmp_db()
     try:
         Repository(path)
@@ -92,6 +99,9 @@ def test_core_does_not_create_contour_tables():
                 r[0] for r in conn.execute(
                     "SELECT name FROM sqlite_master WHERE type='table'")
             }
+        own = {"users", "Subjects", "Partitions", "groups", "attempts",
+               "schema_migrations"}
+        assert own <= tables, f"ядро не создало свои таблицы: {own - tables}"
         assert "contour_jobs" not in tables, "ядро снова создаёт contour_jobs"
         assert "corpus_records" not in tables, "ядро снова создаёт corpus_records"
     finally:
@@ -201,12 +211,65 @@ def test_hot_path_indexes_and_pragmas():
         _cleanup(path)
 
 
+def test_corrupt_db_is_backed_up_not_deleted():
+    """
+    Нечитаемый файл БД отводится в *.bak-<ts>, а не удаляется: раньше
+    Repository._init_db звал unlink() и данные пользователя пропадали
+    безвозвратно — в том числе если открыть файл помешала временная
+    причина. Приложение при этом всё равно должно стартовать.
+    """
+    path = _tmp_db()
+    try:
+        with open(path, "wb") as f:            # не SQLite, а мусор
+            f.write(b"\x00\x01 not a database at all")
+        Repository(path)                       # не должен падать
+
+        backups = list(Path(path).parent.glob(Path(path).name + ".bak-*"))
+        assert backups, "повреждённый файл удалён, а не сохранён"
+        assert backups[0].read_bytes().startswith(b"\x00\x01"), \
+            "в резервной копии не исходные байты"
+
+        # На месте — новая рабочая БД.
+        with sqlite3.connect(path) as conn:
+            tables = {r[0] for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'")}
+        assert "users" in tables, tables
+        for b in backups:
+            b.unlink()
+    finally:
+        _cleanup(path)
+
+
+def test_integrity_check_result_is_read():
+    """
+    Здоровье определяется по РЕЗУЛЬТАТУ integrity_check, а не по отсутствию
+    исключения: файл с корректной сигнатурой SQLite, но битым содержимым
+    открывается без ошибки, и прежняя проверка считала его здоровым.
+    """
+    path = _tmp_db()
+    broken = _tmp_db()
+    try:
+        repo = Repository(path)
+        assert repo._is_healthy() is True, "здоровая БД признана битой"  # noqa: SLF001
+
+        with open(broken, "wb") as f:
+            f.write(b"SQLite format 3\x00" + b"\x00" * 4096)
+        repo.db_path = Path(broken)          # _is_healthy смотрит только сюда
+        assert repo._is_healthy() is False, \
+            "битый файл признан здоровым — результат проверки не читается"  # noqa: SLF001
+    finally:
+        _cleanup(path)
+        _cleanup(broken)
+
+
 _TESTS = [
     test_contour_works_on_core_created_db,
     test_core_does_not_create_contour_tables,
     test_legacy_skeleton_is_migrated_away,
     test_corpus_dedup_index_present,
     test_hot_path_indexes_and_pragmas,
+    test_corrupt_db_is_backed_up_not_deleted,
+    test_integrity_check_result_is_read,
 ]
 
 
