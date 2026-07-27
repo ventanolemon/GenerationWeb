@@ -4,14 +4,13 @@
 
     python -m scripts.seed_demo            # из корня монорепо
 
-Что наполняется:
-  * Основная БД (resources/users_database.db, через Repository):
-    пользователи с ролями (admin/teacher/student), группы и членство,
-    попытки за 30 дней (для аналитики) и домашки (assignments).
-  * БД контура (resources/contour_demo.db, через contour_service):
-    джобы контура в разных статусах + записи корпуса + курация.
-    Чтобы contour_service работал на этих данных, поднимайте его с
-    CONTOUR_DB_PATH=resources/contour_demo.db (см. вывод скрипта).
+Что наполняется (всё — в одну resources/users_database.db, как и в бою):
+  * Через Repository: пользователи с ролями (admin/teacher/student), группы
+    и членство, попытки за 30 дней (для аналитики) и домашки (assignments).
+  * Через contour_service: джобы контура в разных статусах + записи корпуса
+    + курация. Отдельная БД под контур больше не нужна: сервис по умолчанию
+    садится на ту же SQLite (ContourConfig.db_path = const.DB_PATH), а
+    схемой contour_jobs/corpus_records с миграции 004 владеет только он.
 
 Демо-логины (пароли): root / elena_admin — admin (admin123);
 alla / boris — teacher (teach123); s_* — student (stud123).
@@ -30,7 +29,7 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from const import DB_PATH, RESOURCES_DIR  # noqa: E402
+from const import DB_PATH  # noqa: E402
 from core import Repository  # noqa: E402
 
 DAY = 86400.0
@@ -140,8 +139,8 @@ def seed_contour() -> None:
     from core.graph_probe import probe_graph
     from exercises.graph_examples import EXAMPLES
 
-    contour_db = RESOURCES_DIR / "contour_demo.db"
-    conn = connect_sqlite(contour_db)
+    # Та же БД, что у остального монорепо — дефолт contour_service.
+    conn = connect_sqlite(DB_PATH)
     apply_migrations(conn)
     queue = SqliteJobQueue(conn)
     corpus = CorpusStore(conn)
@@ -238,11 +237,9 @@ def seed_contour() -> None:
         corpus.set_curation(ids[-1], "excluded", comment="repair-дубль паттерна", curator="root")
 
     summary = corpus.curation_summary()
-    print(f"[contour] БД: {contour_db}")
+    print(f"[contour] БД: {DB_PATH} (дефолт contour_service — доп. env не нужен)")
     print(f"[contour] джоб создано: {made}; корпус: {summary['total']} "
           f"(gold={summary['gold']}, excluded={summary['excluded']})")
-    print(f"[contour] запускать contour_service с "
-          f"CONTOUR_DB_PATH={contour_db}")
 
 
 if __name__ == "__main__":
