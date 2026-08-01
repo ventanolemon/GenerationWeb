@@ -97,6 +97,13 @@ def push(
     Принять пуш устройства. Порядок обработки не важен для корректности
     (телеметрия и сущности независимы), но сущности проверяются по одной:
     конфликт одной не блокирует приём остальных.
+
+    Права на запись проверяются у КАЖДОЙ сущности
+    (`_authorize_entity_change`), и граница проходит по классу данных, а не
+    по эндпоинту: телеметрию шлёт кто угодно, включая гостя без логина, —
+    её и порождает решающий задачи; авторский контент правит только
+    опознанный teacher/admin и только не-чужой. Отказ приезжает конфликтом
+    с `forbidden: true`, а не молчанием.
     """
     now = time.time()
     attempts = attempts or []
@@ -142,7 +149,7 @@ def push(
     accepted: list[dict] = []
     conflicts: list[dict] = []
     for change in changed_entities:
-        result = _apply_entity_change(repo, change, now)
+        result = _apply_entity_change(repo, change, now, user_id, role)
         if result.get("conflict"):
             conflicts.append(result["conflict"])
         else:
@@ -190,7 +197,70 @@ def _apply_word_stat_delta(repo: Repository, user_key: str, d: dict) -> None:
         conn.commit()
 
 
-def _apply_entity_change(repo: Repository, change: dict, now: float) -> dict:
+def _authorize_entity_change(
+    repo: Repository, kind: str, row: Optional[dict], data: dict,
+    actor: Optional[str], role: str,
+) -> Optional[str]:
+    """
+    Вправе ли актор писать эту сущность. None — вправе; строка — причина
+    отказа (уедет клиенту конфликтом, см. `_apply_entity_change`).
+
+    Три правила, по убыванию строгости:
+
+    1. **Правка контента требует идентичности.** Телеметрию (attempts,
+       word_stats) аноним слать вправе — её и шлёт гость, решающий задачи;
+       но менять общий каталог устройство без логина не может. Это ровно
+       та дыра, которую открывала выдача чужих предметов: теперь предмет
+       другого владельца доезжает до преподавателя, и без этой проверки
+       доезжал бы вместе с правом его переписать.
+    2. **Роль.** Контент правят teacher и admin (RBAC §3); admin — что
+       угодно, и дальше его не проверяем.
+    3. **Чужое — нельзя.** Предмет с владельцем, отличным от актора,
+       преподавателю недоступен на запись, каким бы ни был набор выдач:
+       выдача даёт видеть, а не переписывать. Партиция прав не имеет
+       собственных — они выводятся из предмета (одна точка истины, RBAC §3),
+       поэтому при переносе партиции проверяются ОБА предмета, старый и
+       новый.
+
+    Встроенные предметы (`owner_user_id IS NULL`) остаются доступными
+    преподавателю на запись. Это сознательное отступление от таблицы прав
+    RBAC (там встроенные — admin-only): сегодня это общий каталог, в который
+    преподаватели складывают свои разделы через `POST /partitions`, и
+    запрет здесь развёл бы два пути записи (веб — можно, синк — нельзя),
+    сломав десктопу ровно тот сценарий, ради которого он существует.
+    Сужение до admin-only — отдельное продуктовое решение, и делать его
+    молча, попутно с закрытием дыры, неправильно.
+    """
+    if not actor:
+        return ("Правка контента требует идентичности (X-User-Id): "
+                "анонимное устройство не меняет общий каталог.")
+    if role not in ("teacher", "admin"):
+        return f"Роль {role!r} не правит контент — только teacher и admin."
+    if role == "admin":
+        return None
+
+    subject_ids: set[int] = set()
+    if kind == "subject":
+        if row is not None:
+            subject_ids.add(int(row["id"]))
+    else:
+        if row is not None:
+            subject_ids.add(int(row["subject_id"]))
+        if data.get("subject_id") is not None:
+            subject_ids.add(int(data["subject_id"]))
+
+    for subject_id in subject_ids:
+        owner = repo.subject_owner(subject_id)
+        if owner is not None and owner != actor:
+            return (f"Предмет #{subject_id} принадлежит другому владельцу; "
+                    f"выдача даёт право видеть, а не править.")
+    return None
+
+
+def _apply_entity_change(
+    repo: Repository, change: dict, now: float,
+    actor: Optional[str] = None, role: str = "teacher",
+) -> dict:
     """
     Одна сущность из changed_entities:
       {kind: subject|partition, id, base_version, deleted?, data{...},
@@ -199,6 +269,12 @@ def _apply_entity_change(repo: Repository, change: dict, now: float) -> dict:
     получает новое глобально-монотонное значение); иначе конфликт с ОБЕИМИ
     версиями целиком. Новая сущность (id null / не найдена) — создание,
     сервер назначает id, клиент перепривязывает по local_ref.
+
+    Отказ по правам возвращается ТЕМ ЖЕ конфликтом с полем `error` (плюс
+    `forbidden: true`), что и неизвестный kind: контракт с клиентом от этого
+    не меняется — он уже складывает такие ответы в стэш конфликтов, где их
+    видно человеку. Молча проглотить отказ нельзя: правка осталась бы на
+    устройстве, а пользователь считал бы её уехавшей.
     """
     kind = str(change.get("kind") or "")
     table = _ENTITY_TABLES.get(kind)
@@ -218,9 +294,19 @@ def _apply_entity_change(repo: Repository, change: dict, now: float) -> dict:
         if entity_id is not None:
             row = _fetch_entity(conn, kind, int(entity_id))
 
+        denial = _authorize_entity_change(repo, kind, row, data, actor, role)
+        if denial is not None:
+            return {"conflict": {
+                "kind": kind, "id": change.get("id"),
+                "error": denial, "forbidden": True,
+                "mine": data if not change.get("deleted") else {"deleted": True},
+                "theirs": row,
+            }}
+
         if row is None:
             # Создание (офлайн-созданная сущность): сервер назначает id.
-            new_id, new_version = _insert_entity(conn, repo, kind, data, now)
+            new_id, new_version = _insert_entity(conn, repo, kind, data, now,
+                                                 actor, role)
             conn.commit()
             return {"accepted": {
                 "kind": kind, "id": new_id, "local_ref": local_ref,
@@ -298,16 +384,25 @@ def _dump_params(value: Any) -> str:
     return json.dumps(value or {}, ensure_ascii=False)
 
 
-def _insert_entity(conn, repo: Repository, kind: str, data: dict, now: float):
+def _insert_entity(conn, repo: Repository, kind: str, data: dict, now: float,
+                   actor: Optional[str] = None, role: str = "teacher"):
     if kind == "subject":
         ver = repo._next_row_version(conn, "Subjects")  # noqa: SLF001
+        # Владельца назначает СЕРВЕР, а не клиент. Присланный owner_user_id
+        # — это заявка, а не факт: устройство могло объявить предмет чужим
+        # (подставить владельцем другого) или системным (owner NULL —
+        # такие видят все, а правят одни админы). Полю с той стороны
+        # доверять нечему, поэтому владельцем становится автор запроса.
+        # Админу поле оставлено: перенос владения и заведение системных
+        # предметов — законные админские операции.
+        owner = data.get("owner_user_id") if role == "admin" else actor
         cur = conn.execute(
             "INSERT INTO Subjects (subject_name, pra_subject, owner_user_id, "
             " row_version, updated_at) VALUES (?, ?, ?, ?, ?)",
             (
                 str(data.get("subject_name") or ""),
                 str(data.get("pra_subject") or data.get("subject_name") or ""),
-                data.get("owner_user_id"),
+                owner,
                 ver, now,
             ),
         )

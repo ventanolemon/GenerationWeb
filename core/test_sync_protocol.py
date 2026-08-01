@@ -28,6 +28,13 @@ from core import sync_api  # noqa: E402
 from core.repository import Repository  # noqa: E402
 
 
+# Правка авторского контента требует опознанного teacher/admin
+# (sync_api._authorize_entity_change): аноним шлёт телеметрию, но не меняет
+# общий каталог. Тесты ниже проверяют механику протокола, а не права, —
+# поэтому пушат от лица преподавателя.
+_ACTOR = {"user_id": "alla", "role": "teacher"}
+
+
 def _pull_all(repo, device_id, cursors=None, limit=200, user_id=None):
     """pull до пустоты (клиентский цикл §4), вернуть агрегат."""
     cursors = dict(cursors or {})
@@ -86,7 +93,7 @@ class ConflictTests(SyncTestBase):
                                                       "edges": []}}}
 
         # Устройство A успевает первым — принято, версия выросла.
-        out_a = sync_api.push(self.repo, device_id="dev-a", user_id=None,
+        out_a = sync_api.push(self.repo, device_id="dev-a", **_ACTOR,
                               changed_entities=[change_a])
         self.assertEqual(len(out_a["accepted"]), 1)
         self.assertEqual(out_a["conflicts"], [])
@@ -94,7 +101,7 @@ class ConflictTests(SyncTestBase):
         self.assertGreater(ver_after_a, base)
 
         # Устройство B с тем же base_version — конфликт, НЕ перезапись.
-        out_b = sync_api.push(self.repo, device_id="dev-b", user_id=None,
+        out_b = sync_api.push(self.repo, device_id="dev-b", **_ACTOR,
                               changed_entities=[change_b])
         self.assertEqual(out_b["accepted"], [])
         self.assertEqual(len(out_b["conflicts"]), 1)
@@ -113,7 +120,7 @@ class ConflictTests(SyncTestBase):
     def test_matching_base_version_accepts_and_bumps(self):
         pid = self._partition()
         base = self._row_version(pid)
-        out = sync_api.push(self.repo, device_id="dev-a", user_id=None,
+        out = sync_api.push(self.repo, device_id="dev-a", **_ACTOR,
                             changed_entities=[{
                                 "kind": "partition", "id": pid,
                                 "base_version": base,
@@ -125,7 +132,7 @@ class ConflictTests(SyncTestBase):
         self.assertEqual(self.repo.get_partition(pid).name, "Переименовано")
 
     def test_offline_created_entity_gets_server_id_via_local_ref(self):
-        out = sync_api.push(self.repo, device_id="dev-a", user_id=None,
+        out = sync_api.push(self.repo, device_id="dev-a", **_ACTOR,
                             changed_entities=[{
                                 "kind": "partition", "id": None,
                                 "base_version": 0, "local_ref": "tmp-17",
@@ -144,7 +151,7 @@ class ConflictTests(SyncTestBase):
         # Кто-то отредактировал позже…
         self._partition(params={"nodes": [{"id": "x"}], "edges": []})
         # …а устройство пытается удалить от старой версии.
-        out = sync_api.push(self.repo, device_id="dev-a", user_id=None,
+        out = sync_api.push(self.repo, device_id="dev-a", **_ACTOR,
                             changed_entities=[{
                                 "kind": "partition", "id": pid,
                                 "base_version": base, "deleted": True}])
@@ -178,7 +185,7 @@ class TombstoneTests(SyncTestBase):
     def test_delete_via_push_tombstones_row(self):
         pid = self._partition()
         base = self._row_version(pid)
-        out = sync_api.push(self.repo, device_id="dev-a", user_id=None,
+        out = sync_api.push(self.repo, device_id="dev-a", **_ACTOR,
                             changed_entities=[{
                                 "kind": "partition", "id": pid,
                                 "base_version": base, "deleted": True}])
@@ -314,6 +321,134 @@ class ScopeTests(SyncTestBase):
     def test_pull_reports_catalog_version_resource(self):
         out = sync_api.pull(self.repo, device_id="d", user_id=None, cursors={})
         self.assertTrue(out["resources"]["catalog_version"])
+
+
+class PushAuthorizationTests(SyncTestBase):
+    """
+    Права на запись в push. Граница проходит по классу данных: телеметрия —
+    кому угодно, авторский контент — опознанному teacher/admin и только
+    не-чужой. До этого push не проверял ничего, и выдача чужого предмета
+    (docs/subject_grants.md) превращала право видеть в право переписывать.
+    """
+
+    def _push(self, change, **identity):
+        return sync_api.push(self.repo, device_id="d",
+                             changed_entities=[change], **identity)
+
+    def _edit(self, pid, name="Переименовано"):
+        return {"kind": "partition", "id": pid,
+                "base_version": self._row_version(pid),
+                "data": {"subject_id": self.subject_id,
+                         "partition_name": name, "constracted": 0,
+                         "generation_parametrs": {}}}
+
+    def test_anonymous_device_cannot_touch_catalog(self):
+        pid = self._partition()
+        out = self._push(self._edit(pid), user_id=None)
+        self.assertEqual(out["accepted"], [])
+        self.assertTrue(out["conflicts"][0]["forbidden"])
+        self.assertIn("идентичности", out["conflicts"][0]["error"])
+        self.assertEqual(self.repo.get_partition(pid).name, "Сила F=ma")
+
+    def test_anonymous_device_may_still_send_telemetry(self):
+        # Гость решает задачи — его попытки обязаны доезжать.
+        pid = self._partition()
+        out = sync_api.push(self.repo, device_id="d", user_id=None,
+                            attempts=[{"client_uuid": "u-1",
+                                       "partition_id": pid, "correct": True}])
+        self.assertEqual(out["attempts_new"], 1)
+
+    def test_student_cannot_edit_content(self):
+        pid = self._partition()
+        out = self._push(self._edit(pid), user_id="stud", role="student")
+        self.assertTrue(out["conflicts"][0]["forbidden"])
+
+    def test_teacher_cannot_edit_another_owners_subject(self):
+        # Ровно сценарий выдачи: предмет Бориса виден Алле, но не правится.
+        foreign = self.repo.create_subject("Курс Бориса", "Курс Бориса",
+                                           owner_user_id="boris")
+        pid = self.repo.upsert_partition(foreign, "Раздел Бориса", 0, {})
+        change = {"kind": "partition", "id": pid,
+                  "base_version": self._row_version(pid),
+                  "data": {"subject_id": foreign,
+                           "partition_name": "Захвачено", "constracted": 0,
+                           "generation_parametrs": {}}}
+        out = self._push(change, user_id="alla", role="teacher")
+        self.assertTrue(out["conflicts"][0]["forbidden"])
+        self.assertEqual(self.repo.get_partition(pid).name, "Раздел Бориса")
+
+    def test_teacher_cannot_move_partition_into_foreign_subject(self):
+        # Проверяются ОБА предмета: иначе перенос был бы дырой в обход
+        # проверки исходного.
+        foreign = self.repo.create_subject("Чужой", "Чужой",
+                                           owner_user_id="boris")
+        pid = self._partition()
+        change = self._edit(pid)
+        change["data"]["subject_id"] = foreign
+        out = self._push(change, user_id="alla", role="teacher")
+        self.assertTrue(out["conflicts"][0]["forbidden"])
+
+    def test_teacher_edits_own_and_builtin_content(self):
+        # Встроенные предметы (owner NULL) — общий каталог, куда
+        # преподаватели складывают разделы; этот путь не сужаем.
+        pid = self._partition()
+        out = self._push(self._edit(pid), user_id="alla", role="teacher")
+        self.assertEqual(len(out["accepted"]), 1)
+        self.assertEqual(self.repo.get_partition(pid).name, "Переименовано")
+
+    def test_admin_edits_anything(self):
+        foreign = self.repo.create_subject("Чужой", "Чужой",
+                                           owner_user_id="boris")
+        pid = self.repo.upsert_partition(foreign, "Раздел", 0, {})
+        change = {"kind": "partition", "id": pid,
+                  "base_version": self._row_version(pid),
+                  "data": {"subject_id": foreign, "partition_name": "Правка",
+                           "constracted": 0, "generation_parametrs": {}}}
+        out = self._push(change, user_id="root", role="admin")
+        self.assertEqual(len(out["accepted"]), 1)
+
+    def test_created_subject_belongs_to_its_author_not_to_claimed_owner(self):
+        # Клиент заявляет чужого владельца — сервер ставит автора запроса.
+        out = self._push({"kind": "subject", "id": None, "base_version": 0,
+                          "data": {"subject_name": "Мой курс",
+                                   "owner_user_id": "boris"}},
+                         user_id="alla", role="teacher")
+        self.assertEqual(self.repo.subject_owner(out["accepted"][0]["id"]),
+                         "alla")
+
+    def test_teacher_cannot_forge_a_system_subject(self):
+        # owner NULL — системный предмет: виден всем, правится админами.
+        out = self._push({"kind": "subject", "id": None, "base_version": 0,
+                          "data": {"subject_name": "Псевдо-системный",
+                                   "owner_user_id": None}},
+                         user_id="alla", role="teacher")
+        self.assertEqual(self.repo.subject_owner(out["accepted"][0]["id"]),
+                         "alla")
+
+    def test_admin_may_set_owner_explicitly(self):
+        out = self._push({"kind": "subject", "id": None, "base_version": 0,
+                          "data": {"subject_name": "Системный",
+                                   "owner_user_id": None}},
+                         user_id="root", role="admin")
+        self.assertIsNone(self.repo.subject_owner(out["accepted"][0]["id"]))
+
+    def test_denial_does_not_block_the_rest_of_the_batch(self):
+        foreign = self.repo.create_subject("Чужой", "Чужой",
+                                           owner_user_id="boris")
+        foreign_pid = self.repo.upsert_partition(foreign, "Чужой раздел", 0, {})
+        mine = self._partition(name="Мой")
+        out = sync_api.push(
+            self.repo, device_id="d", user_id="alla", role="teacher",
+            changed_entities=[
+                {"kind": "partition", "id": foreign_pid,
+                 "base_version": self._row_version(foreign_pid),
+                 "data": {"subject_id": foreign, "partition_name": "Захват",
+                          "constracted": 0, "generation_parametrs": {}}},
+                self._edit(mine, name="Принято"),
+            ])
+        self.assertEqual(len(out["conflicts"]), 1)
+        self.assertEqual(len(out["accepted"]), 1)
+        self.assertEqual(self.repo.get_partition(mine).name, "Принято")
 
 
 if __name__ == "__main__":
