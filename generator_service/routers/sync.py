@@ -3,9 +3,10 @@ Offline-sync десктопа: push → pull (offline_sync_protocol.md §4).
 
   POST /sync/push  {device_id, attempts[], word_stats_deltas[], changed_entities[]}
                    → {attempts_received, attempts_new, accepted[], conflicts[]}
-  POST /sync/pull  {device_id, cursors{subjects, partitions}, limit?}
+  POST /sync/pull  {device_id, cursors{subjects, partitions}, limit?,
+                    scope_version?}
                    → {subjects[], partitions[], deleted[], new_cursors, has_more,
-                      resources{catalog_version}}
+                      resources{catalog_version}, scope_version, resync?}
 
 Логика — в core/sync_api.py (headless, как graph_api): роутер только
 адаптирует HTTP. Развилка «где живёт sync» решена в пользу generator_service:
@@ -47,6 +48,9 @@ class PullRequest(BaseModel):
     cursors: dict = Field(default_factory=dict)  # {"subjects": 42, "partitions": 107}
     limit: int = Field(default=sync_api.DEFAULT_PAGE_LIMIT, ge=1,
                        le=sync_api.MAX_PAGE_LIMIT)
+    # Известная клиенту эпоха скоупа (docs/subject_grants.md); 0 — не знает.
+    # Расхождение с серверной = сервер объявляет пересборку набора.
+    scope_version: int = Field(default=0, ge=0)
 
 
 def _identity(x_user_id: Optional[str], x_user_role: Optional[str]):
@@ -104,4 +108,5 @@ def sync_pull(
         role=role,
         cursors=body.cursors,
         limit=body.limit,
+        scope_version=body.scope_version,
     )

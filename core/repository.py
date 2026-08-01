@@ -698,6 +698,19 @@ class Repository:
                 ).fetchall()
         return [r[0] for r in rows]
 
+    def owned_subject_ids(self, user_id: Optional[str]) -> List[int]:
+        """Предметы, которыми пользователь ВЛАДЕЕТ (owner_user_id = логин).
+        Встроенные (owner IS NULL) сюда не входят — у них владельца нет."""
+        if not user_id:
+            return []
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id FROM Subjects "
+                "WHERE deleted_at IS NULL AND owner_user_id = ? ORDER BY id",
+                (user_id,),
+            ).fetchall()
+        return [r[0] for r in rows]
+
     def can_edit_subject(self, user_id: Optional[str], role: str, subject_id: int) -> bool:
         """
         Кто может редактировать предмет: admin — всегда; teacher — только свои;
@@ -981,6 +994,163 @@ class Repository:
             "summary": {"members": len(students), "attempted": attempted,
                         "solved": solved},
         }
+
+    # ---------- Выдачи предметов преподавателям ----------
+    #
+    # Модель — docs/subject_grants.md (репозиторий Generator). Админ раздаёт
+    # преподавателям доступ к предметам; ключ выдачи — логин. Здесь только
+    # чтение/запись: кто вправе раздавать и что считается корректным набором,
+    # решает core/grants_api.py (та же граница, что у assignments).
+    #
+    # scope_version («эпоха скоупа») инкрементируется при ЛЮБОМ изменении
+    # видимого пользователю набора — выдача, отзыв, смена режима умолчания,
+    # смена роли. Курсорный pull изменение прав не переносит, поэтому эпоха и
+    # есть то событие, по которому клиент пересобирает свой набор.
+
+    DEFAULT_ACCESS_VALUES = ("all", "none")
+    _DEFAULT_ACCESS_KEY = "default_subject_access"
+
+    # --- Общие серверные настройки (app_settings) ---
+
+    def get_setting(self, key: str, default: str = "") -> str:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT value FROM app_settings WHERE key = ?", (key,)
+            ).fetchone()
+        return row[0] if row else default
+
+    def set_setting(self, key: str, value: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO app_settings (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (key, value),
+            )
+            conn.commit()
+
+    def default_subject_access(self) -> str:
+        """'all' — преподаватель без выдач видит все предметы; 'none' — только
+        выданные. Неизвестное значение трактуем как 'all': умолчание
+        намеренно разрешающее, кривая настройка не должна запирать витрину."""
+        value = self.get_setting(self._DEFAULT_ACCESS_KEY, "all")
+        return value if value in self.DEFAULT_ACCESS_VALUES else "all"
+
+    def set_default_subject_access(self, value: str) -> None:
+        """Переключить режим умолчания. Атомарно с инкрементом эпохи ВСЕМ
+        преподавателям: переключение меняет видимый набор у каждого, у кого
+        нет явных выдач, и без инкремента это изменение до клиентов не
+        доедет."""
+        if value not in self.DEFAULT_ACCESS_VALUES:
+            raise ValueError(
+                f"default_subject_access: 'all'|'none', не {value!r}")
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO app_settings (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (self._DEFAULT_ACCESS_KEY, value),
+            )
+            conn.execute(
+                "UPDATE users SET scope_version = scope_version + 1 "
+                "WHERE role = 'teacher'"
+            )
+            conn.commit()
+
+    # --- Эпоха скоупа ---
+
+    def scope_version(self, login: Optional[str]) -> int:
+        """Текущая эпоха пользователя; 0 — пользователь неизвестен (гость)."""
+        if not login:
+            return 0
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT scope_version FROM users WHERE login = ?", (login,)
+            ).fetchone()
+        return int(row[0] or 0) if row else 0
+
+    def bump_scope_version(self, login: str) -> int:
+        """Инкремент эпохи одного пользователя. Возвращает новое значение
+        (0 — пользователя нет)."""
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE users SET scope_version = scope_version + 1 "
+                "WHERE login = ?",
+                (login,),
+            )
+            conn.commit()
+            row = conn.execute(
+                "SELECT scope_version FROM users WHERE login = ?", (login,)
+            ).fetchone()
+        return int(row[0] or 0) if row else 0
+
+    # --- Сами выдачи ---
+
+    def subject_grants(self, teacher_login: str) -> List[int]:
+        """Явно выданные преподавателю subject_id (удалённые предметы
+        отфильтрованы — выдача на tombstone смысла не имеет)."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT g.subject_id FROM subject_grants g "
+                "JOIN Subjects s ON s.id = g.subject_id "
+                "WHERE g.teacher_login = ? AND s.deleted_at IS NULL "
+                "ORDER BY g.subject_id",
+                (teacher_login,),
+            ).fetchall()
+        return [r[0] for r in rows]
+
+    def all_subject_grants(self) -> dict[str, List[int]]:
+        """Вся матрица разом: {логин: [subject_id]} — данные админской
+        вкладки одним запросом вместо N запросов по преподавателям."""
+        out: dict[str, List[int]] = {}
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT g.teacher_login, g.subject_id FROM subject_grants g "
+                "JOIN Subjects s ON s.id = g.subject_id "
+                "WHERE s.deleted_at IS NULL "
+                "ORDER BY g.teacher_login, g.subject_id"
+            ).fetchall()
+        for login, subject_id in rows:
+            out.setdefault(login, []).append(subject_id)
+        return out
+
+    def replace_subject_grants(
+        self, teacher_login: str, subject_ids, granted_by: str = "",
+    ) -> int:
+        """
+        Заменить набор выдач преподавателя ЦЕЛИКОМ (не дельта) и вернуть его
+        новую эпоху.
+
+        Полная замена, потому что матрица правится строкой: повторное
+        применение того же набора ничего не меняет, а отзыв не требует
+        отдельной операции. Всё одной транзакцией — иначе клиент, попавший
+        между DELETE и INSERT, увидел бы пустой набор и подчистил бы у себя
+        живой контент.
+
+        Эпоха инкрементируется ВСЕГДА, даже если набор не изменился: сверять
+        старое с новым ради экономии одного resync'а — цена сложности выше
+        выгоды, а лишняя пересборка идемпотентна.
+        """
+        ids = sorted({int(s) for s in subject_ids})
+        now = time.time()
+        with self._connect() as conn:
+            conn.execute("DELETE FROM subject_grants WHERE teacher_login = ?",
+                         (teacher_login,))
+            conn.executemany(
+                "INSERT INTO subject_grants "
+                "(teacher_login, subject_id, granted_by, granted_at) "
+                "VALUES (?, ?, ?, ?)",
+                [(teacher_login, sid, granted_by, now) for sid in ids],
+            )
+            conn.execute(
+                "UPDATE users SET scope_version = scope_version + 1 "
+                "WHERE login = ?",
+                (teacher_login,),
+            )
+            conn.commit()
+            row = conn.execute(
+                "SELECT scope_version FROM users WHERE login = ?",
+                (teacher_login,),
+            ).fetchone()
+        return int(row[0] or 0) if row else 0
 
     # ---------- WordStats ----------
 

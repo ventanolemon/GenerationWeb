@@ -49,4 +49,11 @@ def change_role(
                     "Нельзя понизить последнего администратора.")
 
     repo.set_user_role(target_login, new_role)
+    # Роль меняет видимый набор предметов (выдачи касаются только
+    # преподавателей, а RBAC-область у admin/teacher/student разная), поэтому
+    # смена роли — такое же событие scope-эпохи, как выдача и отзыв:
+    # docs/subject_grants.md. Без инкремента десктоп разжалованного
+    # преподавателя продолжил бы жить с прежним набором до первой правки
+    # контента.
+    repo.bump_scope_version(target_login)
     return {"login": target_login, "role": new_role}

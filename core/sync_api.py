@@ -23,11 +23,16 @@ import json
 import time
 from typing import Any, Optional
 
+from . import grants_api
 from .repository import Repository
 
 # Максимум строк одного типа сущности в одном ответе pull.
 DEFAULT_PAGE_LIMIT = 200
 MAX_PAGE_LIMIT = 1000
+
+# Предел страницы в режиме пересборки скоупа — фактически «без предела»,
+# см. обоснование в pull().
+_RESYNC_NO_LIMIT = 1_000_000_000
 
 _ENTITY_TABLES = {
     "subject": "Subjects",
@@ -46,10 +51,33 @@ def visible_scope(
     с identity область считает Repository.visible_subject_ids (админ — все,
     прочие — системные + свои). Область назначений студента (партиции его
     групп) подключится сюда же, когда появятся назначения.
+
+    Поверх RBAC накладываются выдачи предметов (docs/subject_grants.md).
+    Скоуп pull'а — это ровно тот механизм, которым документ withhold'ит
+    АВТОРСКИЙ контент (встроенные предметы им не удержать: десктоп
+    пересоздаёт их из своего кода на каждом старте, для них ограничение
+    UI-уровневое и живёт в клиентском фильтре витрины). Поэтому выдача
+    работает в обе стороны:
+
+      * расширяет — выданный предмет приезжает преподавателю, даже если
+        владелец другой (в этом и смысл «админ раздаёт доступ»; без этого
+        серверная половина не удерживала бы ничего, кроме встроенных);
+      * сужает — всё невыданное, включая встроенное, из скоупа уходит.
+
+    Собственные предметы преподавателя остаются в скоупе при ЛЮБОМ наборе
+    выдач. Это не косметика: клиент по завершении пересборки удаляет у себя
+    всё, чего в присланном наборе не было, и выпади оттуда авторский контент
+    преподавателя — отзыв доступа к чужому предмету стёр бы ему собственную
+    работу. Витрину его же предметов при этом всё равно ограничивает
+    клиентский фильтр, а он ничего не удаляет.
     """
     if user_id is None:
         return None
-    return repo.visible_subject_ids(user_id, role)
+    visible = repo.visible_subject_ids(user_id, role)
+    allowed = grants_api.granted_scope(repo, user_id, role)
+    if allowed is None:
+        return visible
+    return sorted(allowed | set(repo.owned_subject_ids(user_id)))
 
 
 # ---------- Push ----------
@@ -336,6 +364,7 @@ def pull(
     role: str = "teacher",
     cursors: Optional[dict] = None,
     limit: int = DEFAULT_PAGE_LIMIT,
+    scope_version: Optional[int] = None,
 ) -> dict:
     """
     Диф по курсорам: всё с row_version > cursor, включая tombstones,
@@ -346,9 +375,36 @@ def pull(
     Живые строки скоупятся областью видимости; tombstones отдаются без
     скоупа (id + версия, содержимого нет — офлайн-клиент обязан узнать об
     удалении даже если предмет выпал из его области).
+
+    **Scope-эпоха** (docs/subject_grants.md). Диф по row_version не переносит
+    изменение ПРАВ: выдали предмет — его версия старая, курсор клиента её
+    давно прошёл, предмет не приедет никогда; отозвали — версия не менялась
+    вовсе, события нет. Поэтому клиент присылает известную ему эпоху
+    (`scope_version`), а сервер при расхождении объявляет пересборку: курсоры
+    игнорируются, набор идёт с нуля, ответ помечен `resync: true`. Клиент
+    применяет страницы как обычно и по завершении удаляет у себя то, чего в
+    наборе не было.
+
+    Пересборка отдаётся ОДНИМ ответом, без пагинации, и это не оптимизация,
+    а условие корректности. Клиент в режиме пересборки шлёт пустые курсоры на
+    каждой странице (иначе он потерял бы «с нуля»), а сервер по отношению к
+    клиентам stateless и вторую страницу от первой не отличает — разбитая на
+    страницы пересборка не сошлась бы. Ограничить её вместо этого обрезанием
+    набора нельзя: клиент удаляет всё, что не приехало, и обрезанная страница
+    означала бы удаление законно выданного контента. Набор ограничен областью
+    видимости одного пользователя, а сама пересборка происходит только при
+    изменении его прав — цена приемлемая.
+
+    Пересборка возможна только для опознанного пользователя: без identity
+    скоуп и так «видно всё», и объявлять клиенту чистку было бы вредно.
     """
     cursors = cursors or {}
     limit = max(1, min(int(limit or DEFAULT_PAGE_LIMIT), MAX_PAGE_LIMIT))
+    server_scope = repo.scope_version(user_id)
+    resync = user_id is not None and int(scope_version or 0) != server_scope
+    if resync:
+        cursors = {}
+        limit = _RESYNC_NO_LIMIT
     scope = visible_scope(repo, user_id, role)
     now = time.time()
 
@@ -369,14 +425,20 @@ def pull(
         catalog_version = graph_api.catalog_version()
     except Exception:
         catalog_version = ""
-    return {
+    out = {
         "subjects": subjects,
         "partitions": partitions,
         "deleted": deleted_subj + deleted_part,
         "new_cursors": {"subjects": cur_subj, "partitions": cur_part},
         "has_more": more_subj or more_part,
         "resources": {"catalog_version": catalog_version},
+        # Эпоха отдаётся всегда: клиент сохраняет её ПОСЛЕ успешной чистки,
+        # и без неё он не смог бы закрыть пересборку.
+        "scope_version": server_scope,
     }
+    if resync:
+        out["resync"] = True
+    return out
 
 
 def _pull_subjects(conn, cursor: int, limit: int, scope):

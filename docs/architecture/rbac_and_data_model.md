@@ -177,6 +177,16 @@ erDiagram
         text refresh_token_hash
         timestamptz last_sync_at
     }
+    subject_grants {
+        text teacher_login FK "логин, не числовой id"
+        bigint subject_id FK
+        text granted_by
+        timestamptz granted_at
+    }
+    app_settings {
+        text key PK
+        text value "default_subject_access: all|none"
+    }
 
     users ||--o{ group_members : ""
     groups ||--o{ group_members : ""
@@ -193,7 +203,20 @@ erDiagram
     users ||--o{ contour_jobs : ""
     contour_jobs ||--o{ corpus_records : ""
     users ||--o{ devices : ""
+    users ||--o{ subject_grants : "выдано"
+    subjects ||--o{ subject_grants : ""
 ```
+
+**Выдачи предметов** (`subject_grants`, миграция 006) — отдельное измерение
+поверх владения: владение отвечает на «что я могу редактировать»,
+выдача — на «что мне позволено видеть». Админ раздаёт преподавателям
+доступ к предметам, преподаватель видит только выданные; умолчание
+`app_settings.default_subject_access` ('all' — преподаватель без выдач видит
+всё, 'none' — только выданное) делает выкатку безопасной: раздали, потом
+переключили в строгий режим. Ключ выдачи — логин, как у групповых связей
+после миграции 003. Доезжает изменение выдач до десктопа через scope-эпоху
+(`users.scope_version`, см. `offline_sync_protocol.md` §4); контракт с
+десктопом целиком — `Generator/docs/subject_grants.md`.
 
 Sync-колонки (`row_version`, `updated_at`, `deleted_at`) есть только у
 реплицируемых сущностей (`subjects`, `partitions`) — их семантика в

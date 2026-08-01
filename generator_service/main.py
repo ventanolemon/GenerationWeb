@@ -42,6 +42,7 @@ from .routers import auth as auth_router
 from .routers import groups as groups_router
 from .routers import export as export_router
 from .routers import generate as generate_router
+from .routers import grants as grants_router
 from .routers import graph as graph_router
 from .routers import interactive as interactive_router
 from .routers import meta as meta_router
@@ -110,6 +111,9 @@ if cors_origins_env:
 # ---------- Роутеры ----------
 
 app.include_router(auth_router.router)
+# Выше subjects_router: /subjects/grants/mine — литеральный маршрут, и пусть
+# он объявляется раньше параметрических соседей по префиксу /subjects.
+app.include_router(grants_router.router)
 app.include_router(subjects_router.router)
 app.include_router(generate_router.router)
 app.include_router(interactive_router.router)

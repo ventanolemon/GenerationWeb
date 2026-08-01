@@ -322,6 +322,68 @@ def _m005_hot_path_indexes(conn: sqlite3.Connection) -> None:
     """)
 
 
+# ---------- Миграция 006: выдачи предметов преподавателям ----------
+
+def _m006_subject_grants(conn: sqlite3.Connection) -> None:
+    """
+    Схема под docs/subject_grants.md (репозиторий Generator): админ раздаёт
+    преподавателям доступ к предметам, преподаватель видит в витрине только
+    выданные.
+
+    Три объекта, каждый — по прямому требованию документа:
+
+    1. `subject_grants` — сама выдача. Ключ — ЛОГИН, не числовой users.id:
+       логин уже канонический идентификатор во всей системе (групповые FK
+       после 003, заголовок X-User-Id, core.session десктопа), и заводить
+       здесь второй вид ключа значило бы джойнить на каждом authz-чеке.
+       Тип granted_at — REAL (epoch), как у всех остальных времён в этой
+       схеме; в целевом Postgres это timestamptz.
+
+    2. `app_settings` — умолчание `default_subject_access` ('all'|'none').
+       Именно настройка, а не константа: строгий режим в день выкатки
+       оставил бы всех преподавателей с пустым экраном, пока админ не прошёл
+       по списку. Таблица общего вида, потому что вторая серверная настройка
+       появится раньше, чем понадобится вторая таблица.
+
+    3. `users.scope_version` — счётчик scope-эпохи. Курсорный pull не умеет
+       в изменение прав (выдали — версия строки старая, курсор её прошёл;
+       отозвали — версия не менялась вовсе), поэтому изменение выдач само
+       становится событием синхронизации: клиент присылает известную ему
+       эпоху, сервер при расхождении отдаёт полный набор и клиент подчищает
+       лишнее. Стартовое значение 1, а НЕ 0: клиент, который эпохи ещё не
+       знает, шлёт 0 — так он гарантированно получает пересборку на первом
+       же pull, вместо того чтобы совпасть с сервером по случайности нуля.
+    """
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS subject_grants (
+            teacher_login TEXT    NOT NULL
+                REFERENCES users(login) ON DELETE CASCADE,
+            subject_id    INTEGER NOT NULL
+                REFERENCES Subjects(id) ON DELETE CASCADE,
+            granted_by    TEXT    NOT NULL DEFAULT '',
+            granted_at    REAL    NOT NULL DEFAULT 0,
+            PRIMARY KEY (teacher_login, subject_id)
+        );
+        -- «кому выдан этот предмет» — обратный обход PK не покрывает.
+        CREATE INDEX IF NOT EXISTS ix_subject_grants_subject
+            ON subject_grants(subject_id);
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL DEFAULT ''
+        );
+    """)
+    if not _table_exists(conn, "users"):
+        return                       # users создаёт 001; порядок гарантирован
+    _add_column_if_missing(conn, "users", "scope_version",
+                           "INTEGER NOT NULL DEFAULT 1")
+    # ALTER ... DEFAULT 1 уже проставил единицу существующим строкам; UPDATE
+    # страхует случай, когда колонку успела добавить более ранняя копия кода.
+    conn.execute(
+        "UPDATE users SET scope_version = 1 "
+        "WHERE scope_version IS NULL OR scope_version < 1"
+    )
+
+
 # Порядок применения. Добавлять новые кортежами (version, name, fn).
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = [
     (1, "rbac_foundation", _m001_rbac_foundation),
@@ -329,6 +391,7 @@ MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = [
     (3, "groups_from_labels", _m003_groups_from_labels),
     (4, "drop_shadow_contour_tables", _m004_drop_shadow_contour_tables),
     (5, "hot_path_indexes", _m005_hot_path_indexes),
+    (6, "subject_grants", _m006_subject_grants),
 ]
 
 
