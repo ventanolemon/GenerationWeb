@@ -141,13 +141,13 @@ class Line:
         return Point(x, y)
 
     def get_canon(self):
-        return (f"(x {"+" if self.point.X < 0 else "-"} {abs(self.point.X)}) / {self.vector.X} = "
-                f"(y {"+" if self.point.Y < 0 else "-"} {abs(self.point.Y)}) / {self.vector.Y}")
+        return (f"(x {'+' if self.point.X < 0 else '-'} {abs(self.point.X)}) / {self.vector.X} = "
+                f"(y {'+' if self.point.Y < 0 else '-'} {abs(self.point.Y)}) / {self.vector.Y}")
 
     def get_param(self):
         # coefs = self.get_t_view()
-        return (f"x = {self.vector.X} * t {"+" if self.point.X >= 0 else "-"} {abs(self.point.X)} \n"
-                f"y = {self.vector.Y} * t {"+" if self.point.Y >= 0 else "-"} {abs(self.point.Y)}")
+        return (f"x = {self.vector.X} * t {'+' if self.point.X >= 0 else '-'} {abs(self.point.X)} \n"
+                f"y = {self.vector.Y} * t {'+' if self.point.Y >= 0 else '-'} {abs(self.point.Y)}")
 
     def get_perpendicular(self):
         obr = self.vector.perpendicular()

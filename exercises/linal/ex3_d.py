@@ -140,15 +140,15 @@ class Line:
         return Point(x, y)
 
     def get_canon(self):
-        return (f"(x {"+" if self.point.X < 0 else "-"} {abs(self.point.X)}) / {self.vector.X} = "
-                f"(y {"+" if self.point.Y < 0 else "-"} {abs(self.point.Y)}) / {self.vector.Y} = "
-                f"(z {"+" if self.point.Z < 0 else "-"} {abs(self.point.Z)}) / {self.vector.Z}")
+        return (f"(x {'+' if self.point.X < 0 else '-'} {abs(self.point.X)}) / {self.vector.X} = "
+                f"(y {'+' if self.point.Y < 0 else '-'} {abs(self.point.Y)}) / {self.vector.Y} = "
+                f"(z {'+' if self.point.Z < 0 else '-'} {abs(self.point.Z)}) / {self.vector.Z}")
 
     def get_param(self):
         # coefs = self.get_t_view()
-        return (f"x = {self.vector.X} * t {"+" if self.point.X >= 0 else "-"} {abs(self.point.X)} \n"
-                f"y = {self.vector.Y} * t {"+" if self.point.Y >= 0 else "-"} {abs(self.point.Y)} \n"
-                f"z = {self.vector.Z} * t {"+" if self.point.Z >= 0 else "-"} {abs(self.point.Z)}")
+        return (f"x = {self.vector.X} * t {'+' if self.point.X >= 0 else '-'} {abs(self.point.X)} \n"
+                f"y = {self.vector.Y} * t {'+' if self.point.Y >= 0 else '-'} {abs(self.point.Y)} \n"
+                f"z = {self.vector.Z} * t {'+' if self.point.Z >= 0 else '-'} {abs(self.point.Z)}")
 
     def get_perpendicular(self):
         obr = self.vector.perpendicular()
