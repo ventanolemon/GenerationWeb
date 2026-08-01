@@ -32,8 +32,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from bootstrap import build_registry, sync_database
 from const import DB_PATH, WORDS_DIR
-from core import Repository, WordStatsStore
+from core import InteractiveTask, Repository, WordStatsStore
 
+from . import errors
 from .context import current_user_id as current_user_id_var
 from .routers import admin as admin_router
 from .routers import assignments as assignments_router
@@ -69,9 +70,32 @@ async def lifespan(app: FastAPI):
         user_id_provider=lambda: current_user_id_var.get(),
     )
 
+    def revive_interactive_task(partition_id: int, user_id):
+        """
+        Пересобрать интерактивное задание для сессии, поднятой из БД.
+
+        Читает `app.state.registry`, а не замкнутый `registry`: реестр
+        пересобирается при каждой правке разделов (`partitions._rebuild`), и
+        замыкание на стартовый экземпляр отдавало бы устаревшие генераторы.
+
+        user_id кладётся в тот же ContextVar, что и обычная генерация:
+        тренажёр слов берёт из него межсессионную статистику, и без этого
+        воскрешённая сессия писала бы прогресс в чужой (гостевой) бакет.
+        """
+        current_user_id_var.set(user_id)
+        current_registry = app.state.registry
+        if not current_registry.has(partition_id):
+            return None
+        partition = repo.get_partition(partition_id)
+        task = current_registry.get(
+            partition_id, partition.generation_params if partition else {}
+        ).generate()
+        return task if isinstance(task, InteractiveTask) else None
+
     app.state.repo = repo
     app.state.registry = registry
-    app.state.sessions = SessionStore()
+    app.state.sessions = SessionStore(
+        repo=repo, task_factory=revive_interactive_task)
     app.state.stats_store = stats_store
     logger.info(
         "Generator service ready. Registered generators: %d",
@@ -86,11 +110,39 @@ app = FastAPI(
     description=(
         "Внутренний микросервис над ядром генератора учебных заданий. "
         "Не предназначен для прямого обращения из браузера — это API "
-        "для ASP.NET Core Web Layer."
+        "для ASP.NET Core Web Layer.\n\n"
+        "**Ошибки** отдаются единым конвертом "
+        "`{error: {code, message, request_id}}` "
+        "(см. `generator_service/errors.py`). Поле `detail` дублирует "
+        "`error.message` и оставлено для совместимости с десктопными "
+        "клиентами — новым читателям следует опираться на `error`.\n\n"
+        "Заголовок `X-Request-Id` пробрасывается насквозь: пришедший "
+        "снаружи возвращается как есть, иначе генерируется — по нему "
+        "ответ соотносится с логом."
     ),
     version="1.0.0",
+    openapi_tags=[
+        {"name": "auth", "description": "Вход, регистрация, профиль."},
+        {"name": "subjects", "description": "Справочник предметов и разделов."},
+        {"name": "generate", "description": "Генерация задания по разделу."},
+        {"name": "interactive",
+         "description": "Ходы интерактивной сессии (тренажёр)."},
+        {"name": "partitions", "description": "CRUD разделов."},
+        {"name": "graph", "description": "Каталог узлов, валидация, превью."},
+        {"name": "sync", "description": "Offline-синхронизация десктопа."},
+        {"name": "grants", "description": "Выдача предметов преподавателям."},
+        {"name": "admin", "description": "Пользователи, роли, группы."},
+        {"name": "assignments", "description": "Домашние задания группам."},
+        {"name": "analytics", "description": "Сводки успеваемости."},
+        {"name": "stats", "description": "Статистика по словам."},
+        {"name": "export", "description": "Экспорт вариантов."},
+        {"name": "meta", "description": "Служебное: health, версия."},
+    ],
     lifespan=lifespan,
 )
+
+# Единый конверт ошибки — до роутеров, чтобы накрыть их все разом.
+errors.install(app)
 
 
 # ---------- CORS (опционально, для разработки) ----------

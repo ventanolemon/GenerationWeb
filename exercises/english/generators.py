@@ -270,6 +270,49 @@ class WordsSession(InteractiveTask):
 
         return word
 
+    # ---------- Снимок состояния (для сессий вне памяти процесса) ----------
+
+    def state(self) -> dict:
+        """
+        Прогресс сессии — и только он.
+
+        `_stats` сюда НЕ входит: это снимок межсессионной статистики, и при
+        пересборке сессии он перечитывается из WordStatsStore свежим. Класть
+        его в снимок значило бы заморозить статистику на момент старта и
+        разойтись с БД, куда её пишет каждый ответ. `_stats_store`,
+        `_user_id` и порог приоритета тоже не снимаются — их даёт генератор,
+        собирающий задание заново.
+
+        `_remaining` уезжает целиком: это не весь словарь, а именно
+        неотгаданный остаток, то есть сам прогресс.
+        """
+        return {
+            "remaining": dict(self._remaining),
+            "total": self._total,
+            "current": self._current,
+            "last": list(self._last),
+            "last_wrong": list(self._last_wrong),
+            "tolerant": bool(self.tolerant),
+        }
+
+    def restore(self, state: dict) -> None:
+        """Вернуть снимок в свежесобранную сессию."""
+        remaining = state.get("remaining")
+        if isinstance(remaining, dict):
+            self._remaining = {str(k): str(v) for k, v in remaining.items()}
+        # _total — знаменатель прогресса и размер FIFO антиповтора
+        # (_last_capacity), поэтому берётся из снимка, а не пересчитывается
+        # по остатку: иначе окно антиповтора сжималось бы с каждым словом.
+        self._total = int(state.get("total") or len(self._remaining))
+        current = state.get("current")
+        # Слово могло исчезнуть из словаря между сборками — тогда сессия
+        # продолжится со следующего, а не упадёт на _make_prompt_for.
+        self._current = current if current in self._remaining else None
+        self._last = [w for w in (state.get("last") or []) if isinstance(w, str)]
+        self._last_wrong = [w for w in (state.get("last_wrong") or [])
+                            if isinstance(w, str)]
+        self.tolerant = bool(state.get("tolerant", self.tolerant))
+
     # ---------- InteractiveTask API ----------
 
     def initial_prompt(self) -> List[Block]:

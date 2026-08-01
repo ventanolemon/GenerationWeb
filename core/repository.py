@@ -1152,6 +1152,75 @@ class Repository:
             ).fetchone()
         return int(row[0] or 0) if row else 0
 
+    # ---------- Интерактивные сессии ----------
+    #
+    # Состояние живого тренажёра между HTTP-ходами. Лежит в БД, а не в
+    # памяти процесса: иначе сервис не переживает ни балансировщик (второй
+    # ход придёт в другой процесс), ни собственный перезапуск. Формат
+    # `state` принадлежит типу задания (`InteractiveTask.state()`) —
+    # Repository его не разбирает, а хранит.
+
+    def save_interactive_session(
+        self, session_id: str, partition_id: int,
+        user_id: Optional[str], state: dict,
+    ) -> None:
+        """Создать или обновить сессию (upsert по session_id)."""
+        now = time.time()
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO interactive_sessions "
+                "(session_id, partition_id, user_id, state, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(session_id) DO UPDATE SET "
+                "  state = excluded.state, updated_at = excluded.updated_at",
+                (session_id, partition_id, user_id,
+                 json.dumps(state or {}, ensure_ascii=False), now, now),
+            )
+            conn.commit()
+
+    def load_interactive_session(self, session_id: str) -> Optional[dict]:
+        """`{partition_id, user_id, state, updated_at}` или None."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT partition_id, user_id, state, updated_at "
+                "FROM interactive_sessions WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            state = json.loads(row[2] or "{}")
+        except json.JSONDecodeError:
+            # Битую запись лечим как отсутствующую: пересобрать сессию из
+            # мусора нельзя, а ронять ход пользователя из-за этого незачем.
+            state = {}
+        return {"partition_id": row[0], "user_id": row[1],
+                "state": state if isinstance(state, dict) else {},
+                "updated_at": row[3] or 0.0}
+
+    def delete_interactive_session(self, session_id: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "DELETE FROM interactive_sessions WHERE session_id = ?",
+                (session_id,),
+            )
+            conn.commit()
+
+    def sweep_interactive_sessions(self, older_than: float) -> int:
+        """Удалить сессии, не тронутые дольше TTL. Возвращает число удалённых."""
+        with self._connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM interactive_sessions WHERE updated_at < ?",
+                (older_than,),
+            )
+            conn.commit()
+            return cur.rowcount
+
+    def count_interactive_sessions(self) -> int:
+        with self._connect() as conn:
+            return int(conn.execute(
+                "SELECT COUNT(*) FROM interactive_sessions").fetchone()[0])
+
     # ---------- WordStats ----------
 
     def ensure_word_stats_table(self) -> None:

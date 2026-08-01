@@ -384,6 +384,45 @@ def _m006_subject_grants(conn: sqlite3.Connection) -> None:
     )
 
 
+# ---------- Миграция 007: интерактивные сессии вне памяти процесса ----------
+
+def _m007_interactive_sessions(conn: sqlite3.Connection) -> None:
+    """
+    Состояние интерактивной сессии в БД, а не в dict процесса.
+
+    До этой миграции живые `InteractiveTask` лежали в
+    `generator_service/session_store.py` — in-memory, «по одному инстансу на
+    процесс uvicorn'а» (там это честно оговорено). Пока инстанс один, всё
+    работает; за балансировщиком второй ход той же сессии приходит в другой
+    процесс и не находит её. Это же ограничение делает невозможным
+    перезапуск сервиса без потери всех активных тренажёров.
+
+    Здесь — общее хранилище: сессия описывается партицией (из неё
+    пересобирается генератор), владельцем (у тренажёра слов от него зависит
+    межсессионная статистика) и сериализованным состоянием. Само состояние —
+    JSON-текст, потому что его формат принадлежит конкретному типу задания
+    (`InteractiveTask.state()`), а не схеме БД: ядро тут хранилище, а не
+    интерпретатор.
+
+    Владелец таблицы — ядро, как у всех таблиц, к которым ходит Repository
+    (единственная точка доступа к SQLite; урок миграции 004 — у таблицы один
+    владелец). `updated_at` вынесен в индекс: по нему идёт вычистка
+    протухших сессий, и это единственный её запрос.
+    """
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS interactive_sessions (
+            session_id   TEXT PRIMARY KEY,
+            partition_id INTEGER NOT NULL,
+            user_id      TEXT,
+            state        TEXT NOT NULL DEFAULT '{}',
+            created_at   REAL NOT NULL DEFAULT 0,
+            updated_at   REAL NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS ix_interactive_sessions_updated
+            ON interactive_sessions(updated_at);
+    """)
+
+
 # Порядок применения. Добавлять новые кортежами (version, name, fn).
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = [
     (1, "rbac_foundation", _m001_rbac_foundation),
@@ -392,6 +431,7 @@ MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = [
     (4, "drop_shadow_contour_tables", _m004_drop_shadow_contour_tables),
     (5, "hot_path_indexes", _m005_hot_path_indexes),
     (6, "subject_grants", _m006_subject_grants),
+    (7, "interactive_sessions", _m007_interactive_sessions),
 ]
 
 

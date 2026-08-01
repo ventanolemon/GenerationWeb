@@ -71,7 +71,9 @@ def generate_task(body: GenerateRequest, request: Request) -> dict:
         return result
 
     if isinstance(task, InteractiveTask):
-        session_id = sessions.create(task, body.partition_id)
+        # user_id уезжает в сессию: по нему её воскресит другой процесс с
+        # той же межсессионной статистикой (см. SessionStore).
+        session_id = sessions.create(task, body.partition_id, body.user_id)
         initial = task.initial_prompt()
         return {
             "type": "interactive",
