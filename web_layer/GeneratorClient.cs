@@ -322,6 +322,35 @@ public sealed class GeneratorClient
         return ((int)resp.StatusCode, body);
     }
 
+    /// <summary>
+    /// Релей публичного API (/api/v1/* → /v1/*). Отличается от ProxyAsync
+    /// субъектом и конвертом: пробрасывает Authorization и Origin вместо
+    /// X-User-Id/X-User-Role, а тело ответа отдаёт нетронутым — у /v1 свой
+    /// контракт ошибки, и переписывать его по дороге нельзя.
+    ///
+    /// X-Request-Id передаётся насквозь, если пришёл: по нему вызов
+    /// интегратора соотносится с записями в логах обоих сервисов.
+    /// </summary>
+    public async Task<(int Status, string Body)> ForwardPublicAsync(
+        HttpMethod method, string path, string? authorization, string? origin,
+        string? requestId, string? jsonBody, CancellationToken ct)
+    {
+        using var req = new HttpRequestMessage(method, path);
+        if (!string.IsNullOrWhiteSpace(authorization))
+            req.Headers.TryAddWithoutValidation("Authorization", authorization);
+        if (!string.IsNullOrWhiteSpace(origin))
+            req.Headers.TryAddWithoutValidation("Origin", origin);
+        if (!string.IsNullOrWhiteSpace(requestId))
+            req.Headers.TryAddWithoutValidation("X-Request-Id", requestId);
+        if (jsonBody is not null)
+            req.Content = new StringContent(
+                jsonBody, System.Text.Encoding.UTF8, "application/json");
+
+        using var resp = await _http.SendAsync(req, ct);
+        var body = await resp.Content.ReadAsStringAsync(ct);
+        return ((int)resp.StatusCode, body);
+    }
+
     // ─── Служебное ─────────────────────────────────────────────────────
 
     public async Task<HealthResponse?> HealthAsync(CancellationToken ct)

@@ -37,6 +37,7 @@ from core import InteractiveTask, Repository, WordStatsStore
 from . import errors
 from .context import current_user_id as current_user_id_var
 from .routers import admin as admin_router
+from .routers import admin_clients as admin_clients_router
 from .routers import assignments as assignments_router
 from .routers import analytics as analytics_router
 from .routers import auth as auth_router
@@ -48,6 +49,7 @@ from .routers import graph as graph_router
 from .routers import interactive as interactive_router
 from .routers import meta as meta_router
 from .routers import partitions as partitions_router
+from .routers import public_v1 as public_v1_router
 from .routers import stats as stats_router
 from .routers import subjects as subjects_router
 from .routers import sync as sync_router
@@ -137,6 +139,11 @@ app = FastAPI(
         {"name": "stats", "description": "Статистика по словам."},
         {"name": "export", "description": "Экспорт вариантов."},
         {"name": "meta", "description": "Служебное: health, версия."},
+        {"name": "public-v1",
+         "description": "Публичный API для сторонних приложений. Субъект — "
+                        "ключ приложения (Authorization: Bearer), а не "
+                        "пользователь; идентификаторы публичные и стабильные. "
+                        "Единственная поверхность с обещанием совместимости."},
     ],
     lifespan=lifespan,
 )
@@ -178,4 +185,7 @@ app.include_router(sync_router.router)
 app.include_router(analytics_router.router)
 app.include_router(admin_router.router)
 app.include_router(groups_router.router)
+app.include_router(admin_clients_router.router)
+# Публичная поверхность: единственная с обещанием совместимости.
+app.include_router(public_v1_router.router)
 app.include_router(assignments_router.router)
