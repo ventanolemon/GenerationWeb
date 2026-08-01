@@ -97,6 +97,10 @@ app.MapMetaEndpoints();
 app.MapDashboardEndpoints();
 app.MapContourEndpoints();
 app.MapCorpusEndpoints();
+// Публичная поверхность для сторонних приложений. Отдельно от остальных:
+// у неё другой субъект (ключ приложения, не пользователь) и обещание
+// совместимости — см. docs/architecture/public_api.md.
+app.MapPublicApiEndpoints();
 
 // Корневой эндпоинт — подсказка, что и где
 app.MapGet("/", () => Results.Json(new

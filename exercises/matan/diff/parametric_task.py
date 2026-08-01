@@ -96,7 +96,7 @@ def get_parametric_task(max_attempts=20):
             # Очистка для Word
             answer_latex = clean_latex_for_word(sp.latex(result))
 
-            return (("text", f" 5.\tВычислить производную функции, заданной параметрически в точке {str(t0).replace("pi", "π")}.\n"),
+            return (("text", f" 5.\tВычислить производную функции, заданной параметрически в точке {str(t0).replace('pi', 'π')}.\n"),
                     ("formula", system_latex),
                     ("formula", answer_latex))
 

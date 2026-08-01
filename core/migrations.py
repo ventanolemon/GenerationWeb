@@ -18,6 +18,7 @@ JSONB), автоинкремент id → BIGSERIAL/identity. Смена дви�
 from __future__ import annotations
 import sqlite3
 import time
+import uuid
 from typing import Callable
 
 
@@ -322,6 +323,194 @@ def _m005_hot_path_indexes(conn: sqlite3.Connection) -> None:
     """)
 
 
+# ---------- Миграция 006: выдачи предметов преподавателям ----------
+
+def _m006_subject_grants(conn: sqlite3.Connection) -> None:
+    """
+    Схема под docs/subject_grants.md (репозиторий Generator): админ раздаёт
+    преподавателям доступ к предметам, преподаватель видит в витрине только
+    выданные.
+
+    Три объекта, каждый — по прямому требованию документа:
+
+    1. `subject_grants` — сама выдача. Ключ — ЛОГИН, не числовой users.id:
+       логин уже канонический идентификатор во всей системе (групповые FK
+       после 003, заголовок X-User-Id, core.session десктопа), и заводить
+       здесь второй вид ключа значило бы джойнить на каждом authz-чеке.
+       Тип granted_at — REAL (epoch), как у всех остальных времён в этой
+       схеме; в целевом Postgres это timestamptz.
+
+    2. `app_settings` — умолчание `default_subject_access` ('all'|'none').
+       Именно настройка, а не константа: строгий режим в день выкатки
+       оставил бы всех преподавателей с пустым экраном, пока админ не прошёл
+       по списку. Таблица общего вида, потому что вторая серверная настройка
+       появится раньше, чем понадобится вторая таблица.
+
+    3. `users.scope_version` — счётчик scope-эпохи. Курсорный pull не умеет
+       в изменение прав (выдали — версия строки старая, курсор её прошёл;
+       отозвали — версия не менялась вовсе), поэтому изменение выдач само
+       становится событием синхронизации: клиент присылает известную ему
+       эпоху, сервер при расхождении отдаёт полный набор и клиент подчищает
+       лишнее. Стартовое значение 1, а НЕ 0: клиент, который эпохи ещё не
+       знает, шлёт 0 — так он гарантированно получает пересборку на первом
+       же pull, вместо того чтобы совпасть с сервером по случайности нуля.
+    """
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS subject_grants (
+            teacher_login TEXT    NOT NULL
+                REFERENCES users(login) ON DELETE CASCADE,
+            subject_id    INTEGER NOT NULL
+                REFERENCES Subjects(id) ON DELETE CASCADE,
+            granted_by    TEXT    NOT NULL DEFAULT '',
+            granted_at    REAL    NOT NULL DEFAULT 0,
+            PRIMARY KEY (teacher_login, subject_id)
+        );
+        -- «кому выдан этот предмет» — обратный обход PK не покрывает.
+        CREATE INDEX IF NOT EXISTS ix_subject_grants_subject
+            ON subject_grants(subject_id);
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL DEFAULT ''
+        );
+    """)
+    if not _table_exists(conn, "users"):
+        return                       # users создаёт 001; порядок гарантирован
+    _add_column_if_missing(conn, "users", "scope_version",
+                           "INTEGER NOT NULL DEFAULT 1")
+    # ALTER ... DEFAULT 1 уже проставил единицу существующим строкам; UPDATE
+    # страхует случай, когда колонку успела добавить более ранняя копия кода.
+    conn.execute(
+        "UPDATE users SET scope_version = 1 "
+        "WHERE scope_version IS NULL OR scope_version < 1"
+    )
+
+
+# ---------- Миграция 007: интерактивные сессии вне памяти процесса ----------
+
+def _m007_interactive_sessions(conn: sqlite3.Connection) -> None:
+    """
+    Состояние интерактивной сессии в БД, а не в dict процесса.
+
+    До этой миграции живые `InteractiveTask` лежали в
+    `generator_service/session_store.py` — in-memory, «по одному инстансу на
+    процесс uvicorn'а» (там это честно оговорено). Пока инстанс один, всё
+    работает; за балансировщиком второй ход той же сессии приходит в другой
+    процесс и не находит её. Это же ограничение делает невозможным
+    перезапуск сервиса без потери всех активных тренажёров.
+
+    Здесь — общее хранилище: сессия описывается партицией (из неё
+    пересобирается генератор), владельцем (у тренажёра слов от него зависит
+    межсессионная статистика) и сериализованным состоянием. Само состояние —
+    JSON-текст, потому что его формат принадлежит конкретному типу задания
+    (`InteractiveTask.state()`), а не схеме БД: ядро тут хранилище, а не
+    интерпретатор.
+
+    Владелец таблицы — ядро, как у всех таблиц, к которым ходит Repository
+    (единственная точка доступа к SQLite; урок миграции 004 — у таблицы один
+    владелец). `updated_at` вынесен в индекс: по нему идёт вычистка
+    протухших сессий, и это единственный её запрос.
+    """
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS interactive_sessions (
+            session_id   TEXT PRIMARY KEY,
+            partition_id INTEGER NOT NULL,
+            user_id      TEXT,
+            state        TEXT NOT NULL DEFAULT '{}',
+            created_at   REAL NOT NULL DEFAULT 0,
+            updated_at   REAL NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS ix_interactive_sessions_updated
+            ON interactive_sessions(updated_at);
+    """)
+
+
+# ---------- Миграция 008: публичный API (ключи приложений, квоты, id) ----------
+
+def _m008_public_api(conn: sqlite3.Connection) -> None:
+    """
+    Схема под docs/architecture/public_api.md, этапы 1–3.
+
+    **Приложение — не пользователь.** У ключа нет ФИО, группы и роли; у него
+    есть владелец, скоуп и квота. Поэтому отдельные таблицы, а не запись в
+    `users`: попытка втиснуть их туда завела бы «пользователей», которых
+    нельзя пустить ни в один существующий эндпоинт.
+
+    **Ключ хранится хэшем**, как пароль, — утечка дампа не должна отдавать
+    рабочие ключи. Но хэш БЫСТРЫЙ (sha256), в отличие от пользовательских
+    паролей на pbkdf2, и это не оплошность: ключ — 256 бит машинной
+    случайности, перебор невозможен независимо от скорости хэша, а
+    проверять его приходится на КАЖДОМ запросе. Медленный KDF здесь
+    оплачивал бы несуществующую угрозу временем ответа. Рядом лежит
+    `prefix` — первые символы открытым текстом, чтобы владелец узнавал свой
+    ключ в списке, не восстанавливая его.
+
+    **Публичные id.** Наружу нельзя отдавать первичные ключи: перенумеруется
+    таблица — сломаются все интеграции, а обещание стабильности `id` придётся
+    держать вечно. `public_id` — отдельный стабильный uuid; существующим
+    строкам он проставляется здесь, новым — лениво при первом обращении
+    публичного API (иначе пришлось бы править все пути вставки ради поля,
+    нужного одному потребителю).
+
+    **Учёт вызовов** — счётчик на (клиент, день). Не журнал каждого вызова:
+    для квоты нужна сумма, а журнал на этом объёме — это гигабайты ради
+    одного `SELECT COUNT(*)`. Журнал появится, когда появится тарификация,
+    и это будет отдельная таблица с другим сроком жизни.
+    """
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS api_clients (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            name         TEXT    NOT NULL,
+            owner_login  TEXT,
+            status       TEXT    NOT NULL DEFAULT 'active',
+            daily_quota  INTEGER NOT NULL DEFAULT 1000,
+            created_at   REAL    NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS api_keys (
+            key_hash        TEXT    PRIMARY KEY,
+            client_id       INTEGER NOT NULL
+                REFERENCES api_clients(id) ON DELETE CASCADE,
+            kind            TEXT    NOT NULL DEFAULT 'server',
+            prefix          TEXT    NOT NULL DEFAULT '',
+            allowed_origins TEXT    NOT NULL DEFAULT '',
+            created_at      REAL    NOT NULL DEFAULT 0,
+            revoked_at      REAL
+        );
+        CREATE INDEX IF NOT EXISTS ix_api_keys_client ON api_keys(client_id);
+        -- Явная выдача предмета КЛЮЧУ: та же механика, что выдача
+        -- преподавателю (subject_grants), но субъект другой. Пустой набор =
+        -- клиенту доступны все встроенные предметы (owner IS NULL) и только
+        -- они; авторский контент наружу без явного решения не уходит.
+        CREATE TABLE IF NOT EXISTS api_client_subjects (
+            client_id  INTEGER NOT NULL
+                REFERENCES api_clients(id) ON DELETE CASCADE,
+            subject_id INTEGER NOT NULL
+                REFERENCES Subjects(id) ON DELETE CASCADE,
+            PRIMARY KEY (client_id, subject_id)
+        );
+        CREATE TABLE IF NOT EXISTS api_usage (
+            client_id INTEGER NOT NULL,
+            day       TEXT    NOT NULL,
+            calls     INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (client_id, day)
+        );
+    """)
+    for table in ("Subjects", "Partitions"):
+        if not _table_exists(conn, table):
+            continue
+        _add_column_if_missing(conn, table, "public_id", "TEXT")
+        conn.execute(
+            f"CREATE UNIQUE INDEX IF NOT EXISTS ux_{table.lower()}_public_id "
+            f"ON {table}(public_id) WHERE public_id IS NOT NULL"
+        )
+        for (row_id,) in conn.execute(
+            f"SELECT id FROM {table} WHERE public_id IS NULL"
+        ).fetchall():
+            conn.execute(
+                f"UPDATE {table} SET public_id = ? WHERE id = ?",
+                (str(uuid.uuid4()), row_id),
+            )
+
+
 # Порядок применения. Добавлять новые кортежами (version, name, fn).
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = [
     (1, "rbac_foundation", _m001_rbac_foundation),
@@ -329,6 +518,9 @@ MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = [
     (3, "groups_from_labels", _m003_groups_from_labels),
     (4, "drop_shadow_contour_tables", _m004_drop_shadow_contour_tables),
     (5, "hot_path_indexes", _m005_hot_path_indexes),
+    (6, "subject_grants", _m006_subject_grants),
+    (7, "interactive_sessions", _m007_interactive_sessions),
+    (8, "public_api", _m008_public_api),
 ]
 
 

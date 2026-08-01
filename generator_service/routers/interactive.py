@@ -54,6 +54,10 @@ def submit_answer(body: SubmitRequest, request: Request) -> dict:
         # Сессия завершена — освобождаем место в сторе сразу,
         # не дожидаясь TTL.
         sessions.remove(body.session_id)
+    else:
+        # Снимок после КАЖДОГО хода: отстань он на ход, переезд сессии в
+        # другой процесс вернул бы пользователя к предыдущему слову.
+        sessions.save(body.session_id)
     return response
 
 
