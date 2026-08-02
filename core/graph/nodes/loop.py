@@ -41,6 +41,8 @@ _IMPORT_TYPES = {
     "bool": PortType.BOOL,
     "block": PortType.BLOCK,
     "list": PortType.LIST,
+    "expr": PortType.EXPR,      # символьные выражения проходят сквозь границу
+    "matrix": PortType.MATRIX,  # ...и матрицы тоже (туннели/импорты/регистры)
 }
 
 
@@ -91,6 +93,8 @@ class InputVarNode(Node):
         "name": {"type": "string", "default": "x"},
         "type": {"type": "enum", "values": list(_IMPORT_TYPES), "default": "number"},
     }
+    TYPE_PARAM = "type"
+    TYPE_PARAM_MAP = _IMPORT_TYPES
 
     def validate_params(self) -> None:
         t = self.params.get("type", "number")
@@ -103,6 +107,12 @@ class InputVarNode(Node):
     def output_ports(self):
         return [Port("out", _IMPORT_TYPES.get(self.params.get("type", "number"),
                                               PortType.NUMBER))]
+
+    def type_param_ports(self) -> set[str]:
+        return {"out"}
+
+    def summary(self) -> str:
+        return f"↘ {self.params.get('name', 'x')}"
 
     def compute(self, inputs, ctx: ExecContext):
         name = str(self.params.get("name", "x"))
@@ -251,6 +261,8 @@ class OutputVarNode(Node):
         "name": {"type": "string", "default": "result"},
         "type": {"type": "enum", "values": list(_IMPORT_TYPES), "default": "number"},
     }
+    TYPE_PARAM = "type"
+    TYPE_PARAM_MAP = _IMPORT_TYPES
 
     def validate_params(self) -> None:
         t = self.params.get("type", "number")
@@ -265,6 +277,12 @@ class OutputVarNode(Node):
 
     def input_ports(self):
         return [Port("value", self._t())]
+
+    def type_param_ports(self) -> set[str]:
+        return {"value"}
+
+    def summary(self) -> str:
+        return f"↗ {self.params.get('name', 'result')}"
 
     def compute(self, inputs, ctx: ExecContext):
         # Невидимый снаружи выход: исполнитель сохранит его в outputs узла,
@@ -330,6 +348,8 @@ class ShiftGetNode(Node):
         "name": {"type": "string", "default": "acc"},
         "type": {"type": "enum", "values": list(_IMPORT_TYPES), "default": "number"},
     }
+    TYPE_PARAM = "type"
+    TYPE_PARAM_MAP = _IMPORT_TYPES
 
     def validate_params(self) -> None:
         t = self.params.get("type", "number")
@@ -341,6 +361,9 @@ class ShiftGetNode(Node):
     def output_ports(self):
         return [Port("out", _IMPORT_TYPES.get(self.params.get("type", "number"),
                                               PortType.NUMBER))]
+
+    def type_param_ports(self) -> set[str]:
+        return {"out"}
 
     def compute(self, inputs, ctx: ExecContext):
         name = str(self.params.get("name", "acc"))
@@ -365,6 +388,8 @@ class ShiftSetNode(Node):
         "name": {"type": "string", "default": "acc"},
         "type": {"type": "enum", "values": list(_IMPORT_TYPES), "default": "number"},
     }
+    TYPE_PARAM = "type"
+    TYPE_PARAM_MAP = _IMPORT_TYPES
 
     def validate_params(self) -> None:
         t = self.params.get("type", "number")
@@ -381,6 +406,9 @@ class ShiftSetNode(Node):
 
     def output_ports(self):
         return [Port("out", self._t())]
+
+    def type_param_ports(self) -> set[str]:
+        return {"value", "out"}
 
     def compute(self, inputs, ctx: ExecContext):
         return {"out": inputs.get("value")}
@@ -442,6 +470,11 @@ class RepeatNode(Node):
                     f"Узел {self.node_id!r}: туннель вывода {name!r} совпадает "
                     f"с выходом регистра — переименуйте туннель или регистр."
                 )
+
+    def summary(self) -> str:
+        body = self.params.get("body") or {}
+        nodes = len(body.get("nodes") or []) if isinstance(body, dict) else 0
+        return f"× {self.params.get('count', 3)} · тело: {nodes} узл."
 
     def validate_structure(self) -> None:
         _check_tunnels(self.node_id, self.params,
@@ -558,6 +591,8 @@ class MapItemNode(Node):
     PARAMS_SCHEMA = {
         "type": {"type": "enum", "values": list(_ITEM_TYPES), "default": "string"},
     }
+    TYPE_PARAM = "type"
+    TYPE_PARAM_MAP = _ITEM_TYPES
 
     def validate_params(self) -> None:
         t = self.params.get("type", "string")
@@ -570,6 +605,9 @@ class MapItemNode(Node):
     def output_ports(self):
         return [Port("out", _ITEM_TYPES.get(self.params.get("type", "string"),
                                             PortType.STRING))]
+
+    def type_param_ports(self) -> set[str]:
+        return {"out"}
 
     def compute(self, inputs, ctx: ExecContext):
         v = ctx.extra.get(MAP_ITEM_KEY)

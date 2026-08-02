@@ -38,6 +38,7 @@ from . import errors
 from .context import current_user_id as current_user_id_var
 from .routers import admin as admin_router
 from .routers import admin_clients as admin_clients_router
+from .routers import admin_content as admin_content_router
 from .routers import assignments as assignments_router
 from .routers import analytics as analytics_router
 from .routers import auth as auth_router
@@ -48,11 +49,13 @@ from .routers import grants as grants_router
 from .routers import graph as graph_router
 from .routers import interactive as interactive_router
 from .routers import meta as meta_router
+from .routers import packages as packages_router
 from .routers import partitions as partitions_router
 from .routers import public_v1 as public_v1_router
 from .routers import stats as stats_router
 from .routers import subjects as subjects_router
 from .routers import sync as sync_router
+from .routers import updates as updates_router
 from .session_store import SessionStore
 
 
@@ -133,11 +136,20 @@ app = FastAPI(
         {"name": "graph", "description": "Каталог узлов, валидация, превью."},
         {"name": "sync", "description": "Offline-синхронизация десктопа."},
         {"name": "grants", "description": "Выдача предметов преподавателям."},
+        {"name": "content",
+         "description": "Хранилища контента: личное преподавателя и общее, "
+                        "перенос между ними."},
         {"name": "admin", "description": "Пользователи, роли, группы."},
         {"name": "assignments", "description": "Домашние задания группам."},
         {"name": "analytics", "description": "Сводки успеваемости."},
         {"name": "stats", "description": "Статистика по словам."},
         {"name": "export", "description": "Экспорт вариантов."},
+        {"name": "packages",
+         "description": "Пакеты узлов графа: односторонняя докачка "
+                        "с сервера, подпись общая с релизами."},
+        {"name": "updates",
+         "description": "Обновление десктопа: подписанные релизы. "
+                        "Сервер раздаёт, но не подписывает."},
         {"name": "meta", "description": "Служебное: health, версия."},
         {"name": "public-v1",
          "description": "Публичный API для сторонних приложений. Субъект — "
@@ -173,6 +185,8 @@ app.include_router(auth_router.router)
 # Выше subjects_router: /subjects/grants/mine — литеральный маршрут, и пусть
 # он объявляется раньше параметрических соседей по префиксу /subjects.
 app.include_router(grants_router.router)
+# Выше subjects_router по той же причине: /subjects/mine — литерал.
+app.include_router(admin_content_router.router)
 app.include_router(subjects_router.router)
 app.include_router(generate_router.router)
 app.include_router(interactive_router.router)
@@ -182,6 +196,8 @@ app.include_router(stats_router.router)
 app.include_router(meta_router.router)
 app.include_router(graph_router.router)
 app.include_router(sync_router.router)
+app.include_router(updates_router.router)
+app.include_router(packages_router.router)
 app.include_router(analytics_router.router)
 app.include_router(admin_router.router)
 app.include_router(groups_router.router)

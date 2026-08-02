@@ -30,6 +30,10 @@ class ConstantNumberNode(Node):
                 f"Узел {self.node_id!r}: 'value' должен быть числом."
             )
 
+    def summary(self) -> str:
+        v = float(self.params.get("value", 0))
+        return str(int(v)) if v == int(v) else str(v)
+
     def compute(self, inputs, ctx: ExecContext):
         return {"out": float(self.params.get("value", 0))}
 
@@ -41,6 +45,9 @@ class ConstantStringNode(Node):
     display_name = "Константа (строка)"
     OUTPUTS = [Port("out", PortType.STRING)]
     PARAMS_SCHEMA = {"value": {"type": "string", "default": ""}}
+
+    def summary(self) -> str:
+        return f"«{self.params.get('value', '')}»"
 
     def compute(self, inputs, ctx: ExecContext):
         return {"out": str(self.params.get("value", ""))}
@@ -64,6 +71,15 @@ class _RandomVarNode(Node):
     """Общая база для случайных источников. KIND задаёт тип значения."""
     KIND = "real"
     OUTPUTS = [Port("out", PortType.NUMBER)]
+
+    def summary(self) -> str:
+        lo = self.params.get("min")
+        hi = self.params.get("max")
+        if lo is None and hi is None:
+            return ""
+        step = self.params.get("step")
+        tail = f" шаг {step}" if step not in (None, "", 1, 1.0) else ""
+        return f"{lo}…{hi}{tail}"
 
     def _spec(self):
         # parse_variable_spec нормализует строки/формулы в min/max/step/forbidden.
@@ -136,6 +152,11 @@ class NumberRangeNode(Node):
     }
 
     _CAP = 10_000
+
+    def summary(self) -> str:
+        step = self.params.get("step")
+        tail = f" шаг {step}" if step not in (None, "", 1, 1.0) else ""
+        return f"{self.params.get('start', 1)}…{self.params.get('stop', 5)}{tail}"
 
     def compute(self, inputs, ctx: ExecContext):
         start = float(self.params.get("start", 1))

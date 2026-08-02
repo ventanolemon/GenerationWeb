@@ -75,14 +75,20 @@ _COMPARE_OPS = {
 
 
 class CompareNode(Node):
-    """Сравнить два числа, вернуть BOOL."""
+    """
+    Сравнить два числа, вернуть BOOL.
+
+    Правый операнд — вход b либо (если не подключён) параметр b: сравнение
+    с константой не требует отдельного узла-числа.
+    """
     type_id = "compare"
     category = "control"
     display_name = "Сравнение"
-    INPUTS = [Port("a", PortType.NUMBER), Port("b", PortType.NUMBER)]
+    INPUTS = [Port("a", PortType.NUMBER), Port("b", PortType.NUMBER, required=False)]
     OUTPUTS = [Port("out", PortType.BOOL)]
     PARAMS_SCHEMA = {
         "op": {"type": "enum", "values": list(_COMPARE_OPS), "default": "=="},
+        "b": {"type": "number", "default": 0, "optional": True},
     }
 
     def validate_params(self) -> None:
@@ -95,7 +101,14 @@ class CompareNode(Node):
 
     def compute(self, inputs, ctx: ExecContext):
         op = _COMPARE_OPS[self.params.get("op", "==")]
-        return {"out": bool(op(float(inputs["a"]), float(inputs["b"])))}
+        right = inputs.get("b")
+        if right is None:
+            right = self.params.get("b", 0)
+        try:
+            right = float(right)
+        except (TypeError, ValueError):
+            right = 0.0
+        return {"out": bool(op(float(inputs["a"]), right))}
 
 
 # Проверки одного числа. Имя → функция от (value, param).
@@ -148,6 +161,9 @@ _SELECT_TYPES = {
     "block_list": PortType.BLOCK_LIST,
     "image": PortType.IMAGE,
     "task": PortType.TASK,
+    "expr": PortType.EXPR,      # выбор между символьными выражениями
+    "matrix": PortType.MATRIX,  # ...и матрицами
+    "list": PortType.LIST,      # ...и коллекциями
 }
 
 
@@ -166,6 +182,8 @@ class SelectNode(Node):
         "value_type": {"type": "enum", "values": list(_SELECT_TYPES),
                        "default": "number"},
     }
+    TYPE_PARAM = "value_type"
+    TYPE_PARAM_MAP = _SELECT_TYPES
 
     def validate_params(self) -> None:
         vt = self.params.get("value_type", "number")
@@ -190,5 +208,87 @@ class SelectNode(Node):
     def output_ports(self):
         return [Port("out", self._value_type())]
 
+    def type_param_ports(self) -> set[str]:
+        return {"on_true", "on_false", "out"}
+
     def compute(self, inputs, ctx: ExecContext):
         return {"out": inputs["on_true"] if inputs.get("cond") else inputs["on_false"]}
+
+
+class PickNode(Node):
+    """
+    N-канальный мультиплексор: индекс выбирает один из N входов одного типа.
+
+    Замена громоздким цепочкам select при трёх и более вариантах: категория
+    ответа/структура условия задаётся числом (0..N−1), pick отдаёт in<индекс>.
+    Тип каналов — value_type (как у select), число каналов — count. Все входы
+    вычисляются исполнителем жадно (обычные вершины DAG), pick лишь выбирает.
+
+    Индекс вне диапазона или неподключённый выбранный вход → RetryGeneration.
+    """
+    type_id = "pick"
+    category = "control"
+    display_name = "Выбор по индексу"
+    PARAMS_SCHEMA = {
+        "count": {"type": "int", "default": 3},
+        "value_type": {"type": "enum", "values": list(_SELECT_TYPES),
+                       "default": "block"},
+    }
+    TYPE_PARAM = "value_type"
+    TYPE_PARAM_MAP = _SELECT_TYPES
+
+    def validate_params(self) -> None:
+        vt = self.params.get("value_type", "block")
+        if vt not in _SELECT_TYPES:
+            raise GraphValidationError(
+                f"Узел {self.node_id!r}: неизвестный тип каналов {vt!r}. "
+                f"Допустимы: {list(_SELECT_TYPES)}"
+            )
+        try:
+            if int(self.params.get("count", 3)) < 2:
+                raise ValueError
+        except (TypeError, ValueError):
+            raise GraphValidationError(
+                f"Узел {self.node_id!r}: count должен быть целым ≥ 2."
+            )
+
+    def _count(self) -> int:
+        try:
+            return max(2, int(self.params.get("count", 3)))
+        except (TypeError, ValueError):
+            return 3
+
+    def _value_type(self) -> PortType:
+        return _SELECT_TYPES.get(self.params.get("value_type", "block"),
+                                 PortType.BLOCK)
+
+    def input_ports(self):
+        t = self._value_type()
+        ports = [Port("index", PortType.NUMBER)]
+        ports += [Port(f"in{i}", t, required=False) for i in range(self._count())]
+        return ports
+
+    def output_ports(self):
+        return [Port("out", self._value_type())]
+
+    def type_param_ports(self) -> set[str]:
+        return {f"in{i}" for i in range(self._count())} | {"out"}
+
+    def compute(self, inputs, ctx: ExecContext):
+        try:
+            i = int(round(float(inputs.get("index", 0))))
+        except (TypeError, ValueError):
+            raise RetryGeneration(
+                f"pick {self.node_id!r}: индекс не число ({inputs.get('index')!r})."
+            )
+        if not 0 <= i < self._count():
+            raise RetryGeneration(
+                f"pick {self.node_id!r}: индекс {i} вне диапазона "
+                f"[0; {self._count()})."
+            )
+        value = inputs.get(f"in{i}")
+        if value is None:
+            raise RetryGeneration(
+                f"pick {self.node_id!r}: выбранный вход in{i} не подключён."
+            )
+        return {"out": value}

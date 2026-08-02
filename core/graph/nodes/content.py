@@ -37,7 +37,8 @@ class ToBlockNode(Node):
     display_name = "Блок (любой тип)"
     description = ("Универсальный рендер значения в блок: число/строка/формула/"
                    "матрица/картинка/блок → BLOCK. Вход: любой тип. Выход: BLOCK.")
-    INPUTS = [Port("in", PortType.ANY)]
+    INPUTS = [Port("in", PortType.ANY),
+              Port("prefix", PortType.STRING, required=False)]
     OUTPUTS = [Port("out", PortType.BLOCK)]
     PARAMS_SCHEMA = {
         "style": {"type": "enum", "values": ["auto", "text", "formula"],
@@ -53,10 +54,17 @@ class ToBlockNode(Node):
     def _module_root(value) -> str:
         return type(value).__module__.split(".")[0]
 
+    def _prefix(self) -> str:
+        # Заполняется compute() из входа prefix; иначе — статический параметр.
+        return self._dyn_prefix if self._dyn_prefix is not None \
+            else self.params.get("prefix", "")
+
+    _dyn_prefix = None
+
     def _formula(self, latex: str):
         from core.blocks import FormulaBlock
         from .compute import _join_prefix
-        return FormulaBlock(_join_prefix(self.params.get("prefix", ""), latex,
+        return FormulaBlock(_join_prefix(self._prefix(), latex,
                                          self.params.get("relation", "=")))
 
     def _text(self, text: str):
@@ -64,7 +72,7 @@ class ToBlockNode(Node):
         from .compute import _join_prefix
         # Связка '=' добавляется только при наличии префикса; для прозы задайте
         # relation='' (или префикс с двоеточием — дедуп не продублирует).
-        return TextBlock(_join_prefix(self.params.get("prefix", ""), text,
+        return TextBlock(_join_prefix(self._prefix(), text,
                                       self.params.get("relation", "=")))
 
     def compute(self, inputs, ctx: ExecContext):
@@ -74,6 +82,7 @@ class ToBlockNode(Node):
             raise RetryGeneration(
                 f"to_block {self.node_id!r}: на вход не пришло значение."
             )
+        self._dyn_prefix = inputs.get("prefix")   # динамический префикс из графа
         style = str(self.params.get("style", "auto"))
 
         # 1. Уже блок — отдать как есть.
@@ -139,6 +148,10 @@ class TextNode(Node):
                    "Один узел вместо шаблон+блок. Выход: BLOCK.")
     OUTPUTS = [Port("out", PortType.BLOCK)]
     PARAMS_SCHEMA = {"text": {"type": "text", "default": ""}}
+
+    def summary(self) -> str:
+        text = " ".join(str(self.params.get("text", "")).split())
+        return f"«{text}»" if text else ""
 
     def input_ports(self):
         from .compute import _marker_names

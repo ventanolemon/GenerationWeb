@@ -44,6 +44,9 @@ class VarDictNode(Node):
     def input_ports(self):
         return [Port(str(n), PortType.NUMBER) for n in self.params["names"]]
 
+    def summary(self) -> str:
+        return "{" + ", ".join(map(str, self.params.get("names") or [])) + "}"
+
     def compute(self, inputs, ctx: ExecContext):
         return {"out": {str(n): float(inputs[str(n)]) for n in self.params["names"]}}
 
@@ -54,12 +57,21 @@ class FormulaNode(Node):
     в самой формуле — отдельный var_dict больше не нужен. Например, формула
     'a+b' даёт два входа a и b. Запасной вход vars (NUMBER_DICT) тоже принимается
     (для совместимости и динамических наборов).
+
+    Параметр constants: 'on' (по умолчанию) — буквы c, e, g, G, h, … означают
+    физические константы (скорость света и т.п.), как в физических формулах;
+    'off' — эти буквы становятся обычными входами-переменными («чистая
+    математика»). pi/π — константа всегда.
     """
     type_id = "formula"
     category = "compute"
     display_name = "Формула"
     OUTPUTS = [Port("out", PortType.NUMBER)]
-    PARAMS_SCHEMA = {"expr": {"type": "string", "default": ""}}
+    PARAMS_SCHEMA = {
+        "expr": {"type": "string", "default": ""},
+        "constants": {"type": "enum", "values": ["on", "off"],
+                      "default": "on", "optional": True},
+    }
 
     def validate_params(self) -> None:
         expr = self.params.get("expr")
@@ -73,9 +85,16 @@ class FormulaNode(Node):
     def required_names(self) -> set[str]:
         """Имена переменных, нужные формуле (для подсказок редактора/портов)."""
         try:
-            return extract_variable_names(self.params.get("expr", ""))
+            return extract_variable_names(
+                self.params.get("expr", ""),
+                include_constants=self.params.get("constants", "on") == "off",
+            )
         except Exception:
             return set()
+
+    def summary(self) -> str:
+        expr = str(self.params.get("expr", "")).strip()
+        return f"= {expr}" if expr else ""
 
     def input_ports(self):
         # По одному числовому входу на каждую переменную формулы + запасной vars.
@@ -122,6 +141,15 @@ class ConstraintNode(Node):
 
     def _constraint(self) -> ResultConstraint:
         return ResultConstraint.parse(self.params or None)
+
+    def summary(self) -> str:
+        kind = {"natural": "натуральное", "integer": "целое",
+                "real": "вещественное"}.get(self.params.get("kind", "real"), "")
+        lo, hi = self.params.get("min"), self.params.get("max")
+        rng = ""
+        if lo is not None or hi is not None:
+            rng = f" {lo if lo is not None else '−∞'}…{hi if hi is not None else '+∞'}"
+        return f"{kind}{rng}".strip()
 
     def compute(self, inputs, ctx: ExecContext):
         rc = self._constraint()
@@ -180,7 +208,15 @@ def _marker_str(value) -> str:
     if isinstance(value, (int, float)):
         return _format_value(value)
     if type(value).__module__.split(".")[0] == "sympy":
-        return str(value).replace("**", "^")
+        # Человекочитаемая математическая запись: ^, π, i, ln, √.
+        s = str(value).replace("**", "^")
+        s = re.sub(r"\blog\(", "ln(", s)
+        s = re.sub(r"\bsqrt\(", "√(", s)
+        s = re.sub(r"\bpi\b", "π", s)
+        s = re.sub(r"\bI\b", "i", s)
+        # Убираем '*' перед π/i/√ для типографики: '3*i' → '3i', '2*π' → '2π'.
+        s = re.sub(r"\*(π|i|√)", r"\1", s)
+        return s
     return str(value)
 
 
@@ -215,6 +251,10 @@ class TemplateNode(Node):
     display_name = "Текстовый шаблон"
     OUTPUTS = [Port("out", PortType.STRING)]
     PARAMS_SCHEMA = {"text": {"type": "text", "default": ""}}
+
+    def summary(self) -> str:
+        text = " ".join(str(self.params.get("text", "")).split())
+        return f"«{text}»" if text else ""
 
     def input_ports(self):
         # Маркеры — полиморфные входы (ANY): принимают число, строку, выражение.

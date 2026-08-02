@@ -60,6 +60,18 @@ class Node(ABC):
     OUTPUTS: list[Port] = []
     PARAMS_SCHEMA: dict = {}
 
+    # --- Контракт полиморфных («типизированных») узлов ---
+    #
+    # Часть узлов (list_new/list_get/select/input_var и т.п.) выбирают тип
+    # своих портов параметром-перечислением (elem_type/value_type/type).
+    # TYPE_PARAM — имя этого параметра; TYPE_PARAM_MAP — его значения →
+    # PortType. Узел объявляет их и переопределяет type_param_ports(), чтобы
+    # GraphDocument мог протолкнуть тип по проводам автоматически (см.
+    # document.py: propagate_types_from_node) — иначе при смене типа на одном
+    # блоке пришлось бы вручную поправить elem_type на каждом подключённом.
+    TYPE_PARAM: str | None = None
+    TYPE_PARAM_MAP: dict[str, PortType] = {}
+
     def __init__(self, node_id: str, params: dict | None = None):
         self.node_id = node_id
         self.params: dict = dict(params or {})
@@ -88,6 +100,48 @@ class Node(ABC):
     def output_ports(self) -> list[Port]:
         """Выходные порты. Переопределяется, если зависят от параметров."""
         return list(self.OUTPUTS)
+
+    def type_param_ports(self) -> set[str]:
+        """
+        Имена ПОРТОВ (вход и/или выход), чей PortType прямо сейчас вычислен
+        из TYPE_PARAM. Переопределяют типизированные узлы — например,
+        list_get возвращает {"out"}, list_new (count>0) — {"in0", "in1", …}.
+
+        Отличие от «просто порта типа LIST»: список list_get.list всегда
+        LIST независимо от elem_type — он в это множество не входит, хотя
+        сам узел типизирован.
+        """
+        return set()
+
+    @classmethod
+    def type_param_key_for(cls, port_type: PortType) -> str | None:
+        """Значение TYPE_PARAM, дающее port_type — обратный поиск по
+        TYPE_PARAM_MAP. None, если узел такой тип вообще не поддерживает."""
+        for key, pt in cls.TYPE_PARAM_MAP.items():
+            if pt is port_type:
+                return key
+        return None
+
+    def summary(self) -> str:
+        """
+        Однострочная сводка СОДЕРЖАНИЯ узла для отображения прямо на теле
+        узла на холсте (наглядность: взглянул на граф — видно, что узел
+        делает, без клика по инспектору). Примеры переопределений:
+        expr_const → сам текст выражения, diff → 'd/dx', limit → 'lim x→0',
+        random_natural → '1…20', subs_expr → 'w := ●'.
+
+        Базовая реализация — компактный свод скалярных параметров ('k=v').
+        Пустая строка = показывать нечего. Держите КОРОТКО (холст усечёт
+        по ширине узла); подробности остаются инспектору. Сводка из 1–3
+        символов рисуется холстом крупным глифом (например '+' у
+        expr_binop) — как у арифметики LabVIEW.
+        """
+        bits = []
+        for k, v in self.params.items():
+            if isinstance(v, (list, dict)) or v is None or v == "":
+                continue
+            bits.append(f"{k}={v}")
+        return ", ".join(bits)
 
     @abstractmethod
     def compute(self, inputs: dict[str, Any], ctx: ExecContext) -> dict[str, Any]:

@@ -33,7 +33,12 @@ def change_role(
     if target_login == actor_login:
         raise AdminActionError("Нельзя изменить собственную роль.")
 
-    with repo._connect() as conn:  # noqa: SLF001 — admin_api это слой данных
+    # Проверка и запись — ОДНОЙ транзакцией. «Нельзя понизить последнего
+    # администратора» — это классическое check-then-act: два одновременных
+    # понижения двух последних админов оба видели бы count == 2, оба
+    # проходили бы проверку, и система осталась бы без единого админа.
+    # Раньше проверка шла в своём соединении, а запись — вообще вне его.
+    with repo.transaction() as conn:
         row = conn.execute(
             "SELECT role FROM users WHERE login = ?", (target_login,)
         ).fetchone()
@@ -48,12 +53,12 @@ def change_role(
                 raise AdminActionError(
                     "Нельзя понизить последнего администратора.")
 
-    repo.set_user_role(target_login, new_role)
-    # Роль меняет видимый набор предметов (выдачи касаются только
-    # преподавателей, а RBAC-область у admin/teacher/student разная), поэтому
-    # смена роли — такое же событие scope-эпохи, как выдача и отзыв:
-    # docs/subject_grants.md. Без инкремента десктоп разжалованного
-    # преподавателя продолжил бы жить с прежним набором до первой правки
-    # контента.
-    repo.bump_scope_version(target_login)
+        repo.set_user_role(target_login, new_role)
+        # Роль меняет видимый набор предметов (выдачи касаются только
+        # преподавателей, а RBAC-область у admin/teacher/student разная),
+        # поэтому смена роли — такое же событие scope-эпохи, как выдача и
+        # отзыв: docs/subject_grants.md. Без инкремента десктоп разжалованного
+        # преподавателя продолжил бы жить с прежним набором до первой правки
+        # контента.
+        repo.bump_scope_version(target_login)
     return {"login": target_login, "role": new_role}

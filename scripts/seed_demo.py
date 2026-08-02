@@ -106,14 +106,13 @@ def seed_main() -> None:
                             if login in members and _assignment_pid(repo, a) == pid), None)
                 rows.append((cuid, login, pid, aid, correct, ts))
 
-    with repo._connect() as conn:  # noqa: SLF001 — seed-скрипт, слой данных
+    with repo.transaction() as conn:
         conn.executemany(
             "INSERT OR IGNORE INTO attempts "
             "(client_uuid, user_id, partition_id, assignment_id, payload, correct, created_at) "
             "VALUES (?, ?, ?, ?, '', ?, ?)",
             rows,
         )
-        conn.commit()
         total = conn.execute("SELECT COUNT(*) FROM attempts").fetchone()[0]
     print(f"[main] пользователей: {len(ADMINS)+len(TEACHERS)+len(STUDENTS)}, "
           f"попыток в attempts: {total}, домашек: {len(assignments)}")
