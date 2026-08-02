@@ -16,6 +16,7 @@ from __future__ import annotations
 from .conversions import conversion_table, find_converter
 from .errors import GraphError, GraphValidationError, RetryGeneration
 from .executor import GraphExecutor
+from .modules import MODULE_ORDER, MODULES, all_categories, category_module
 from .node import ExecContext, Node, Port
 from .port_types import PortType, is_compatible
 from .registry import NodeRegistry
@@ -31,4 +32,5 @@ __all__ = [
     "GraphDocument", "DocNode", "DocEdge",
     "GraphExecutor",
     "GraphError", "GraphValidationError", "RetryGeneration",
+    "MODULES", "MODULE_ORDER", "category_module", "all_categories",
 ]

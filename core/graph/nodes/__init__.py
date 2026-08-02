@@ -12,15 +12,18 @@ from .assembly import BlockListNode, StaticTaskNode
 from .compute import ConstraintNode, FormulaNode, TemplateNode, VarDictNode
 from .content import TextBlockNode, TextNode, ToBlockNode
 from .control import (
-    CompareNode, GuardNode, NumberCheckNode, SelectNode,
+    CompareNode, GuardNode, NumberCheckNode, PickNode, SelectNode,
 )
 from .english import (
     SentenceFillNode, SentencesFileNode, WordsFileNode, WordsTrainerNode,
 )
 from .image import ImageBlockNode, ImageFileNode, LogicCircuitNode
+from .plot import (
+    ComplexPointsPlotNode, ComplexRegionPlotNode, ConformalMapPlotNode,
+)
 from .lists import (
-    ListAppendNode, ListGetNode, ListJoinNode, ListLengthNode, ListNewNode,
-    RandomChoiceNode,
+    ListAppendNode, ListConcatNode, ListGetNode, ListJoinNode, ListLengthNode,
+    ListNewNode, RandomChoiceNode,
 )
 from .loop import (
     CaseNode, InputVarNode, LoopIndexNode, MapItemNode, MapNode, OutputVarNode,
@@ -49,11 +52,14 @@ from .ode import (
 from .symbolic import (
     AbsNode, ApartNode, ArgNode, CancelNode, CollectNode, ConjugateNode,
     DiffNode, EvaluateNode, ExpandComplexNode, ExpandNode, ExprBinaryNode,
-    ExprBlockNode, ExprConstNode, FactorNode, FourierNode, ImNode,
+    ExprBlockNode, ExprCallNode, ExprConstNode, ExprLambdaNode, ExprReduceNode,
+    FactorNode,
+    FourierNode, ImNode,
     IntegrateNode, InverseFourierNode, InverseLaplaceNode, IsConvergentNode,
-    LaplaceNode, LimitNode, LimitDisplayNode, RandomPolynomialNode, ReNode, ResidueNode,
-    SeriesNode, SimplifyNode, SolveNode, SubstituteNode, SumDisplayNode,
-    SummationNode, SymbolNode, TogetherNode, TrigsimpNode,
+    LaplaceNode, LimitNode, LimitDisplayNode, ParseExprNode,
+    RandomPolynomialNode, ReNode, ResidueNode,
+    SeriesNode, SimplifyNode, SolveNode, SubsExprNode, SubstituteNode,
+    SumDisplayNode, SummationNode, SymbolNode, TogetherNode, TrigsimpNode,
 )
 
 _ALL_NODES = [
@@ -66,14 +72,17 @@ _ALL_NODES = [
     # compute
     VarDictNode, FormulaNode, ConstraintNode, TemplateNode,
     # control
-    CompareNode, NumberCheckNode, SelectNode, GuardNode,
+    CompareNode, NumberCheckNode, SelectNode, PickNode, GuardNode,
     LoopIndexNode, RepeatNode, MapItemNode, MapNode, InputVarNode,
     OutputVarNode, CaseNode,
     ShiftGetNode, ShiftSetNode,
     # symbolic (символьная арифметика)
-    SymbolNode, ExprConstNode, RandomPolynomialNode,
+    SymbolNode, ExprConstNode, ParseExprNode, RandomPolynomialNode,
     ExpandNode, FactorNode, SimplifyNode, TogetherNode, CancelNode, TrigsimpNode,
-    CollectNode, ApartNode, ExprBinaryNode, SubstituteNode, EvaluateNode,
+    CollectNode, ApartNode, ExprBinaryNode, ExprReduceNode, SubstituteNode,
+    SubsExprNode,
+    ExprLambdaNode, ExprCallNode,
+    EvaluateNode,
     DiffNode, IntegrateNode, LimitNode, LimitDisplayNode, SeriesNode,
     SummationNode, SumDisplayNode, IsConvergentNode,
     ReNode, ImNode, ArgNode, AbsNode, ConjugateNode, ExpandComplexNode,
@@ -99,8 +108,11 @@ _ALL_NODES = [
     WordsFileNode, WordsTrainerNode, SentencesFileNode, SentenceFillNode,
     # image (изображения / ОПВС)
     LogicCircuitNode, ImageFileNode, ImageBlockNode,
+    # plot (графика на комплексной плоскости)
+    ComplexPointsPlotNode, ComplexRegionPlotNode, ConformalMapPlotNode,
     # list (операции со списками)
-    ListNewNode, ListAppendNode, ListLengthNode, ListGetNode, ListJoinNode,
+    ListNewNode, ListAppendNode, ListConcatNode, ListLengthNode, ListGetNode,
+    ListJoinNode,
     # content
     TextNode, TextBlockNode, ToBlockNode,
     # assembly

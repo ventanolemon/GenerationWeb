@@ -25,6 +25,8 @@ class PortType(Enum):
     WORDS = "words"              # dict[str, str] — словарь term→translation (англ.)
     SENTENCES = "sentences"      # list[dict] — предложения с пропусками (англ.)
     TASK = "task"                # StaticTask / InteractiveTask — финал графа
+    FUNC = "func"                # символьная функция: (параметры, тело-выражение)
+                                 # — определяется expr_lambda, вызывается expr_call
     ANY = "any"                  # полиморфный порт: принимает значение любого
                                  # типа (узел сам диспетчеризует по факт. типу)
 

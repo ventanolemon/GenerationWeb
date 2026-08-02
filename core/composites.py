@@ -1,5 +1,13 @@
 """
-Композитные генераторы. GroupGenerator и TestGenerator. Без изменений.
+Композитные генераторы.
+
+GroupGenerator — выбирает случайного из своих детей при каждом generate().
+TestGenerator — собирает один большой StaticTask из заданий нескольких генераторов
+                с указанным количеством каждого.
+
+Оба сами реализуют TaskGenerator и не знают о предметах своих детей.
+Английский (INTERACTIVE) физически не попадает в группы/тесты благодаря
+фильтру по GROUPABLE.
 """
 
 from __future__ import annotations
@@ -12,6 +20,8 @@ from .task import StaticTask
 
 
 class GroupGenerator(TaskGenerator):
+    """Группа: при каждом generate() выбирается один случайный ребёнок."""
+
     capabilities = Capability.STATIC | Capability.EXPORTABLE | Capability.GROUPABLE
 
     def __init__(self, name: str, children: List[TaskGenerator],
@@ -29,9 +39,11 @@ class GroupGenerator(TaskGenerator):
     def generate(self) -> StaticTask:
         chosen = random.choice(self.children)
         task = chosen.generate()
+        # Прокидываем мету ребёнка наверх, чтобы знать, кто сгенерировал
         if isinstance(task, StaticTask):
             task.meta = {**task.meta, "child_partition": chosen.partition_id}
             return task
+        # Сюда не должны попадать благодаря фильтру в __init__
         raise TypeError(
             f"Ребёнок {chosen.name!r} вернул не StaticTask, "
             "хотя имел флаг GROUPABLE."
@@ -39,6 +51,12 @@ class GroupGenerator(TaskGenerator):
 
 
 class TestGenerator(TaskGenerator):
+    """
+    Тест: собирает один StaticTask со списком заданий, пронумерованных по порядку.
+
+    items = [(generator, count), ...] — каждый генератор вызывается count раз.
+    """
+
     capabilities = Capability.STATIC | Capability.EXPORTABLE
 
     def __init__(self, name: str, items: List[Tuple[TaskGenerator, int]],
@@ -64,7 +82,7 @@ class TestGenerator(TaskGenerator):
                     continue
                 statement.append(TextBlock(f"{n}. "))
                 statement.extend(t.statement)
-                statement.append(TextBlock(""))
+                statement.append(TextBlock(""))   # отбивка
                 answer.append(TextBlock(f"{n}. "))
                 answer.extend(t.answer)
                 answer.append(TextBlock(""))

@@ -942,7 +942,8 @@ class MatrixBlockNode(Node):
     type_id = "matrix_block"
     category = "linalg"
     display_name = "Матричный блок"
-    INPUTS = [Port("in", PortType.MATRIX)]
+    INPUTS = [Port("in", PortType.MATRIX),
+              Port("prefix", PortType.STRING, required=False)]
     OUTPUTS = [Port("out", PortType.BLOCK)]
     PARAMS_SCHEMA = {
         "env": {"type": "enum", "values": list(_MATRIX_ENVS), "default": "pmatrix"},
@@ -956,7 +957,10 @@ class MatrixBlockNode(Node):
         sp = sympy()
         M = as_matrix(inputs["in"])
         env = self.params.get("env", "pmatrix")
-        latex = _join_prefix(self.params.get("prefix", ""),
+        prefix = inputs.get("prefix")
+        if prefix is None:
+            prefix = self.params.get("prefix", "")
+        latex = _join_prefix(prefix,
                              sp.latex(M, mat_delim="", mat_str=env),
                              self.params.get("relation", "="))
         return {"out": FormulaBlock(latex)}

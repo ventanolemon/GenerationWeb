@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
 from .errors import GraphValidationError, RetryGeneration
 
@@ -90,7 +91,8 @@ def parse_expr(text: str, symbols: dict | None = None):
 def to_latex(expr) -> str:
     """LaTeX-представление sympy-выражения (через core.latex.canonical_latex)."""
     sp = sympy()
-    raw = sp.latex(expr)
+    # ln вместо log: в отечественной нотации натуральный логарифм — ln.
+    raw = sp.latex(expr, ln_notation=True)
     try:
         from core.latex import canonical_latex
         return canonical_latex(raw)
@@ -109,7 +111,12 @@ def as_expr(value, symbols: dict | None = None):
     if isinstance(value, sp.Basic):
         return value
     if isinstance(value, (int, float)):
-        return sp.nsimplify(value) if isinstance(value, int) else sp.Float(value)
+        # Целочисленные значения (в т.ч. float 4.0 из NUMBER-провода) — точным
+        # Integer: иначе z**4.0 не раскрывается и ответы «плывут» в float.
+        f = float(value)
+        if f == int(f):
+            return sp.Integer(int(f))
+        return sp.Float(f)
     return parse_expr(str(value), symbols)
 
 
@@ -173,7 +180,14 @@ def substitute_values(obj, values: dict | None):
     if not values:
         return obj
     sp = sympy()
-    mapping = {sp.Symbol(str(k)): _num(sp, v) for k, v in values.items()}
+    # Символы ищем в самом выражении ПО ИМЕНИ: Symbol('a') и
+    # Symbol('a', positive=True) — разные объекты sympy, поэтому свежий
+    # Symbol молча не совпал бы с символом, созданным с предположениями.
+    free = {s.name: s for s in getattr(obj, "free_symbols", set())}
+    mapping = {
+        free.get(str(k), sp.Symbol(str(k))): _num(sp, v)
+        for k, v in values.items()
+    }
     try:
         return obj.subs(mapping)
     except AttributeError:
@@ -189,6 +203,48 @@ def _num(sp, v):
     if abs(f - round(f)) < 1e-9:
         return sp.Integer(int(round(f)))
     return sp.Float(f)
+
+
+def subs_value(value):
+    """
+    Привести значение подстановки к sympy-объекту: число → точный sympy-объект
+    (целые остаются целыми), выражение/строка → sympy-выражение. Так один и тот
+    же вход можно заменить и числом, и другим выражением (полиморфная subs).
+    """
+    sp = sympy()
+    if isinstance(value, bool):          # bool — не число для подстановки
+        return sp.sympify(value)
+    if isinstance(value, (int, float)):
+        return _num(sp, value)
+    return as_expr(value)
+
+
+# ---------- Символьная функция (expr_lambda / expr_call) ----------
+
+@dataclass(frozen=True)
+class GraphFunction:
+    """
+    Переносимая по проводу FUNC символьная функция: имена формальных параметров
+    и тело-выражение (sympy). Определяется узлом expr_lambda, вызывается
+    expr_call (подстановка аргументов по имени параметра). Одну и ту же функцию
+    можно подать в несколько вызовов — это и есть переиспользование.
+    """
+    params: tuple
+    body: object
+
+    def call(self, args: dict):
+        """Подставить аргументы {имя_параметра: значение} в тело → выражение."""
+        sp = sympy()
+        free = {s.name: s for s in getattr(self.body, "free_symbols", set())}
+        mapping = {}
+        for name in self.params:
+            if name in args and args[name] is not None:
+                sym = free.get(name, sp.Symbol(name))
+                mapping[sym] = subs_value(args[name])
+        try:
+            return self.body.subs(mapping)
+        except AttributeError:
+            return self.body
 
 
 # ---------- ОДУ ----------

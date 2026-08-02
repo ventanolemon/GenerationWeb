@@ -4,8 +4,6 @@ TaskGenerator — контракт модуля.
 Модуль = один класс, наследующий TaskGenerator, с методом generate().
 Декларирует свои возможности через флаги Capability — каркас опирается
 на них при выборе представления и при включении в группы/тесты.
-
-Без изменений относительно десктоп-версии.
 """
 
 from __future__ import annotations
@@ -27,12 +25,22 @@ class Capability(Flag):
     HAS_IMAGES  = auto()  # подсказка для UI: задание содержит ImageBlock
 
 
+# Удобные дефолтные наборы
 STATIC_DEFAULT = Capability.STATIC | Capability.GROUPABLE | Capability.EXPORTABLE
 
 
 class TaskGenerator(ABC):
     """
     Контракт модуля. Один файл — один класс, наследующий это.
+
+    Обязательно:
+      * атрибут name (человекочитаемое имя)
+      * метод generate() → Task
+      * капабилити, согласованные с типом возврата
+
+    Опционально:
+      * partition_id — связь с записью в БД
+      * configure(params) — применение параметров из БД
     """
 
     name: str = ""
@@ -44,4 +52,8 @@ class TaskGenerator(ABC):
         """Сгенерировать новое задание."""
 
     def configure(self, params: dict) -> None:
+        """
+        Применить параметры из БД (поле generation_parametrs).
+        Дефолтная реализация — игнорировать.
+        """
         return None
