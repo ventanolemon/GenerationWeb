@@ -93,8 +93,11 @@ class PublicApiTestBase(unittest.TestCase):
             self.authored, "Раздел Аллы", 0, {})
 
         self.client_id = self.repo.create_api_client("Интегратор", "root", 1000)
-        self.key = api_clients.issue_key(
-            self.repo, client_id=self.client_id)["key"]
+        issued = api_clients.issue_key(self.repo, client_id=self.client_id)
+        # Префикс берём из ответа, а не вычисляем сами: считать его в тесте
+        # значило бы продублировать логику, которую тест и проверяет (именно
+        # так здесь и жила ошибка с rindex("_")).
+        self.key, self.key_prefix = issued["key"], issued["prefix"]
 
         app = FastAPI()
         errors.install(app)
@@ -132,13 +135,30 @@ class KeyTests(PublicApiTestBase):
         self.assertEqual(rows[0][0], api_clients.hash_key(self.key))
         self.assertTrue(self.key.startswith(rows[0][1]))
 
+    def test_prefix_is_short_even_when_the_key_contains_underscores(self):
+        """
+        Регрессия: граница префикса искалась через rindex("_"), а алфавит
+        token_urlsafe (base64url) сам содержит `_`. Когда подчёркивание
+        попадало в случайную часть, «префиксом» становился почти весь ключ —
+        и уезжал в базу открытым текстом, обессмысливая хранение хэша.
+        Выпускаем много ключей, чтобы случай с `_` гарантированно попался.
+        """
+        for _ in range(60):
+            issued = api_clients.issue_key(self.repo, client_id=self.client_id)
+            self.assertEqual(len(issued["prefix"]), len("gw_live_") + 8)
+            self.assertTrue(issued["key"].startswith(issued["prefix"]))
+            self.assertNotEqual(issued["prefix"], issued["key"])
+            # Остаток ключа в префикс не просочился.
+            self.assertNotIn(issued["key"][len(issued["prefix"]):],
+                             issued["prefix"])
+
     def test_authenticate_accepts_valid_key(self):
         client = api_clients.authenticate(self.repo, self.key)
         self.assertEqual(client["client_id"], self.client_id)
 
     def test_unknown_and_revoked_are_indistinguishable(self):
         api_clients.revoke_key(self.repo, client_id=self.client_id,
-                               prefix=self.key[:self.key.rindex("_") + 9])
+                               prefix=self.key_prefix)
         messages = set()
         for bad in (self.key, "gw_live_совсем-не-ключ"):
             with self.assertRaises(api_clients.ApiAuthError) as ctx:

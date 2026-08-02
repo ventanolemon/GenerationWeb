@@ -111,7 +111,7 @@ def push(
     changed_entities = changed_entities or []
     stats_key = user_key or (user_id if user_id is not None else device_id)
 
-    with repo._connect() as conn:  # noqa: SLF001 — sync_api это слой данных
+    with repo.transaction() as conn:
         _touch_device(conn, device_id, user_id, now)
 
         # --- Телеметрия: attempts, идемпотентно по client_uuid (§3) ---
@@ -139,7 +139,6 @@ def push(
                 ),
             )
             attempts_new += cur.rowcount
-        conn.commit()
 
     # --- Телеметрия: дельты word_stats, сервер суммирует (§3) ---
     for d in word_stats_deltas:
@@ -181,7 +180,7 @@ def _apply_word_stat_delta(repo: Repository, user_key: str, d: dict) -> None:
     correct = int(d.get("correct") or 0)
     wrong = int(d.get("wrong") or 0)
     last_seen = float(d.get("last_seen") or time.time())
-    with repo._connect() as conn:  # noqa: SLF001
+    with repo.transaction() as conn:
         conn.execute(
             "INSERT INTO WordStats "
             "(user_id, term, times_shown, times_correct, times_wrong, last_seen) "
@@ -194,7 +193,6 @@ def _apply_word_stat_delta(repo: Repository, user_key: str, d: dict) -> None:
             (user_key, term, shown, correct, wrong, last_seen,
              shown, correct, wrong, last_seen),
         )
-        conn.commit()
 
 
 def _authorize_entity_change(
@@ -289,7 +287,7 @@ def _apply_entity_change(
     data = change.get("data") or {}
     local_ref = change.get("local_ref")
 
-    with repo._connect() as conn:  # noqa: SLF001
+    with repo.transaction() as conn:
         row = None
         if entity_id is not None:
             row = _fetch_entity(conn, kind, int(entity_id))
@@ -307,7 +305,6 @@ def _apply_entity_change(
             # Создание (офлайн-созданная сущность): сервер назначает id.
             new_id, new_version = _insert_entity(conn, repo, kind, data, now,
                                                  actor, role)
-            conn.commit()
             return {"accepted": {
                 "kind": kind, "id": new_id, "local_ref": local_ref,
                 "row_version": new_version, "created": True,
@@ -322,7 +319,7 @@ def _apply_entity_change(
                 "theirs": row,
             }}
 
-        ver = repo._next_row_version(conn, table)  # noqa: SLF001
+        ver = repo.next_row_version(conn, table)
         if change.get("deleted"):
             conn.execute(
                 f"UPDATE {table} SET deleted_at = ?, updated_at = ?, "
@@ -331,7 +328,6 @@ def _apply_entity_change(
             )
         else:
             _update_entity(conn, kind, row["id"], data, ver, now)
-        conn.commit()
         return {"accepted": {
             "kind": kind, "id": row["id"], "local_ref": local_ref,
             "row_version": ver,
@@ -387,7 +383,7 @@ def _dump_params(value: Any) -> str:
 def _insert_entity(conn, repo: Repository, kind: str, data: dict, now: float,
                    actor: Optional[str] = None, role: str = "teacher"):
     if kind == "subject":
-        ver = repo._next_row_version(conn, "Subjects")  # noqa: SLF001
+        ver = repo.next_row_version(conn, "Subjects")
         # Владельца назначает СЕРВЕР, а не клиент. Присланный owner_user_id
         # — это заявка, а не факт: устройство могло объявить предмет чужим
         # (подставить владельцем другого) или системным (owner NULL —
@@ -407,7 +403,7 @@ def _insert_entity(conn, repo: Repository, kind: str, data: dict, now: float,
             ),
         )
         return cur.lastrowid, ver
-    ver = repo._next_row_version(conn, "Partitions")  # noqa: SLF001
+    ver = repo.next_row_version(conn, "Partitions")
     cur = conn.execute(
         "INSERT INTO Partitions (subject_id, partition_name, constracted, "
         " generation_parametrs, row_version, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
@@ -503,9 +499,8 @@ def pull(
     scope = visible_scope(repo, user_id, role)
     now = time.time()
 
-    with repo._connect() as conn:  # noqa: SLF001
+    with repo.transaction() as conn:
         _touch_device(conn, device_id, user_id, now)
-        conn.commit()
 
         subjects, deleted_subj, cur_subj, more_subj = _pull_subjects(
             conn, int(cursors.get("subjects") or 0), limit, scope)

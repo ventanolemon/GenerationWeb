@@ -76,7 +76,7 @@ def overview(
 # ---------- Загрузка скоупа ----------
 
 def _load(repo: Repository, subject_ids: list[int]):
-    with repo._connect() as conn:  # noqa: SLF001 — analytics_api это слой данных
+    with repo.transaction() as conn:
         if not subject_ids:
             return {}, {}, [], {}
         ph = ",".join("?" * len(subject_ids))

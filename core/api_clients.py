@@ -94,8 +94,14 @@ def issue_key(repo: Repository, *, client_id: int, kind: str = "server",
             "Браузерному ключу обязателен allowed_origins: он публичен по "
             "своей природе, и origin — единственное, что его ограничивает.")
 
-    raw = f"gw_{'live' if kind == 'server' else 'web'}_{secrets.token_urlsafe(32)}"
-    prefix = raw[:raw.rindex("_") + 1 + _PREFIX_CHARS]
+    # Граница префикса считается от ИЗВЕСТНОЙ длины заголовка, а не поиском
+    # разделителя в готовой строке: алфавит token_urlsafe (base64url) сам
+    # содержит `_`, и rindex("_") находил подчёркивание внутри случайной
+    # части — в базу уезжал «префикс» длиной почти во весь ключ, то есть
+    # ключ открытым текстом. Ровно то, ради чего хранится хэш.
+    head = f"gw_{'live' if kind == 'server' else 'web'}_"
+    raw = head + secrets.token_urlsafe(32)
+    prefix = raw[:len(head) + _PREFIX_CHARS]
     repo.add_api_key(hash_key(raw), client_id, kind, prefix,
                      allowed_origins.strip())
     return {"key": raw, "prefix": prefix, "kind": kind,
@@ -238,7 +244,6 @@ def delete_client(repo: Repository, *, client_id: int) -> dict:
     """Клиент удаляется вместе с ключами и выдачами (ON DELETE CASCADE)."""
     if repo.get_api_client(client_id) is None:
         raise ApiClientError(f"Клиент #{client_id} не найден.")
-    with repo._connect() as conn:  # noqa: SLF001 — слой данных
+    with repo.transaction() as conn:
         conn.execute("DELETE FROM api_clients WHERE id = ?", (client_id,))
-        conn.commit()
     return {"deleted": client_id, "at": time.time()}
