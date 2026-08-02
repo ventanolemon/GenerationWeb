@@ -329,6 +329,106 @@ class AccessMixin:
             ).fetchone()
         return int(row[0]) if row else 0
 
+    # --- Релизы приложения ---
+    #
+    # Сервер их только хранит и раздаёт: подпись делается офлайн, приватного
+    # ключа здесь нет (см. core/updates.py).
+
+    _RELEASE_COLS = (
+        "version, channel, platform, sequence, url, size_bytes, sha256, "
+        "signature, signing_key_id, min_supported, notes, published_by, "
+        "published_at, yanked_at")
+
+    @staticmethod
+    def _row_to_release(row) -> dict:
+        return {
+            "version": row[0], "channel": row[1], "platform": row[2],
+            "sequence": int(row[3] or 0), "url": row[4],
+            "size_bytes": int(row[5] or 0), "sha256": row[6],
+            "signature": row[7], "signing_key_id": row[8],
+            "min_supported": row[9], "notes": row[10],
+            "published_by": row[11], "published_at": row[12] or 0.0,
+            "yanked_at": row[13],
+        }
+
+    def add_release(self, *, version: str, channel: str, platform: str,
+                    sequence: int, url: str, size_bytes: int, sha256: str,
+                    signature: str, signing_key_id: str = "",
+                    min_supported: str = "", notes: str = "",
+                    published_by: Optional[str] = None) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO app_releases (version, channel, platform, "
+                " sequence, url, size_bytes, sha256, signature, "
+                " signing_key_id, min_supported, notes, published_by, "
+                " published_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (version, channel, platform, int(sequence), url,
+                 int(size_bytes), sha256, signature, signing_key_id,
+                 min_supported, notes, published_by, time.time()),
+            )
+
+    def get_release(self, version: str, channel: str,
+                    platform: str) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                f"SELECT {self._RELEASE_COLS} FROM app_releases "
+                "WHERE version = ? AND channel = ? AND platform = ?",
+                (version, channel, platform),
+            ).fetchone()
+        return self._row_to_release(row) if row else None
+
+    def latest_release(self, channel: str, platform: str) -> Optional[dict]:
+        """
+        Последний ДЕЙСТВУЮЩИЙ релиз канала. Отозванные исключены, порядок —
+        по sequence: он монотонен по построению, в отличие от версии-строки.
+
+        Платформа `any` подходит всем — иначе пришлось бы дублировать
+        кроссплатформенный артефакт под каждую ОС.
+        """
+        with self._connect() as conn:
+            row = conn.execute(
+                f"SELECT {self._RELEASE_COLS} FROM app_releases "
+                "WHERE channel = ? AND platform IN (?, 'any') "
+                "  AND yanked_at IS NULL "
+                "ORDER BY sequence DESC LIMIT 1",
+                (channel, platform),
+            ).fetchone()
+        return self._row_to_release(row) if row else None
+
+    def next_release_sequence(self, channel: str, platform: str) -> int:
+        """Монотонный счётчик выпусков канала — защита клиента от отката."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT COALESCE(MAX(sequence), 0) + 1 FROM app_releases "
+                "WHERE channel = ? AND platform IN (?, 'any')",
+                (channel, platform),
+            ).fetchone()
+        return int(row[0])
+
+    def list_releases(self, channel: Optional[str] = None) -> List[dict]:
+        with self._connect() as conn:
+            if channel:
+                rows = conn.execute(
+                    f"SELECT {self._RELEASE_COLS} FROM app_releases "
+                    "WHERE channel = ? ORDER BY sequence DESC", (channel,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    f"SELECT {self._RELEASE_COLS} FROM app_releases "
+                    "ORDER BY channel, sequence DESC"
+                ).fetchall()
+        return [self._row_to_release(r) for r in rows]
+
+    def yank_release(self, version: str, channel: str, platform: str) -> bool:
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE app_releases SET yanked_at = ? "
+                "WHERE version = ? AND channel = ? AND platform = ? "
+                "  AND yanked_at IS NULL",
+                (time.time(), version, channel, platform),
+            )
+            return cur.rowcount > 0
+
     # --- Публичные идентификаторы ---
 
     _PUBLIC_ID_TABLES = {"subject": "Subjects", "partition": "Partitions"}

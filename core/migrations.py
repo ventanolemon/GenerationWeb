@@ -511,6 +511,61 @@ def _m008_public_api(conn: sqlite3.Connection) -> None:
             )
 
 
+# ---------- Миграция 009: релизы приложения ----------
+
+def _m009_app_releases(conn: sqlite3.Connection) -> None:
+    """
+    Реестр релизов десктопа для механизма обновления.
+
+    Ключевое, что определило форму таблицы: **сервер не подписывает**. Он
+    хранит и раздаёт уже подписанное. Подпись делается офлайн, ключом,
+    который на раздающей машине не лежит, — иначе взлом сервера означал бы
+    возможность подписать что угодно и разослать это на все десктопы.
+    Поэтому `signature` здесь — принятые данные, а не результат работы
+    сервиса; приватного ключа в схеме нет и быть не может.
+
+    `sha256` — целостность артефакта (не побился ли при скачивании).
+    `signature` — подлинность (тот ли, кто мы думаем, его выпустил). Это
+    РАЗНЫЕ свойства, и хеш без подписи не даёт второго: подменивший файл
+    подменит и хеш.
+
+    Подпись покрывает канонический манифест целиком (версия, платформа,
+    канал, размер, sha256, sequence), а не только хеш файла. Иначе
+    подписанный артефакт можно было бы переклеить под другую версию или
+    другую платформу, не трогая подпись.
+
+    `sequence` — монотонный счётчик выпусков, защита от отката: подсунуть
+    СТАРЫЙ, честно подписанный релиз с известной дырой — валидная атака,
+    и подпись от неё не спасает. Клиент отвергает всё, у чего sequence не
+    больше установленного.
+
+    `yanked_at` — отзыв релиза (нашли дефект). Отозванный не отдаётся как
+    последний, но остаётся в таблице: история выпусков нужна, чтобы понять,
+    что у пользователя стоит.
+    """
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS app_releases (
+            version        TEXT    NOT NULL,
+            channel        TEXT    NOT NULL DEFAULT 'stable',
+            platform       TEXT    NOT NULL DEFAULT 'any',
+            sequence       INTEGER NOT NULL DEFAULT 0,
+            url            TEXT    NOT NULL DEFAULT '',
+            size_bytes     INTEGER NOT NULL DEFAULT 0,
+            sha256         TEXT    NOT NULL DEFAULT '',
+            signature      TEXT    NOT NULL DEFAULT '',
+            signing_key_id TEXT    NOT NULL DEFAULT '',
+            min_supported  TEXT    NOT NULL DEFAULT '',
+            notes          TEXT    NOT NULL DEFAULT '',
+            published_by   TEXT,
+            published_at   REAL    NOT NULL DEFAULT 0,
+            yanked_at      REAL,
+            PRIMARY KEY (version, channel, platform)
+        );
+        CREATE INDEX IF NOT EXISTS ix_app_releases_lookup
+            ON app_releases(channel, platform, sequence);
+    """)
+
+
 # Порядок применения. Добавлять новые кортежами (version, name, fn).
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = [
     (1, "rbac_foundation", _m001_rbac_foundation),
@@ -521,6 +576,7 @@ MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = [
     (6, "subject_grants", _m006_subject_grants),
     (7, "interactive_sessions", _m007_interactive_sessions),
     (8, "public_api", _m008_public_api),
+    (9, "app_releases", _m009_app_releases),
 ]
 
 

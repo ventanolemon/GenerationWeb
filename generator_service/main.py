@@ -54,6 +54,7 @@ from .routers import public_v1 as public_v1_router
 from .routers import stats as stats_router
 from .routers import subjects as subjects_router
 from .routers import sync as sync_router
+from .routers import updates as updates_router
 from .session_store import SessionStore
 
 
@@ -142,6 +143,9 @@ app = FastAPI(
         {"name": "analytics", "description": "Сводки успеваемости."},
         {"name": "stats", "description": "Статистика по словам."},
         {"name": "export", "description": "Экспорт вариантов."},
+        {"name": "updates",
+         "description": "Обновление десктопа: подписанные релизы. "
+                        "Сервер раздаёт, но не подписывает."},
         {"name": "meta", "description": "Служебное: health, версия."},
         {"name": "public-v1",
          "description": "Публичный API для сторонних приложений. Субъект — "
@@ -188,6 +192,7 @@ app.include_router(stats_router.router)
 app.include_router(meta_router.router)
 app.include_router(graph_router.router)
 app.include_router(sync_router.router)
+app.include_router(updates_router.router)
 app.include_router(analytics_router.router)
 app.include_router(admin_router.router)
 app.include_router(groups_router.router)
