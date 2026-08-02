@@ -566,6 +566,71 @@ def _m009_app_releases(conn: sqlite3.Connection) -> None:
     """)
 
 
+# ---------- Миграция 010: пакеты узлов ----------
+
+def _m010_node_packages(conn: sqlite3.Connection) -> None:
+    """
+    Реестр дополнительных пакетов узлов графа.
+
+    Схема повторяет `app_releases` не по лени: докачка узлов — это тот же
+    канал доставки исполняемого кода, что и обновление приложения, и
+    отдельная схема доверия у него была бы новой поверхностью атаки.
+    Подпись офлайновая, сервер раздаёт но не подписывает, `sequence` защищает
+    от отката — всё как у релизов (core/signing.py).
+
+    Отличие одно и оно принципиальное: `node_types`. Пакет ОБЪЯВЛЯЕТ, какие
+    типы узлов он даёт, и это объявление **входит в подписанный манифест**.
+    Иначе кто угодно мог бы заявить, что его пакет предоставляет `formula`,
+    и перехватывать чужие графы. По этому же полю сервер выводит, какой
+    пакет нужен приехавшему графу, — без деклараций на клиенте, которые
+    неизбежно протухают.
+
+    `installed_packages` — что стоит на ЭТОМ сервере. Отдельно от реестра,
+    потому что это разные вопросы: «что вообще существует» и «что здесь
+    исполняется». Набор курирует администратор: граф с узлом из
+    неустановленного пакета отвергается на push'е. Иначе решение, какой код
+    запускается на сервере, принимал бы автор графа.
+
+    `package_requests` — очередь «людям не хватает пакета X». Нужна затем,
+    что отказ на push'е без такой очереди превращается в переписку в чате.
+    """
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS node_packages (
+            name           TEXT    NOT NULL,
+            version        TEXT    NOT NULL,
+            sequence       INTEGER NOT NULL DEFAULT 0,
+            url            TEXT    NOT NULL DEFAULT '',
+            size_bytes     INTEGER NOT NULL DEFAULT 0,
+            sha256         TEXT    NOT NULL DEFAULT '',
+            signature      TEXT    NOT NULL DEFAULT '',
+            signing_key_id TEXT    NOT NULL DEFAULT '',
+            api_version    TEXT    NOT NULL DEFAULT '1',
+            node_types     TEXT    NOT NULL DEFAULT '[]',
+            summary        TEXT    NOT NULL DEFAULT '',
+            published_by   TEXT,
+            published_at   REAL    NOT NULL DEFAULT 0,
+            yanked_at      REAL,
+            PRIMARY KEY (name, version)
+        );
+        CREATE INDEX IF NOT EXISTS ix_node_packages_seq
+            ON node_packages(name, sequence);
+        CREATE TABLE IF NOT EXISTS installed_packages (
+            name         TEXT PRIMARY KEY,
+            version      TEXT NOT NULL,
+            installed_by TEXT,
+            installed_at REAL NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS package_requests (
+            name         TEXT NOT NULL,
+            requested_by TEXT NOT NULL,
+            reason       TEXT NOT NULL DEFAULT '',
+            requested_at REAL NOT NULL DEFAULT 0,
+            resolved_at  REAL,
+            PRIMARY KEY (name, requested_by)
+        );
+    """)
+
+
 # Порядок применения. Добавлять новые кортежами (version, name, fn).
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = [
     (1, "rbac_foundation", _m001_rbac_foundation),
@@ -577,6 +642,7 @@ MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = [
     (7, "interactive_sessions", _m007_interactive_sessions),
     (8, "public_api", _m008_public_api),
     (9, "app_releases", _m009_app_releases),
+    (10, "node_packages", _m010_node_packages),
 ]
 
 

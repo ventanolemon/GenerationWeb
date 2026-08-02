@@ -49,6 +49,7 @@ from .routers import grants as grants_router
 from .routers import graph as graph_router
 from .routers import interactive as interactive_router
 from .routers import meta as meta_router
+from .routers import packages as packages_router
 from .routers import partitions as partitions_router
 from .routers import public_v1 as public_v1_router
 from .routers import stats as stats_router
@@ -143,6 +144,9 @@ app = FastAPI(
         {"name": "analytics", "description": "Сводки успеваемости."},
         {"name": "stats", "description": "Статистика по словам."},
         {"name": "export", "description": "Экспорт вариантов."},
+        {"name": "packages",
+         "description": "Пакеты узлов графа: односторонняя докачка "
+                        "с сервера, подпись общая с релизами."},
         {"name": "updates",
          "description": "Обновление десктопа: подписанные релизы. "
                         "Сервер раздаёт, но не подписывает."},
@@ -193,6 +197,7 @@ app.include_router(meta_router.router)
 app.include_router(graph_router.router)
 app.include_router(sync_router.router)
 app.include_router(updates_router.router)
+app.include_router(packages_router.router)
 app.include_router(analytics_router.router)
 app.include_router(admin_router.router)
 app.include_router(groups_router.router)

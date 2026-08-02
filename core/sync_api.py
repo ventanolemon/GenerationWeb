@@ -255,6 +255,45 @@ def _authorize_entity_change(
     return None
 
 
+def _missing_packages(repo: Repository, kind: str, change: dict,
+                      data: dict, actor: Optional[str]) -> Optional[dict]:
+    """
+    Отвергнуть граф, для которого на сервере нет нужного пакета узлов.
+
+    Проверка стоит здесь, на приёме, а НЕ при генерации — и это главное
+    решение всей затеи с пакетами. Приняв такой граф, сервер сложил бы себе
+    мину: она сработает у каждого, кто его откроет, и у стороннего
+    интегратора через публичный API, причём в виде «не удалось
+    сгенерировать» без единого намёка на причину. Отказ на входе называет
+    причину и кладёт запрос администратору.
+
+    Тихо пропускаем, когда пакетов не заведено вовсе: до появления первого
+    пакета механизм не должен менять поведение синка ни на йоту.
+    """
+    if kind != "partition" or change.get("deleted"):
+        return None
+    params = data.get("generation_parametrs")
+    if isinstance(params, str):
+        params = _parse_params(params)
+    try:
+        from . import node_packages
+        from .graph.nodes import DEFAULT_REGISTRY
+        node_packages.check_graph_requirements(
+            repo, params, DEFAULT_REGISTRY.type_ids(), requested_by=actor or "")
+    except ImportError:                              # pragma: no cover
+        return None                                  # движок графов не собран
+    except Exception as exc:
+        if type(exc).__name__ != "MissingPackages":
+            raise
+        return {"conflict": {
+            "kind": kind, "id": change.get("id"),
+            "error": str(exc), "missing_packages": list(exc.packages),
+            "unknown_node_types": list(exc.unknown_types),
+            "mine": data, "theirs": None,
+        }}
+    return None
+
+
 def _apply_entity_change(
     repo: Repository, change: dict, now: float,
     actor: Optional[str] = None, role: str = "teacher",
@@ -300,6 +339,10 @@ def _apply_entity_change(
                 "mine": data if not change.get("deleted") else {"deleted": True},
                 "theirs": row,
             }}
+
+        missing = _missing_packages(repo, kind, change, data, actor)
+        if missing is not None:
+            return missing
 
         if row is None:
             # Создание (офлайн-созданная сущность): сервер назначает id.

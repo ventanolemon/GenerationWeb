@@ -31,7 +31,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from core import updates
+from core import signing, updates
 
 router = APIRouter(tags=["updates"])
 
@@ -68,9 +68,12 @@ def _require_admin(x_user_id: Optional[str], x_user_role: Optional[str]) -> str:
 
 
 def _run(fn, *args, **kwargs) -> Any:
+    # SignatureError живёт в общем core/signing.py и не наследует UpdateError:
+    # он общий с пакетами узлов. Смысл для HTTP у обоих один — «вход не
+    # годится», то есть 400, а не 500: сервер исправен, негоден запрос.
     try:
         return fn(*args, **kwargs)
-    except updates.UpdateError as exc:
+    except (updates.UpdateError, signing.SignatureError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 

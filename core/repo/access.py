@@ -8,6 +8,7 @@
 """
 
 from __future__ import annotations
+import json
 import time
 import uuid
 from typing import List, Optional
@@ -428,6 +429,141 @@ class AccessMixin:
                 (time.time(), version, channel, platform),
             )
             return cur.rowcount > 0
+
+    # --- Пакеты узлов ---
+
+    _PKG_COLS = ("name, version, sequence, url, size_bytes, sha256, signature, "
+                 "signing_key_id, api_version, node_types, summary, "
+                 "published_by, published_at, yanked_at")
+
+    @staticmethod
+    def _row_to_package(row) -> dict:
+        try:
+            node_types = json.loads(row[9] or "[]")
+        except json.JSONDecodeError:
+            node_types = []
+        return {"name": row[0], "version": row[1], "sequence": int(row[2] or 0),
+                "url": row[3], "size_bytes": int(row[4] or 0), "sha256": row[5],
+                "signature": row[6], "signing_key_id": row[7],
+                "api_version": row[8],
+                "node_types": node_types if isinstance(node_types, list) else [],
+                "summary": row[10], "published_by": row[11],
+                "published_at": row[12] or 0.0, "yanked_at": row[13]}
+
+    def add_node_package(self, *, name: str, version: str, sequence: int,
+                         url: str, size_bytes: int, sha256: str,
+                         signature: str, node_types: list, api_version: str,
+                         signing_key_id: str = "", summary: str = "",
+                         published_by: Optional[str] = None) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO node_packages (name, version, sequence, url, "
+                " size_bytes, sha256, signature, signing_key_id, api_version, "
+                " node_types, summary, published_by, published_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (name, version, int(sequence), url, int(size_bytes), sha256,
+                 signature, signing_key_id, api_version,
+                 json.dumps(sorted(node_types), ensure_ascii=False),
+                 summary, published_by, time.time()),
+            )
+
+    def get_node_package(self, name: str, version: str) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                f"SELECT {self._PKG_COLS} FROM node_packages "
+                "WHERE name = ? AND version = ?", (name, version)).fetchone()
+        return self._row_to_package(row) if row else None
+
+    def latest_node_package(self, name: str) -> Optional[dict]:
+        """Последняя действующая версия пакета — по sequence, как у релизов."""
+        with self._connect() as conn:
+            row = conn.execute(
+                f"SELECT {self._PKG_COLS} FROM node_packages "
+                "WHERE name = ? AND yanked_at IS NULL "
+                "ORDER BY sequence DESC LIMIT 1", (name,)).fetchone()
+        return self._row_to_package(row) if row else None
+
+    def next_package_sequence(self, name: str) -> int:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT COALESCE(MAX(sequence), 0) + 1 FROM node_packages "
+                "WHERE name = ?", (name,)).fetchone()
+        return int(row[0])
+
+    def list_node_packages(self, *, include_yanked: bool = False) -> List[dict]:
+        sql = f"SELECT {self._PKG_COLS} FROM node_packages"
+        if not include_yanked:
+            sql += " WHERE yanked_at IS NULL"
+        sql += " ORDER BY name, sequence DESC"
+        with self._connect() as conn:
+            return [self._row_to_package(r) for r in conn.execute(sql)]
+
+    def yank_node_package(self, name: str, version: str) -> bool:
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE node_packages SET yanked_at = ? "
+                "WHERE name = ? AND version = ? AND yanked_at IS NULL",
+                (time.time(), name, version))
+            return cur.rowcount > 0
+
+    # --- Что установлено на ЭТОМ сервере ---
+
+    def installed_packages(self) -> List[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT name, version, installed_by, installed_at "
+                "FROM installed_packages ORDER BY name").fetchall()
+        return [{"name": r[0], "version": r[1], "installed_by": r[2],
+                 "installed_at": r[3] or 0.0} for r in rows]
+
+    def set_installed_package(self, name: str, version: str,
+                              installed_by: Optional[str] = None) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO installed_packages "
+                "(name, version, installed_by, installed_at) VALUES (?,?,?,?) "
+                "ON CONFLICT(name) DO UPDATE SET version = excluded.version, "
+                "  installed_by = excluded.installed_by, "
+                "  installed_at = excluded.installed_at",
+                (name, version, installed_by, time.time()))
+
+    def remove_installed_package(self, name: str) -> bool:
+        with self._connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM installed_packages WHERE name = ?", (name,))
+            return cur.rowcount > 0
+
+    # --- Очередь запросов на установку ---
+
+    def request_package(self, name: str, requested_by: str,
+                        reason: str = "") -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO package_requests "
+                "(name, requested_by, reason, requested_at) VALUES (?,?,?,?) "
+                "ON CONFLICT(name, requested_by) DO UPDATE SET "
+                "  reason = excluded.reason, "
+                "  requested_at = excluded.requested_at, resolved_at = NULL",
+                (name, requested_by, reason, time.time()))
+
+    def list_package_requests(self, *, pending_only: bool = True) -> List[dict]:
+        sql = ("SELECT name, requested_by, reason, requested_at, resolved_at "
+               "FROM package_requests")
+        if pending_only:
+            sql += " WHERE resolved_at IS NULL"
+        sql += " ORDER BY requested_at"
+        with self._connect() as conn:
+            rows = conn.execute(sql).fetchall()
+        return [{"name": r[0], "requested_by": r[1], "reason": r[2],
+                 "requested_at": r[3] or 0.0, "resolved_at": r[4]}
+                for r in rows]
+
+    def resolve_package_requests(self, name: str) -> int:
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE package_requests SET resolved_at = ? "
+                "WHERE name = ? AND resolved_at IS NULL", (time.time(), name))
+            return cur.rowcount
 
     # --- Публичные идентификаторы ---
 

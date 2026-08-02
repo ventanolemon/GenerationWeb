@@ -47,14 +47,19 @@
 
 from __future__ import annotations
 
-import base64
-import binascii
-import hashlib
-import json
 import time
 from typing import Optional
 
+from . import signing
 from .repository import Repository
+from .signing import SignatureError, key_fingerprint
+
+# Реэкспорт общего корня доверия: роутеры и клиенты берут их отсюда,
+# не зная про core/signing.
+__all__ = ["SignatureError", "key_fingerprint", "canonical_manifest",
+           "verify_signature", "publish", "yank", "describe",
+           "history", "check", "CHANNELS", "SIGNED_FIELDS",
+           "UpdateError"]
 
 CHANNELS = ("stable", "beta")
 # Поля, покрываемые подписью. Порядок не важен (ключи сортируются), важен
@@ -63,77 +68,27 @@ SIGNED_FIELDS = ("version", "channel", "platform", "sequence",
                  "size_bytes", "sha256")
 
 
+# Подпись и её ошибки — общий корень доверия с пакетами узлов
+# (core/signing.py): у сервера один способ проверять то, что он
+# раздаёт, но не производит.
+
+
 class UpdateError(ValueError):
     """Недопустимое по бизнес-правилам действие — роутер превращает в 400."""
-
-
-class SignatureError(UpdateError):
-    """Подпись не сошлась или ключ не настроен."""
 
 
 # ---------- Канонический манифест ----------
 
 def canonical_manifest(release: dict) -> bytes:
-    """
-    Байты, которые подписывают и проверяют.
-
-    Отдельная функция, а не инлайн: подписывающая сторона (офлайн-скрипт) и
-    проверяющие (сервер при публикации, клиент при установке) обязаны
-    получать БАЙТ В БАЙТ одно и то же. Любое расхождение — не «подпись не
-    сошлась по делу», а ложная тревога, которую потом ищут часами.
-    """
-    payload = {}
-    for field in SIGNED_FIELDS:
-        value = release.get(field)
-        if field in ("sequence", "size_bytes"):
-            value = int(value or 0)
-        else:
-            value = str(value or "")
-        payload[field] = value
-    return json.dumps(payload, sort_keys=True, separators=(",", ":"),
-                      ensure_ascii=False).encode("utf-8")
+    """Байты манифеста релиза. Состав полей — часть контракта подписи."""
+    return signing.canonical_manifest(
+        release, SIGNED_FIELDS, int_fields=("sequence", "size_bytes"))
 
 
 def verify_signature(release: dict, signature_b64: str,
                      public_key_b64: str) -> None:
-    """
-    Проверить подпись манифеста. Бросает SignatureError.
-
-    Ed25519: короткие ключи и подписи, нет параметров, которые можно выбрать
-    неправильно (в отличие от RSA с его паддингами и размерами) — для канала
-    доставки кода это важнее скорости.
-    """
-    try:
-        from cryptography.exceptions import InvalidSignature
-        from cryptography.hazmat.primitives.asymmetric.ed25519 import (
-            Ed25519PublicKey)
-    except ImportError as exc:                       # pragma: no cover
-        raise SignatureError(
-            "Нет библиотеки cryptography — проверить подпись невозможно. "
-            "Принимать релиз без проверки нельзя.") from exc
-
-    try:
-        key = Ed25519PublicKey.from_public_bytes(
-            base64.b64decode(public_key_b64, validate=True))
-        signature = base64.b64decode(signature_b64, validate=True)
-    except (binascii.Error, ValueError) as exc:
-        raise SignatureError(f"Ключ или подпись не разбираются: {exc}") from exc
-
-    try:
-        key.verify(signature, canonical_manifest(release))
-    except InvalidSignature as exc:
-        raise SignatureError(
-            "Подпись не соответствует манифесту. Артефакт или его описание "
-            "изменены после подписания — устанавливать нельзя.") from exc
-
-
-def key_fingerprint(public_key_b64: str) -> str:
-    """Короткий отпечаток ключа для сверки глазами (ops), не для проверок."""
-    try:
-        raw = base64.b64decode(public_key_b64, validate=True)
-    except (binascii.Error, ValueError):
-        return ""
-    return hashlib.sha256(raw).hexdigest()[:16]
+    """Проверить подпись манифеста релиза. Бросает SignatureError."""
+    signing.verify(canonical_manifest(release), signature_b64, public_key_b64)
 
 
 # ---------- Публикация ----------
