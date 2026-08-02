@@ -38,6 +38,7 @@ from . import errors
 from .context import current_user_id as current_user_id_var
 from .routers import admin as admin_router
 from .routers import admin_clients as admin_clients_router
+from .routers import admin_content as admin_content_router
 from .routers import assignments as assignments_router
 from .routers import analytics as analytics_router
 from .routers import auth as auth_router
@@ -133,6 +134,9 @@ app = FastAPI(
         {"name": "graph", "description": "Каталог узлов, валидация, превью."},
         {"name": "sync", "description": "Offline-синхронизация десктопа."},
         {"name": "grants", "description": "Выдача предметов преподавателям."},
+        {"name": "content",
+         "description": "Хранилища контента: личное преподавателя и общее, "
+                        "перенос между ними."},
         {"name": "admin", "description": "Пользователи, роли, группы."},
         {"name": "assignments", "description": "Домашние задания группам."},
         {"name": "analytics", "description": "Сводки успеваемости."},
@@ -173,6 +177,8 @@ app.include_router(auth_router.router)
 # Выше subjects_router: /subjects/grants/mine — литеральный маршрут, и пусть
 # он объявляется раньше параметрических соседей по префиксу /subjects.
 app.include_router(grants_router.router)
+# Выше subjects_router по той же причине: /subjects/mine — литерал.
+app.include_router(admin_content_router.router)
 app.include_router(subjects_router.router)
 app.include_router(generate_router.router)
 app.include_router(interactive_router.router)

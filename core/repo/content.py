@@ -270,6 +270,50 @@ class ContentMixin:
             )
             return cur.lastrowid
 
+    def set_subject_owner(self, subject_id: int,
+                          owner_user_id: Optional[str]) -> bool:
+        """
+        Перенести предмет между хранилищами: `None` — общее, логин — личное.
+
+        Владелец — это и есть «где лежит предмет» (rbac_and_data_model.md §3),
+        отдельной сущности «хранилище» нет и не нужно. Партиции переезжают
+        вместе с предметом сами: своего владельца у них нет, права выводятся
+        из предмета — одна точка истины.
+
+        Обязателен новый `row_version`: смена владельца меняет строку, которую
+        синк реплицирует (`owner_user_id` уезжает в pull), и без версии
+        десктопы никогда не узнают о переезде. Того же требует и клиентская
+        логика — по `owner_user_id` десктоп отличает встроенный предмет от
+        авторского и решает, можно ли его подчищать при пересборке скоупа.
+        """
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE Subjects SET owner_user_id = ?, row_version = ?, "
+                "updated_at = ? WHERE id = ? AND deleted_at IS NULL",
+                (owner_user_id, self.next_row_version(conn, "Subjects"),
+                 time.time(), subject_id),
+            )
+            return cur.rowcount > 0
+
+    def subjects_with_owner(self) -> List[dict]:
+        """Предметы вместе с владельцем и числом разделов — админский обзор
+        «что где лежит». Отдельный метод, потому что Subject.to_dict()
+        владельца не отдаёт: наружу он не нужен, а админу нужен именно он."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT s.id, s.subject_name, s.pra_subject, s.owner_user_id, "
+                "       COUNT(p.id) "
+                "FROM Subjects s "
+                "LEFT JOIN Partitions p "
+                "  ON p.subject_id = s.id AND p.deleted_at IS NULL "
+                "WHERE s.deleted_at IS NULL "
+                "GROUP BY s.id, s.subject_name, s.pra_subject, s.owner_user_id "
+                "ORDER BY s.id"
+            ).fetchall()
+        return [{"id": r[0], "name": r[1], "parent_name": r[2],
+                 "owner": r[3], "partition_count": int(r[4] or 0)}
+                for r in rows]
+
     def visible_subject_ids(self, user_id: Optional[str], role: str) -> List[int]:
         """
         Какие предметы видит пользователь: admin — все; остальные — системные
