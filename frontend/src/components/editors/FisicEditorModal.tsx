@@ -59,8 +59,9 @@ export default function FisicEditorModal({ subjectId, partitionId, onSaved, onCl
 
   useEffect(() => {
     if (!partitionId) return;
+    if (!identity) return;
     setLoading(true);
-    api.getPartitionForEdit(partitionId)
+    api.getPartitionForEdit(identity, partitionId)
       .then((data: PartitionEditData) => {
         setName(data.name);
         const cfg = data.generation_params as {

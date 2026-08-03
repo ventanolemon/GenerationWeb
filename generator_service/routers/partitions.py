@@ -22,12 +22,27 @@ GET    /partitions/candidates/{subject_id}  — кандидаты для GroupE
 внутреннем API; `web_layer` их пробрасывает. Сервис здесь авторитетен:
 релей может их не прислать, и тогда ответ 401, а не «ну ладно».
 
-> Чтение (`GET /partitions/{id}`, `/candidates/…`) НЕ авторизовано и этой
-> правкой не тронуто — сознательно, чтобы не смешивать закрытие дыры на
-> запись с отдельным решением про область видимости чтения. Это заметная
-> щель: `generation_params` — весь авторский граф раздела, и сейчас он
-> читается по id кем угодно, кто дотянулся до сервиса. Закрывать её надо
-> тем же скоупом выдач, что и pull синка (`sync_api.visible_scope`).
+## Чтение авторского содержимого — своё правило, тот же скоуп
+
+`GET /partitions/{id}` отдаёт `generation_params`: сам граф или конфиг
+генератора. Раньше он читался по id кем угодно, кто дотянулся до сервиса, —
+то есть авторская работа преподавателя лежала открытой.
+
+Правило (`content_authz.check_authoring_read`) мягче права на запись по
+владельцу и строже по роли. Выданный чужой предмет читать МОЖНО: выдача
+ровно для этого и нужна, и pull синка такому преподавателю этот граф уже
+присылает — запрет здесь развёл бы веб и синк. А роль нужна teacher/admin:
+`generation_params` — «кишки» задания, решающему они не нужны (веб ничего
+не генерирует локально, задание собирает сервер), зато помогают угадывать
+ответы.
+
+Витрина (`GET /subjects`, `GET /subjects/{id}/partitions`) НЕ тронута: она
+отдаёт имена и виды разделов, а не их устройство, и по ней ходит в том
+числе гость, решающий задачи. Закрывать её — отдельное продуктовое решение
+про доступ гостя к каталогу, а не про эту дыру.
+
+Чужое отвечает **404**, а не 403: иначе перебором последовательных id
+выясняется, какие разделы существуют у коллег.
 """
 
 from __future__ import annotations
@@ -44,16 +59,34 @@ from ..context import current_user_id as current_user_id_var
 router = APIRouter(prefix="/partitions", tags=["partitions"])
 
 
-def _require_write(request: Request, subject_ids, x_user_id: Optional[str],
-                   x_user_role: Optional[str]) -> None:
-    """Пропустить или отказать 401/403. Правило — общее с синком."""
-    refusal = content_authz.check_subject_write(
-        request.app.state.repo, subject_ids,
-        (x_user_id or "").strip() or None,
-        (x_user_role or "").strip().lower() or "student")
+def _identity(x_user_id: Optional[str],
+              x_user_role: Optional[str]) -> tuple[Optional[str], str]:
+    """Заголовки → (актор, роль). Пустая роль — самая строгая, не самая
+    удобная: заголовок может не доехать, и умолчание обязано быть строгим."""
+    return ((x_user_id or "").strip() or None,
+            (x_user_role or "").strip().lower() or "student")
+
+
+def _refuse(refusal) -> None:
     if refusal is not None:
         status, reason = refusal
         raise HTTPException(status_code=status, detail=reason)
+
+
+def _require_write(request: Request, subject_ids, x_user_id: Optional[str],
+                   x_user_role: Optional[str]) -> None:
+    """Пропустить или отказать 401/403. Правило — общее с синком."""
+    actor, role = _identity(x_user_id, x_user_role)
+    _refuse(content_authz.check_subject_write(
+        request.app.state.repo, subject_ids, actor, role))
+
+
+def _require_read(request: Request, subject_ids, x_user_id: Optional[str],
+                  x_user_role: Optional[str]) -> None:
+    """Пропустить или отказать 401/403/404 на чтение авторского содержимого."""
+    actor, role = _identity(x_user_id, x_user_role)
+    _refuse(content_authz.check_authoring_read(
+        request.app.state.repo, subject_ids, actor, role))
 
 
 class UpsertPartitionRequest(BaseModel):
@@ -74,11 +107,27 @@ def _rebuild(request: Request) -> None:
 
 
 @router.get("/candidates/{subject_id}")
-def get_candidates(subject_id: int, request: Request) -> dict:
-    """Возвращает разделы своего предмета + разделы «дочерних» предметов
-    (тех, у кого parent_name == имя нашего предмета).
-    Используется редакторами группы и теста для выбора дочерних заданий."""
+def get_candidates(
+    subject_id: int,
+    request: Request,
+    x_user_id: Optional[str] = Header(default=None),
+    x_user_role: Optional[str] = Header(default=None),
+) -> dict:
+    """
+    Разделы своего предмета + разделы «дочерних» (тех, у кого parent_name ==
+    имя нашего). Редакторы группы и теста выбирают отсюда дочерние задания.
+
+    Соседние предметы ФИЛЬТРУЮТСЯ по скоупу чтения, и это не то же самое,
+    что проверить запрошенный предмет. Иначе проверку обходят с другой
+    стороны: не «покажи мне чужой раздел», а «покажи список, в котором он
+    окажется». Свой предмет проверяется отказом, чужие соседи — молча
+    выпадают: их отсутствие и есть правильный ответ, а не ошибка.
+    """
+    _require_read(request, [subject_id], x_user_id, x_user_role)
+    actor, role = _identity(x_user_id, x_user_role)
     repo = request.app.state.repo
+    readable = content_authz.readable_subject_ids(repo, actor, role)
+
     own = repo.list_partitions_for_subject(subject_id)
     all_subjects = repo.list_subjects()
     my_subject = next((s for s in all_subjects if s.id == subject_id), None)
@@ -86,8 +135,11 @@ def get_candidates(subject_id: int, request: Request) -> dict:
     sibling_parts = []
     if my_subject:
         for s in all_subjects:
-            if s.id != subject_id and s.parent_name == my_subject.name:
-                sibling_parts.extend(repo.list_partitions_for_subject(s.id))
+            if s.id == subject_id or s.parent_name != my_subject.name:
+                continue
+            if readable is not None and s.id not in readable:
+                continue
+            sibling_parts.extend(repo.list_partitions_for_subject(s.id))
 
     return {
         "own": [p.to_dict() for p in own],
@@ -96,12 +148,30 @@ def get_candidates(subject_id: int, request: Request) -> dict:
 
 
 @router.get("/{partition_id}")
-def get_partition(partition_id: int, request: Request) -> dict:
+def get_partition(
+    partition_id: int,
+    request: Request,
+    x_user_id: Optional[str] = Header(default=None),
+    x_user_role: Optional[str] = Header(default=None),
+) -> dict:
+    """
+    Раздел вместе с `generation_params` — то есть с его устройством. Это
+    эндпоинт РЕДАКТОРА, а не витрины, и авторизуется соответственно.
+
+    Порядок: идентичность и роль (видно, не читая базу) → существование →
+    скоуп. Предмет раздела известен только из строки, поэтому проверка
+    скоупа обязана идти после чтения; наружу оба исхода выглядят одинаково
+    — 404, чтобы перебор id ничего не рассказывал.
+    """
+    _require_read(request, [], x_user_id, x_user_role)
     repo = request.app.state.repo
     part = repo.get_partition(partition_id)
     if part is None:
-        raise HTTPException(status_code=404,
-                            detail=f"Partition {partition_id} not found")
+        # Тот же текст, что у отказа по скоупу (content_authz.NOT_FOUND).
+        # Разные формулировки на одном статусе сводили бы всю затею на нет:
+        # перебор различал бы «нет такого» и «есть, но не ваш» по сообщению.
+        raise HTTPException(status_code=404, detail="Раздел не найден.")
+    _require_read(request, [part.subject_id], x_user_id, x_user_role)
     d = part.to_dict()
     d["generation_params"] = part.generation_params
     return d

@@ -63,9 +63,9 @@ function GraphEditorInner({ subjectId, partitionId, onSaved, onClose }: Props) {
   }, []);
 
   useEffect(() => {
-    if (partitionId == null) return;
+    if (partitionId == null || !identity) return;
     api
-      .getPartitionForEdit(partitionId)
+      .getPartitionForEdit(identity, partitionId)
       .then((data: PartitionEditData) => {
         setName(data.name);
         dispatch({ kind: "load", spec: data.generation_params });

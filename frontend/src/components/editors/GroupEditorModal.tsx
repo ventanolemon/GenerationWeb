@@ -29,11 +29,18 @@ export default function GroupEditorModal({ subjectId, partitionId, onSaved, onCl
     let existing: PartitionEditData | null = null;
 
     async function load() {
+      if (!identity) {
+        setError("Требуется вход: редактор разделов недоступен гостю.");
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       try {
         const [cands, existingPart] = await Promise.all([
-          api.getPartitionCandidates(subjectId),
-          partitionId ? api.getPartitionForEdit(partitionId) : Promise.resolve(null),
+          api.getPartitionCandidates(identity, subjectId),
+          partitionId
+            ? api.getPartitionForEdit(identity, partitionId)
+            : Promise.resolve(null),
         ]);
         existing = existingPart;
 

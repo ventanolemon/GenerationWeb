@@ -253,26 +253,11 @@ public sealed class GeneratorClient
 
     // ─── Управление разделами ────────────────────────────────────────────
 
-    public async Task<PartitionEditDto?> GetPartitionForEditAsync(int partitionId, CancellationToken ct)
-    {
-        var response = await _http.GetAsync($"/partitions/{partitionId}", ct);
-        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<PartitionEditDto>(JsonOptions, ct);
-    }
-
-    public async Task<JsonElement?> GetPartitionCandidatesAsync(int subjectId, CancellationToken ct)
-    {
-        var response = await _http.GetAsync($"/partitions/candidates/{subjectId}", ct);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions, ct);
-    }
-
-    // Типизированных UpsertPartitionAsync / DeletePartitionAsync здесь больше
-    // нет: мутации разделов требуют identity и внятного релея отказа, а оба
-    // метода этого не умели — они звали EnsureSuccessStatusCode, превращая
-    // честный 403 в необработанное исключение, то есть в 500 на фронт.
-    // Теперь их путь — общий ProxyAsync ниже, как у остальных RBAC-вызовов.
+    // Типизированных методов разделов здесь больше нет — ни мутаций, ни
+    // чтения. Все четыре требуют identity и внятного релея отказа, а старые
+    // звали EnsureSuccessStatusCode, превращая честный 403 в необработанное
+    // исключение, то есть в 500 на фронт. Теперь их путь — общий ProxyAsync
+    // ниже, как у остальных RBAC-вызовов.
 
     // ─── RBAC-прокси (/analytics, /admin, /assignments, /groups) ──────────
 
