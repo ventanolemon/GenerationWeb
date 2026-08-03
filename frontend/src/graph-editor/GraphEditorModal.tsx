@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
+import { useSession } from "../session";
 import type { PartitionEditData } from "../api/types";
 import { graphApi } from "./api";
 import type { Catalog, PreviewResponse, ValidateResponse } from "./types";
@@ -41,6 +42,7 @@ const PREVIEW_SEEDS = [0, 1, 2];
 
 function GraphEditorInner({ subjectId, partitionId, onSaved, onClose }: Props) {
   const { state, dispatch } = useEditor();
+  const { identity } = useSession();
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [name, setName] = useState("");
   const [fatal, setFatal] = useState<string | null>(null);
@@ -103,13 +105,17 @@ function GraphEditorInner({ subjectId, partitionId, onSaved, onClose }: Props) {
   }, [state.spec]);
 
   async function save() {
+    if (!identity) {
+      setStatus("Требуется вход: гость не меняет каталог разделов.");
+      return;
+    }
     if (!name.trim()) {
       setStatus("Укажите имя раздела.");
       return;
     }
     setSaving(true);
     try {
-      const res = await api.upsertPartition({
+      const res = await api.upsertPartition(identity, {
         subject_id: subjectId,
         name: name.trim(),
         constracted: 4,

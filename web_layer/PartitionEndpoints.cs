@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.Caching.Memory;
 using WebLayer.Contracts;
 using WebLayer.Services;
@@ -11,6 +12,22 @@ namespace WebLayer.Endpoints;
 /// чтобы следующий GET /api/subjects/{id}/partitions вернул актуальные данные.
 ///
 /// FastAPI перестраивает registry автоматически при каждой мутации.
+///
+/// ## Мутации пробрасывают identity
+///
+/// `POST` и `DELETE` идут через ProxyAsync с X-User-Id / X-User-Role — как
+/// аналитика и администрирование, и по той же причине: авторизацию делает
+/// generator_service (401 без identity, 403 при чужом предмете), а он не
+/// может её сделать, не зная, кто пришёл. Раньше заголовки не
+/// пробрасывались вовсе, и сервису оставалось верить любому запросу на
+/// слово.
+///
+/// Заодно ответ теперь релеится, а не проглатывается: `EnsureSuccessStatusCode`
+/// превращал честный 403 в необработанное исключение, то есть в 500 —
+/// пользователь видел «сервис упал» вместо «нельзя».
+///
+/// Чтение (GET) оставлено как было: авторизации на нём нет и на сервисе,
+/// вводить её здесь значило бы городить границу не там, где она живёт.
 /// </summary>
 public static class PartitionEndpoints
 {
@@ -45,6 +62,7 @@ public static class PartitionEndpoints
         // POST /api/partitions — upsert
         app.MapPost("/api/partitions", async (
             UpsertPartitionRequest body,
+            HttpRequest req,
             GeneratorClient client,
             IMemoryCache cache,
             CancellationToken ct) =>
@@ -52,15 +70,26 @@ public static class PartitionEndpoints
             if (string.IsNullOrWhiteSpace(body.Name))
                 return Results.BadRequest(new { error = "name is required" });
 
-            var pid = await client.UpsertPartitionAsync(
-                body.SubjectId, body.Name, body.Constracted,
-                body.GenerationParams, ct);
+            // Тело пересобираем из DTO, а не читаем сырым: связывание уже
+            // забрало поток, да и SubjectId нужен для инвалидации кеша.
+            var payload = JsonSerializer.Serialize(new
+            {
+                subject_id = body.SubjectId,
+                name = body.Name,
+                constracted = body.Constracted,
+                generation_params = body.GenerationParams ?? (object)new { },
+            });
 
-            if (pid is null)
-                return Results.Problem("Failed to upsert partition");
+            var (uid, role) = ProxyRelay.Identity(req);
+            var (status, respBody) = await client.ProxyAsync(
+                HttpMethod.Post, "/partitions", uid, role, payload, ct);
 
-            cache.Remove($"partitions:{body.SubjectId}");
-            return Results.Ok(new { partition_id = pid });
+            // Кеш сбрасываем ТОЛЬКО после успеха: на 403 ничего не менялось,
+            // а лишний сброс заставил бы всех перечитывать разделы из-за
+            // чужой неудачной попытки.
+            if (status is >= 200 and < 300)
+                cache.Remove($"partitions:{body.SubjectId}");
+            return ProxyRelay.Relay(status, respBody);
         })
         .WithTags("partitions");
 
@@ -68,17 +97,19 @@ public static class PartitionEndpoints
         app.MapDelete("/api/partitions/{id:int}", async (
             int id,
             int subjectId,
+            HttpRequest req,
             GeneratorClient client,
             IMemoryCache cache,
             CancellationToken ct) =>
         {
-            var ok = await client.DeletePartitionAsync(id, ct);
-            if (!ok)
-                return Results.NotFound(new { error = $"Partition {id} not found" });
+            var (uid, role) = ProxyRelay.Identity(req);
+            var (status, respBody) = await client.ProxyAsync(
+                HttpMethod.Delete, $"/partitions/{id}", uid, role, null, ct);
 
-            // Инвалидируем кеш всех предметов — subjectId передаётся query-параметром
-            cache.Remove($"partitions:{subjectId}");
-            return Results.Ok(new { deleted = id });
+            // Инвалидируем кеш предмета — subjectId передаётся query-параметром
+            if (status is >= 200 and < 300)
+                cache.Remove($"partitions:{subjectId}");
+            return ProxyRelay.Relay(status, respBody);
         })
         .WithTags("partitions");
     }

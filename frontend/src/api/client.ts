@@ -165,16 +165,30 @@ export const api = {
     return request<PartitionCandidates>(`/api/partitions/candidates/${subjectId}`);
   },
 
-  upsertPartition(body: UpsertPartitionRequest): Promise<{ partition_id: number }> {
+  // Мутации разделов требуют identity: сервис авторизует их тем же
+  // правилом, что и push синхронизации, — нужна роль teacher/admin, и чужой
+  // предмет на запись недоступен (403). Гость сюда не ходит, поэтому
+  // Identity обязателен, а не опционален: пропущенный заголовок дал бы 401
+  // и выглядел бы «сервер сломался», хотя сломан был бы вызов.
+  upsertPartition(
+    identity: Identity,
+    body: UpsertPartitionRequest,
+  ): Promise<{ partition_id: number }> {
     return request<{ partition_id: number }>("/api/partitions", {
       method: "POST",
+      headers: idHeaders(identity),
       body: JSON.stringify(body),
     });
   },
 
-  deletePartition(id: number, subjectId: number): Promise<{ deleted: number }> {
+  deletePartition(
+    identity: Identity,
+    id: number,
+    subjectId: number,
+  ): Promise<{ deleted: number }> {
     return request<{ deleted: number }>(`/api/partitions/${id}?subjectId=${subjectId}`, {
       method: "DELETE",
+      headers: idHeaders(identity),
     });
   },
 

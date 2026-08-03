@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import type { Partition } from "../api/types";
 import { api } from "../api/client";
+import { useSession } from "../session";
 import GroupEditorModal from "./editors/GroupEditorModal";
 import TestEditorModal from "./editors/TestEditorModal";
 import FisicEditorModal from "./editors/FisicEditorModal";
@@ -25,6 +26,7 @@ type OpenEditor =
  * constracted: 0=code-only (нет редактора), 1=fisic, 2=group, 3=test, 4=graph
  */
 export default function PartitionControls({ subjectId, selected, onChanged }: Props) {
+  const { identity } = useSession();
   const [open, setOpen] = useState<OpenEditor>(null);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -51,8 +53,12 @@ export default function PartitionControls({ subjectId, selected, onChanged }: Pr
 
   async function handleDelete() {
     if (!selected) return;
+    if (!identity) {
+      alert("Требуется вход: гость не меняет каталог разделов.");
+      return;
+    }
     try {
-      await api.deletePartition(selected.id, selected.subject_id);
+      await api.deletePartition(identity, selected.id, selected.subject_id);
       setConfirmDelete(false);
       onChanged();
     } catch (e) {
