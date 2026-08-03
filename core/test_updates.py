@@ -320,11 +320,22 @@ class RouterTests(UpdatesTestBase):
         self.assertEqual(r.status_code, 400)
         self.assertIn("Подпись", r.json()["error"]["message"])
 
-    def test_key_endpoint_gives_fingerprint_not_the_key(self):
+    def test_key_endpoint_gives_fingerprints_not_the_key(self):
+        # Отпечатков МНОЖЕСТВО: после ротации активных ключей может быть
+        # несколько сразу, чтобы уже выпущенное не обесценивалось.
         out = self.http.get("/updates/key").json()
         self.assertTrue(out["configured"])
-        self.assertEqual(out["fingerprint"], updates.key_fingerprint(self.pub))
+        self.assertEqual(out["fingerprints"], [updates.key_fingerprint(self.pub)])
         self.assertNotIn(self.pub, str(out), "сам ключ отсюда не раздаётся")
+
+    def test_key_set_is_served_signed_for_the_client(self):
+        out = self.http.get("/updates/keys").json()
+        self.assertTrue(out["configured"])
+        self.assertEqual(out["sequence"], 1)
+        # Первый набор неподписан намеренно: доверие к нему ставится вне
+        # канала. Дальше каждый следующий подписан предыдущим.
+        self.assertEqual(out["signature"], "")
+        self.assertIn(self.pub, out["payload"])
 
 
 if __name__ == "__main__":

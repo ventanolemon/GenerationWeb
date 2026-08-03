@@ -430,6 +430,44 @@ class AccessMixin:
             )
             return cur.rowcount > 0
 
+    # --- Наборы ключей подписи ---
+    #
+    # Подписанный артефакт хранится ЦЕЛИКОМ (payload теми же байтами, что
+    # подписывали): клиент проверяет подпись именно их, и пересборка payload
+    # из колонок сломала бы проверку сразу у всех.
+
+    def add_key_set(self, *, sequence: int, payload: str, signature: str,
+                    signed_by: str = "",
+                    published_by: Optional[str] = None) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO signing_key_sets (sequence, payload, signature, "
+                " signed_by, published_by, published_at) VALUES (?,?,?,?,?,?)",
+                (int(sequence), payload, signature, signed_by, published_by,
+                 time.time()))
+
+    def latest_key_set(self) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT sequence, payload, signature, signed_by, published_by, "
+                "       published_at FROM signing_key_sets "
+                "ORDER BY sequence DESC LIMIT 1").fetchone()
+        if row is None:
+            return None
+        return {"sequence": int(row[0]), "payload": row[1],
+                "signature": row[2], "signed_by": row[3],
+                "published_by": row[4], "published_at": row[5] or 0.0}
+
+    def list_key_sets(self) -> List[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT sequence, payload, signature, signed_by, published_by, "
+                "       published_at FROM signing_key_sets "
+                "ORDER BY sequence DESC").fetchall()
+        return [{"sequence": int(r[0]), "payload": r[1], "signature": r[2],
+                 "signed_by": r[3], "published_by": r[4],
+                 "published_at": r[5] or 0.0} for r in rows]
+
     # --- Пакеты узлов ---
 
     _PKG_COLS = ("name, version, sequence, url, size_bytes, sha256, signature, "

@@ -108,6 +108,61 @@ def sign(args) -> int:
     return 0
 
 
+def rotate(args) -> int:
+    """
+    Подготовить новый НАБОР ключей: подписать его действующим ключом и
+    со-подписать новым.
+
+    Со-подпись обязательна не ради безопасности (украденный старый ключ
+    подпишет что угодно), а ради защиты от самоблокировки: она доказывает,
+    что приватная часть нового ключа существует и у вас. Опечатка в base64
+    или не тот файл иначе заблокировали бы выпуск навсегда.
+    """
+    Ed25519PrivateKey, _, serialization = _load_crypto()
+    from core.signing_keys import canonical_keyset
+    from core.updates import key_fingerprint
+
+    def _load(path):
+        raw = base64.b64decode(pathlib.Path(path).read_text().strip())
+        key = Ed25519PrivateKey.from_private_bytes(raw)
+        pub = base64.b64encode(key.public_key().public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw)).decode()
+        return key, pub
+
+    current_key, current_pub = _load(args.current_key)
+    new_key, new_pub = _load(args.new_key)
+
+    keys = [{"id": key_fingerprint(new_pub), "public_key": new_pub,
+             "status": "active"}]
+    if not args.revoke_current:
+        # По умолчанию старый ключ остаётся активным: иначе всё уже
+        # выпущенное им перестанет проверяться разом.
+        keys.append({"id": key_fingerprint(current_pub),
+                     "public_key": current_pub, "status": "active"})
+    else:
+        keys.append({"id": key_fingerprint(current_pub),
+                     "public_key": current_pub, "status": "revoked"})
+
+    payload = canonical_keyset(int(args.sequence), keys)
+    body = {
+        "payload": payload,
+        "signature": base64.b64encode(
+            current_key.sign(payload.encode("utf-8"))).decode(),
+        "new_key_signature": base64.b64encode(
+            new_key.sign(payload.encode("utf-8"))).decode(),
+    }
+    print(json.dumps(body, ensure_ascii=False, indent=2))
+    print(f"\n# новый ключ:   {key_fingerprint(new_pub)}", file=sys.stderr)
+    print(f"# прежний ключ: {key_fingerprint(current_pub)}"
+          f"{' (ОТЗЫВАЕТСЯ)' if args.revoke_current else ' (остаётся активным)'}",
+          file=sys.stderr)
+    if args.revoke_current:
+        print("# ВНИМАНИЕ: всё, подписанное прежним ключом, перестанет "
+              "проверяться.", file=sys.stderr)
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -128,6 +183,16 @@ def main() -> int:
     s.add_argument("--min-supported", dest="min_supported", default="")
     s.add_argument("--notes", default="")
     s.set_defaults(func=sign)
+
+    r = sub.add_parser("rotate", help="сменить набор ключей")
+    r.add_argument("--current-key", required=True, help="действующий *.priv")
+    r.add_argument("--new-key", required=True, help="новый *.priv")
+    r.add_argument("--sequence", required=True, type=int,
+                   help="больше действующего: защита от отката набора")
+    r.add_argument("--revoke-current", action="store_true",
+                   help="отозвать прежний ключ (ломает проверку всего, что "
+                        "им подписано)")
+    r.set_defaults(func=rotate)
 
     args = ap.parse_args()
     return args.func(args)

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { PartitionEditData } from "../../api/types";
 import { api } from "../../api/client";
+import { useSession } from "../../session";
 import Modal from "../Modal";
 import mstyles from "../../styles/modal.module.css";
 
@@ -39,6 +40,7 @@ function parseVarNames(text: string): string[] {
  * Структура generation_params описана в десктопном FisicEditor.
  */
 export default function FisicEditorModal({ subjectId, partitionId, onSaved, onClose }: Props) {
+  const { identity } = useSession();
   const [name, setName] = useState("");
   const [condition, setCondition] = useState("");
   const [resultLetter, setResultLetter] = useState("");
@@ -110,6 +112,10 @@ export default function FisicEditorModal({ subjectId, partitionId, onSaved, onCl
   }
 
   async function handleSave() {
+    if (!identity) {
+      setError("Требуется вход: гость не меняет каталог разделов.");
+      return;
+    }
     if (!name.trim()) { setError("Введите название задачи."); return; }
     if (!condition.trim()) { setError("Введите текст условия."); return; }
     if (!formula.trim()) { setError("Введите формулу."); return; }
@@ -153,7 +159,7 @@ export default function FisicEditorModal({ subjectId, partitionId, onSaved, onCl
     setSaving(true);
     setError(null);
     try {
-      const result = await api.upsertPartition({
+      const result = await api.upsertPartition(identity, {
         subject_id: subjectId,
         name: name.trim(),
         constracted: 1,

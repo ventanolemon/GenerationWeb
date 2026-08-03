@@ -50,7 +50,7 @@ from __future__ import annotations
 import time
 from typing import Optional
 
-from . import signing
+from . import signing, signing_keys
 from .repository import Repository
 from .signing import SignatureError, key_fingerprint
 
@@ -122,10 +122,6 @@ def publish(repo: Repository, *, version: str, channel: str, platform: str,
         raise UpdateError("sha256 должен быть 64 hex-символа.")
     if not url.strip():
         raise UpdateError("Нужен адрес артефакта.")
-    if not public_key.strip():
-        raise SignatureError(
-            "Публичный ключ выпуска не настроен на сервере — принять релиз "
-            "без возможности проверить подпись нельзя.")
 
     with repo.transaction():
         existing = repo.get_release(version, channel, platform)
@@ -146,11 +142,18 @@ def publish(repo: Repository, *, version: str, channel: str, platform: str,
         release = {"version": version, "channel": channel,
                    "platform": platform, "sequence": sequence,
                    "size_bytes": int(size_bytes or 0), "sha256": sha256}
-        verify_signature(release, signature, public_key)
+        # Проверяем ЛЮБЫМ активным ключом набора, а не единственным: ротация
+        # не должна обесценивать уже выпущенное, и релиз, подписанный
+        # вчерашним ключом, обязан оставаться проверяемым, пока тот не
+        # отозван явно (core/signing_keys.py).
+        signing_keys.ensure_bootstrapped(repo, public_key)
+        matched = signing_keys.verify_with_active(
+            repo, canonical_manifest(release), signature)
+        signing_key_id = signing_key_id.strip() or matched
 
         repo.add_release(
             **release, url=url.strip(), signature=signature,
-            signing_key_id=signing_key_id.strip(),
+            signing_key_id=signing_key_id,
             min_supported=min_supported.strip(), notes=notes.strip(),
             published_by=actor_login or None)
     return describe(repo, version, channel, platform)

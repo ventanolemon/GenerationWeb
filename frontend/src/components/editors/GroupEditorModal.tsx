@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Partition, PartitionEditData } from "../../api/types";
 import { api } from "../../api/client";
+import { useSession } from "../../session";
 import Modal from "../Modal";
 import mstyles from "../../styles/modal.module.css";
 
@@ -16,6 +17,7 @@ interface Props {
  * Группа — это набор разделов того же предмета (кроме других групп).
  */
 export default function GroupEditorModal({ subjectId, partitionId, onSaved, onClose }: Props) {
+  const { identity } = useSession();
   const [name, setName] = useState("");
   const [candidates, setCandidates] = useState<Partition[]>([]);
   const [checked, setChecked] = useState<Set<number>>(new Set());
@@ -69,6 +71,10 @@ export default function GroupEditorModal({ subjectId, partitionId, onSaved, onCl
   }
 
   async function handleSave() {
+    if (!identity) {
+      setError("Требуется вход: гость не меняет каталог разделов.");
+      return;
+    }
     if (!name.trim()) { setError("Введите название группы."); return; }
     if (checked.size === 0) { setError("Выберите хотя бы один раздел."); return; }
 
@@ -79,7 +85,7 @@ export default function GroupEditorModal({ subjectId, partitionId, onSaved, onCl
     setSaving(true);
     setError(null);
     try {
-      const result = await api.upsertPartition({
+      const result = await api.upsertPartition(identity, {
         subject_id: subjectId,
         name: name.trim(),
         constracted: 2,

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Partition } from "../../api/types";
 import { api } from "../../api/client";
+import { useSession } from "../../session";
 import Modal from "../Modal";
 import mstyles from "../../styles/modal.module.css";
 
@@ -23,6 +24,7 @@ interface TestRow {
  * Кандидаты: разделы своего предмета + «дочерних» предметов (pra_subject = мой subject_name).
  */
 export default function TestEditorModal({ subjectId, partitionId, onSaved, onClose }: Props) {
+  const { identity } = useSession();
   const [name, setName] = useState("");
   const [candidates, setCandidates] = useState<Partition[]>([]);
   const [rows, setRows] = useState<TestRow[]>([]);
@@ -93,6 +95,10 @@ export default function TestEditorModal({ subjectId, partitionId, onSaved, onClo
   }
 
   async function handleSave() {
+    if (!identity) {
+      setError("Требуется вход: гость не меняет каталог разделов.");
+      return;
+    }
     if (!name.trim()) { setError("Введите название теста."); return; }
     if (rows.length === 0) { setError("Добавьте хотя бы одно задание."); return; }
 
@@ -105,7 +111,7 @@ export default function TestEditorModal({ subjectId, partitionId, onSaved, onClo
     setSaving(true);
     setError(null);
     try {
-      const result = await api.upsertPartition({
+      const result = await api.upsertPartition(identity, {
         subject_id: subjectId,
         name: name.trim(),
         constracted: 3,

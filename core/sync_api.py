@@ -23,7 +23,7 @@ import json
 import time
 from typing import Any, Optional
 
-from . import grants_api
+from . import content_authz, grants_api
 from .repository import Repository
 
 # Максимум строк одного типа сущности в одном ответе pull.
@@ -203,56 +203,16 @@ def _authorize_entity_change(
     Вправе ли актор писать эту сущность. None — вправе; строка — причина
     отказа (уедет клиенту конфликтом, см. `_apply_entity_change`).
 
-    Три правила, по убыванию строгости:
-
-    1. **Правка контента требует идентичности.** Телеметрию (attempts,
-       word_stats) аноним слать вправе — её и шлёт гость, решающий задачи;
-       но менять общий каталог устройство без логина не может. Это ровно
-       та дыра, которую открывала выдача чужих предметов: теперь предмет
-       другого владельца доезжает до преподавателя, и без этой проверки
-       доезжал бы вместе с правом его переписать.
-    2. **Роль.** Контент правят teacher и admin (RBAC §3); admin — что
-       угодно, и дальше его не проверяем.
-    3. **Чужое — нельзя.** Предмет с владельцем, отличным от актора,
-       преподавателю недоступен на запись, каким бы ни был набор выдач:
-       выдача даёт видеть, а не переписывать. Партиция прав не имеет
-       собственных — они выводятся из предмета (одна точка истины, RBAC §3),
-       поэтому при переносе партиции проверяются ОБА предмета, старый и
-       новый.
-
-    Встроенные предметы (`owner_user_id IS NULL`) остаются доступными
-    преподавателю на запись. Это сознательное отступление от таблицы прав
-    RBAC (там встроенные — admin-only): сегодня это общий каталог, в который
-    преподаватели складывают свои разделы через `POST /partitions`, и
-    запрет здесь развёл бы два пути записи (веб — можно, синк — нельзя),
-    сломав десктопу ровно тот сценарий, ради которого он существует.
-    Сужение до admin-only — отдельное продуктовое решение, и делать его
-    молча, попутно с закрытием дыры, неправильно.
+    Само правило живёт в `core/content_authz.py` — общее с CRUD по HTTP
+    (`POST/DELETE /partitions`). Держать его здесь было бы удобнее ровно до
+    того момента, когда у таблицы появился второй вход на запись: он
+    появился, правило при нём не повторили, и получилась дыра. Теперь
+    источник один, а здесь только перевод в форму синка — тому нужен текст
+    для конверта конфликта, а не HTTP-статус.
     """
-    if not actor:
-        return ("Правка контента требует идентичности (X-User-Id): "
-                "анонимное устройство не меняет общий каталог.")
-    if role not in ("teacher", "admin"):
-        return f"Роль {role!r} не правит контент — только teacher и admin."
-    if role == "admin":
-        return None
-
-    subject_ids: set[int] = set()
-    if kind == "subject":
-        if row is not None:
-            subject_ids.add(int(row["id"]))
-    else:
-        if row is not None:
-            subject_ids.add(int(row["subject_id"]))
-        if data.get("subject_id") is not None:
-            subject_ids.add(int(data["subject_id"]))
-
-    for subject_id in subject_ids:
-        owner = repo.subject_owner(subject_id)
-        if owner is not None and owner != actor:
-            return (f"Предмет #{subject_id} принадлежит другому владельцу; "
-                    f"выдача даёт право видеть, а не править.")
-    return None
+    refusal = content_authz.check_entity_change(repo, kind, row, data,
+                                                actor, role)
+    return refusal[1] if refusal else None
 
 
 def _missing_packages(repo: Repository, kind: str, change: dict,
