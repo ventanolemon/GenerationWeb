@@ -328,12 +328,18 @@ public sealed class GeneratorClient
     /// X-User-Id/X-User-Role, а тело ответа отдаёт нетронутым — у /v1 свой
     /// контракт ошибки, и переписывать его по дороге нельзя.
     ///
-    /// X-Request-Id передаётся насквозь, если пришёл: по нему вызов
-    /// интегратора соотносится с записями в логах обоих сервисов.
+    /// X-Request-Id ходит в ОБЕ стороны, и обратная важнее прямой. Свой
+    /// идентификатор интегратор и так знает; а когда он его не прислал,
+    /// сервис генерирует свой — и без возврата в ответе тот остаётся
+    /// только в наших логах. Тогда обещание «по X-Request-Id вызов
+    /// соотносится с записями в логе» превращается в «напишите нам время и
+    /// примерный запрос», то есть ни во что.
     /// </summary>
-    public async Task<(int Status, string Body)> ForwardPublicAsync(
-        HttpMethod method, string path, string? authorization, string? origin,
-        string? requestId, string? jsonBody, CancellationToken ct)
+    public async Task<(int Status, string Body, string? RequestId)>
+        ForwardPublicAsync(
+            HttpMethod method, string path, string? authorization,
+            string? origin, string? requestId, string? jsonBody,
+            CancellationToken ct)
     {
         using var req = new HttpRequestMessage(method, path);
         if (!string.IsNullOrWhiteSpace(authorization))
@@ -348,7 +354,10 @@ public sealed class GeneratorClient
 
         using var resp = await _http.SendAsync(req, ct);
         var body = await resp.Content.ReadAsStringAsync(ct);
-        return ((int)resp.StatusCode, body);
+        var upstreamId = resp.Headers.TryGetValues("X-Request-Id", out var ids)
+            ? ids.FirstOrDefault()
+            : null;
+        return ((int)resp.StatusCode, body, upstreamId ?? requestId);
     }
 
     // ─── Служебное ─────────────────────────────────────────────────────

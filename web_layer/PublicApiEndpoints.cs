@@ -24,31 +24,43 @@ namespace WebLayer.Endpoints;
 ///     подменять его релею нельзя;
 ///   * тело ошибки НЕ переводится в {"error": "строка"} web-слоя. У /v1
 ///     свой конверт {error: {code, message, request_id}} — публичный
-///     контракт, и переписывать его по дороге значило бы его сломать.
+///     контракт, и переписывать его по дороге значило бы его сломать;
+///   * СВОЯ политика CORS (<see cref="CorsPolicy"/>). Умолчательная —
+///     список origin'ов SPA с AllowCredentials; под неё чужое приложение
+///     не подходит по определению, и браузерный ключ `gw_web_…` не заработал
+///     бы вовсе: браузер отбил бы запрос до того, как сервис увидел ключ.
+///     Здесь разрешён любой origin и запрещены credentials — публичный API
+///     ходит по Bearer, а не по cookie. Ограничение по домену никуда не
+///     делось, оно просто в правильном месте: `allowed_origins` КЛЮЧА,
+///     который сервис проверяет сам (core/api_clients.py). CORS браузерный
+///     и обходится любым не-браузером; привязка ключа — нет.
 /// </summary>
 public static class PublicApiEndpoints
 {
     private const string UpstreamPrefix = "/v1";
 
+    /// <summary>Имя политики CORS публичной поверхности (см. Program.cs).</summary>
+    public const string CorsPolicy = "public-v1";
+
     public static void MapPublicApiEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/api/v1/me", (HttpRequest req, GeneratorClient c, CancellationToken ct) =>
             Forward(HttpMethod.Get, "/me", req, c, ct))
-           .WithTags("public-v1");
+           .WithTags("public-v1").RequireCors(CorsPolicy);
 
         app.MapGet("/api/v1/catalog", (HttpRequest req, GeneratorClient c, CancellationToken ct) =>
             Forward(HttpMethod.Get, "/catalog", req, c, ct))
-           .WithTags("public-v1");
+           .WithTags("public-v1").RequireCors(CorsPolicy);
 
         app.MapPost("/api/v1/tasks", (HttpRequest req, GeneratorClient c, CancellationToken ct) =>
             Forward(HttpMethod.Post, "/tasks", req, c, ct))
-           .WithTags("public-v1");
+           .WithTags("public-v1").RequireCors(CorsPolicy);
 
         app.MapPost("/api/v1/tasks/{sessionId}/answer",
             (string sessionId, HttpRequest req, GeneratorClient c, CancellationToken ct) =>
                 Forward(HttpMethod.Post, $"/tasks/{Uri.EscapeDataString(sessionId)}/answer",
                         req, c, ct))
-           .WithTags("public-v1");
+           .WithTags("public-v1").RequireCors(CorsPolicy);
     }
 
     private static async Task<IResult> Forward(
@@ -56,7 +68,7 @@ public static class PublicApiEndpoints
         GeneratorClient client, CancellationToken ct)
     {
         var body = await ProxyRelay.ReadBodyAsync(req);
-        var (status, payload) = await client.ForwardPublicAsync(
+        var (status, payload, requestId) = await client.ForwardPublicAsync(
             method,
             UpstreamPrefix + path,
             req.Headers.Authorization.FirstOrDefault(),
@@ -64,6 +76,13 @@ public static class PublicApiEndpoints
             req.Headers["X-Request-Id"].FirstOrDefault(),
             body,
             ct);
+
+        // Идентификатор запроса возвращается интегратору. Когда он не
+        // прислал свой, сервис сгенерировал — и без этой строки тот остался
+        // бы только у нас в логах, а «сообщите X-Request-Id» превратилось бы
+        // в «сообщите примерное время».
+        if (!string.IsNullOrWhiteSpace(requestId))
+            req.HttpContext.Response.Headers["X-Request-Id"] = requestId;
 
         // Тело — как есть, в обе стороны: и успех, и ошибка уже в контракте
         // публичного API.
