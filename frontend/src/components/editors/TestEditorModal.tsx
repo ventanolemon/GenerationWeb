@@ -35,11 +35,18 @@ export default function TestEditorModal({ subjectId, partitionId, onSaved, onClo
 
   useEffect(() => {
     async function load() {
+      if (!identity) {
+        setError("Требуется вход: редактор разделов недоступен гостю.");
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       try {
         const [cands, existingPart] = await Promise.all([
-          api.getPartitionCandidates(subjectId),
-          partitionId ? api.getPartitionForEdit(partitionId) : Promise.resolve(null),
+          api.getPartitionCandidates(identity, subjectId),
+          partitionId
+            ? api.getPartitionForEdit(identity, partitionId)
+            : Promise.resolve(null),
         ]);
 
         // В тест можно добавлять разделы своего предмета + родственных (siblings),

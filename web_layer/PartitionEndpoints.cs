@@ -26,8 +26,12 @@ namespace WebLayer.Endpoints;
 /// превращал честный 403 в необработанное исключение, то есть в 500 —
 /// пользователь видел «сервис упал» вместо «нельзя».
 ///
-/// Чтение (GET) оставлено как было: авторизации на нём нет и на сервисе,
-/// вводить её здесь значило бы городить границу не там, где она живёт.
+/// Чтение (`GET`) — тоже с identity, и по той же причине: сервис
+/// авторизует его скоупом выдач (401 без identity, 403 студенту, 404 на
+/// чужой предмет), а без заголовков решить это не может. Речь именно про
+/// эти два эндпоинта: они отдают устройство раздела и список кандидатов,
+/// то есть работу редактора. Витрину (`GET /api/subjects/...`) это не
+/// касается — она отдаёт имена, и по ней ходит решающий задачи гость.
 /// </summary>
 public static class PartitionEndpoints
 {
@@ -36,26 +40,29 @@ public static class PartitionEndpoints
         // GET /api/partitions/candidates/{subjectId}
         app.MapGet("/api/partitions/candidates/{subjectId:int}", async (
             int subjectId,
+            HttpRequest req,
             GeneratorClient client,
             CancellationToken ct) =>
         {
-            var result = await client.GetPartitionCandidatesAsync(subjectId, ct);
-            return result is null
-                ? Results.NotFound(new { error = $"Subject {subjectId} not found" })
-                : Results.Ok(result);
+            var (uid, role) = ProxyRelay.Identity(req);
+            var (status, body) = await client.ProxyAsync(
+                HttpMethod.Get, $"/partitions/candidates/{subjectId}",
+                uid, role, null, ct);
+            return ProxyRelay.Relay(status, body);
         })
         .WithTags("partitions");
 
         // GET /api/partitions/{id}
         app.MapGet("/api/partitions/{id:int}", async (
             int id,
+            HttpRequest req,
             GeneratorClient client,
             CancellationToken ct) =>
         {
-            var part = await client.GetPartitionForEditAsync(id, ct);
-            return part is null
-                ? Results.NotFound(new { error = $"Partition {id} not found" })
-                : Results.Ok(part);
+            var (uid, role) = ProxyRelay.Identity(req);
+            var (status, body) = await client.ProxyAsync(
+                HttpMethod.Get, $"/partitions/{id}", uid, role, null, ct);
+            return ProxyRelay.Relay(status, body);
         })
         .WithTags("partitions");
 

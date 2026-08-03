@@ -157,12 +157,28 @@ export const api = {
 
   // ─── Управление разделами ──────────────────────────────────────────────
 
-  getPartitionForEdit(id: number): Promise<PartitionEditData> {
-    return request<PartitionEditData>(`/api/partitions/${id}`);
+  // Чтение устройства раздела тоже требует identity: это эндпоинт
+  // РЕДАКТОРА, а не витрины. Сервис авторизует его скоупом выдач — 401 без
+  // identity, 403 студенту (generation_params помогают угадывать ответы),
+  // 404 на чужой предмет. Витрина (getSubjects, getPartitions) не тронута:
+  // она отдаёт имена, и по ней ходит гость.
+  getPartitionForEdit(
+    identity: Identity,
+    id: number,
+  ): Promise<PartitionEditData> {
+    return request<PartitionEditData>(`/api/partitions/${id}`, {
+      headers: idHeaders(identity),
+    });
   },
 
-  getPartitionCandidates(subjectId: number): Promise<PartitionCandidates> {
-    return request<PartitionCandidates>(`/api/partitions/candidates/${subjectId}`);
+  getPartitionCandidates(
+    identity: Identity,
+    subjectId: number,
+  ): Promise<PartitionCandidates> {
+    return request<PartitionCandidates>(
+      `/api/partitions/candidates/${subjectId}`,
+      { headers: idHeaders(identity) },
+    );
   },
 
   // Мутации разделов требуют identity: сервис авторизует их тем же
