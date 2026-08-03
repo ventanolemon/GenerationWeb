@@ -42,7 +42,7 @@ from __future__ import annotations
 import re
 from typing import Iterable, Optional
 
-from . import signing
+from . import signing, signing_keys
 from .repository import Repository
 from .signing import SignatureError
 
@@ -155,11 +155,16 @@ def publish(repo: Repository, *, name: str, version: str, sequence: int,
                     "sequence": int(sequence or 0),
                     "size_bytes": int(size_bytes or 0), "sha256": sha256,
                     "api_version": api_version, "node_types": types}
-        verify_signature(manifest, signature, public_key)
+        # Любым активным ключом набора — тот же довод, что у релизов:
+        # ротация не обесценивает уже опубликованные пакеты.
+        signing_keys.ensure_bootstrapped(repo, public_key)
+        matched = signing_keys.verify_with_active(
+            repo, canonical_manifest(manifest), signature)
+        signing_key_id = signing_key_id.strip() or matched
 
         repo.add_node_package(
             **manifest, url=url.strip(), signature=signature,
-            signing_key_id=signing_key_id.strip(), summary=summary.strip(),
+            signing_key_id=signing_key_id, summary=summary.strip(),
             published_by=actor_login or None)
     return describe(repo, name, version)
 

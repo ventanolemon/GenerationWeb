@@ -31,13 +31,23 @@ from typing import Any, Optional
 from fastapi import APIRouter, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from core import signing, updates
+from core import signing, signing_keys, updates
 
 router = APIRouter(tags=["updates"])
 
 
 def _public_key() -> str:
     return os.environ.get("RELEASE_PUBLIC_KEY", "").strip()
+
+
+class RotateKeysRequest(BaseModel):
+    payload: str = Field(..., min_length=2,
+                         description="канонический набор, ровно как подписан")
+    signature: str = Field(..., min_length=1,
+                           description="подпись ДЕЙСТВУЮЩИМ ключом")
+    new_key_signature: str = Field(
+        default="", description="со-подпись новым ключом: доказательство "
+                                "владения приватной частью")
 
 
 class PublishRequest(BaseModel):
@@ -73,7 +83,8 @@ def _run(fn, *args, **kwargs) -> Any:
     # годится», то есть 400, а не 500: сервер исправен, негоден запрос.
     try:
         return fn(*args, **kwargs)
-    except (updates.UpdateError, signing.SignatureError) as exc:
+    except (updates.UpdateError, signing_keys.KeyRotationError,
+            signing.SignatureError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
@@ -99,12 +110,68 @@ def get_check(
 
 
 @router.get("/updates/key")
-def get_key_fingerprint() -> dict[str, Any]:
-    """Отпечаток ключа, которым сервер проверяет публикуемое. Для сверки
-    глазами — сам ключ отсюда не отдаётся, см. докстринг модуля."""
-    key = _public_key()
-    return {"configured": bool(key),
-            "fingerprint": updates.key_fingerprint(key) if key else ""}
+def get_key_fingerprint(request: Request) -> dict[str, Any]:
+    """Отпечатки действующих ключей — для сверки глазами. Сами ключи здесь
+    не отдаются: клиент, берущий ключ у того же сервера, что и обновление,
+    не проверяет ничего."""
+    repo = request.app.state.repo
+    signing_keys.ensure_bootstrapped(repo, _public_key())
+    keyset = signing_keys.current_keyset(repo)
+    if keyset is None:
+        return {"configured": False, "fingerprints": []}
+    return {"configured": True, "sequence": keyset["sequence"],
+            "fingerprints": [k["id"] for k in keyset["keys"]
+                             if k["status"] == "active"]}
+
+
+@router.get("/updates/keys")
+def get_key_set(request: Request) -> dict[str, Any]:
+    """
+    Действующий НАБОР ключей — подписанным артефактом, теми же байтами, что
+    подписывали. Клиент принимает его, только если подпись сделана ключом,
+    активным в наборе, которому он уже верит; так доверие переносится по
+    цепочке и смена ключа не требует переустановки.
+
+    Без авторизации по той же причине, что и /updates/check: клиент со
+    старым набором обязан суметь догнать ротацию, даже если его токен протух.
+    """
+    repo = request.app.state.repo
+    signing_keys.ensure_bootstrapped(repo, _public_key())
+    return signing_keys.key_set_response(repo)
+
+
+@router.post("/admin/signing-keys/rotate")
+def post_rotate_keys(
+    body: RotateKeysRequest,
+    request: Request,
+    x_user_id: Optional[str] = Header(default=None),
+    x_user_role: Optional[str] = Header(default=None),
+) -> dict[str, Any]:
+    """
+    Принять новый набор ключей. Сервер и здесь не подписывает — набор
+    готовится офлайн (`scripts/sign_release.py rotate`).
+
+    ВАЖНО: ротация по цепочке закрывает плановую смену и потерю ключа, но НЕ
+    компрометацию — укравший приватный ключ подпишет ротацию на свой, и
+    подпись будет валидной. От этого спасает только доставка набора вне
+    канала (новая сборка). См. app_updates.md.
+    """
+    actor = _require_admin(x_user_id, x_user_role)
+    repo = request.app.state.repo
+    signing_keys.ensure_bootstrapped(repo, _public_key())
+    return _run(signing_keys.rotate, repo, payload=body.payload,
+                signature=body.signature,
+                new_key_signature=body.new_key_signature, actor_login=actor)
+
+
+@router.get("/admin/signing-keys")
+def get_key_history(
+    request: Request,
+    x_user_id: Optional[str] = Header(default=None),
+    x_user_role: Optional[str] = Header(default=None),
+) -> dict[str, Any]:
+    _require_admin(x_user_id, x_user_role)
+    return signing_keys.history(request.app.state.repo)
 
 
 @router.get("/admin/releases")
