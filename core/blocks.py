@@ -87,12 +87,14 @@ class FormulaBlock(Block):
     def to_dict(self) -> dict:
         """Отдаём LaTeX-исходник и base64-PNG. При неудаче рендера —
         только LaTeX, фронт покажет фолбэк."""
-        from .rendering import latex_to_png_bytes
         image_b64: str | None = None
         try:
-            png = latex_to_png_bytes(self.latex)
-            image_b64 = _b64(png)
+            from .rendering import latex_to_png_bytes
+            image_b64 = _b64(latex_to_png_bytes(self.latex))
         except Exception:
+            # Импорт внутри try сознательно: обещание докстроки — «при
+            # неудаче только LaTeX». Импорт снаружи это обещание нарушал,
+            # и любое задание с формулой падало вместо фолбэка.
             image_b64 = None
         return {
             "type": "formula",
