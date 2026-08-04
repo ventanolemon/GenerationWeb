@@ -1,0 +1,1017 @@
+"""
+Спецификация ответа: типизированные данные + правило сравнения.
+
+Центральное решение плана (docs/architecture/interactive_tasks_plan.md, §1):
+
+    Ответ — это данные с правилом сравнения, а блок для показа выводится
+    из них. Не наоборот.
+
+Сегодня `StaticTask.answer: List[Block]` — уже отрендеренный для глаз
+результат: `FormulaBlock` с латехом, `TextBlock` с «увеличится вдвое».
+Сверить с ним ввод пользователя нельзя в принципе. Здесь заводится вторая,
+проверяемая форма ответа; `display_blocks()` порождает из неё привычные
+блоки, поэтому существующий показ не ломается.
+
+Что уже есть:
+  * NumberSpec      — число с допуском и размерностью
+  * TextSpec        — строка с нормализацией и опечатками
+  * ExpressionSpec  — выражение, два режима сравнения
+  * SlotsSpec       — набор именованных слотов (линал, «заполни пропуски»)
+
+Чего сознательно НЕТ (следующие этапы плана):
+  * выбор одного/нескольких, последовательность, пары — §3, вместе с
+    реестром виджетов;
+  * алгебра размерностей (м/с² против м·с⁻²) — размерность сравнивается
+    как строка после нормализации;
+  * хранение в БД и запись режима в попытку — §11, этап 3. Здесь режим
+    уже лежит в `Verdict.mode`, чтобы этап 3 не пришлось делать задним
+    числом.
+
+Модуль headless: ни Qt, ни БД. Единственная тяжёлая зависимость — sympy,
+и она импортируется лениво, внутри разбора выражений.
+"""
+
+from __future__ import annotations
+
+import math
+import re
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import ClassVar, Dict, List, Optional, Tuple
+
+from .content import Block
+
+
+# ======================================================================
+#  Режим сравнения
+# ======================================================================
+
+class CheckMode(str, Enum):
+    """
+    Режим приёма ответа.
+
+    Значений два (§5.1), и это СОЗНАТЕЛЬНО перечисление, а не `bool`.
+    Булево поле нельзя дорастить до третьего варианта, не тронув каждое
+    место, где оно читается, и каждую сохранённую строку. Перечисление из
+    двух значений стоит сегодня ровно столько же и ничего не стоит завтра.
+
+    Тумблер в интерфейсе остаётся тумблером: он представление над полем,
+    а не его тип.
+
+    Наследование от `str` — чтобы значение уходило в JSON и в БД как
+    "soft"/"strict", а не как 0/1: строку в логе и в дампе видно, число —
+    нет.
+    """
+
+    SOFT = "soft"
+    """Мягкий: алгебраическая эквивалентность, допуск, опечатки."""
+
+    STRICT = "strict"
+    """Строгий: совпадение формы ответа с ожидаемой — ПОСЛЕ нормализации."""
+
+
+DEFAULT_MODE = CheckMode.SOFT
+"""
+Умолчание — мягкий режим.
+
+Из двух ошибок дешевле та, которую замечают: ложный отказ студент видит
+сразу и посреди работы, а излишняя мягкость — это качество оценки, которое
+преподаватель подтянет сам.
+"""
+
+
+# ======================================================================
+#  Вердикт
+# ======================================================================
+
+class Reason(str, Enum):
+    """Почему вердикт такой. Коды для аналитики и для подсказок, не текст."""
+
+    EXACT = "exact"                 # совпало посимвольно после нормализации
+    EQUIVALENT = "equivalent"       # алгебраически равно
+    WITHIN_TOLERANCE = "tolerance"  # число попало в допуск
+    TYPO = "typo"                   # принято как опечатка
+    MISMATCH = "mismatch"           # не совпало
+    WRONG_FORM = "wrong_form"       # значение верное, форма не та (строгий режим)
+    WRONG_UNIT = "wrong_unit"       # число верное, размерность не та
+    RESTATED = "restated"           # эквивалентно, но повторяет условие (§5)
+    UNPARSED = "unparsed"           # ввод не разобран
+    EMPTY = "empty"                 # пустой ввод
+
+
+@dataclass(frozen=True)
+class Verdict:
+    """
+    Результат проверки одного ответа.
+
+    `mode` здесь не для отладки. Преподаватель переключает тумблер — и все
+    прошлые попытки задним числом меняют смысл, а статистика по курсу
+    начинает смешивать два разных «верно». Поэтому режим, при котором
+    вердикт вынесен, едет вместе с вердиктом и на этапе 3 ляжет в попытку.
+    """
+
+    accepted: bool
+    mode: CheckMode
+    reason: Reason
+    normalized_input: str = ""
+    detail: str = ""
+    slots: Tuple[Tuple[str, "Verdict"], ...] = ()
+    """Повердиктно по слотам — пусто для одиночных спецификаций."""
+
+    def to_dict(self) -> dict:
+        out: dict = {
+            "accepted": self.accepted,
+            "mode": self.mode.value,
+            "reason": self.reason.value,
+            "normalized_input": self.normalized_input,
+        }
+        if self.detail:
+            out["detail"] = self.detail
+        if self.slots:
+            out["slots"] = {name: v.to_dict() for name, v in self.slots}
+        return out
+
+
+# ======================================================================
+#  Пол нормализации
+# ======================================================================
+#
+# Применяется в ОБОИХ режимах, до любого сравнения. Без него «строго»
+# означает «наберите те же символы, что и я», и режим бесполезен (§5.1).
+# Строгость начинается ПОСЛЕ приведения к канону, а не вместо него.
+
+_DASHES = {
+    "−": "-",   # −  минус
+    "–": "-",   # –  en dash
+    "—": "-",   # —  em dash
+    "‐": "-",   # ‐  hyphen
+    "‑": "-",   # ‑  non-breaking hyphen
+}
+
+_TIMES = {
+    "×": "*",   # ×
+    "·": "*",   # ·
+    "∙": "*",   # ∙
+    "⋅": "*",   # ⋅
+}
+
+_DIVIDE = {"÷": "/"}   # ÷
+
+_SPACES = {
+    " ": " ",   # неразрывный
+    " ": " ",   # цифровой
+    " ": " ",   # узкий неразрывный
+    " ": " ",   # тонкий
+}
+
+_SUPERSCRIPT = {
+    "⁰": "^0", "¹": "^1", "²": "^2", "³": "^3",
+    "⁴": "^4", "⁵": "^5", "⁶": "^6", "⁷": "^7",
+    "⁸": "^8", "⁹": "^9", "⁻": "^-",
+}
+
+_DECIMAL_COMMA = re.compile(r"(?<=\d),(?=\d)")
+
+
+def normalize(text: str) -> str:
+    """
+    Пол нормализации, общий для всех спецификаций и обоих режимов.
+
+    Что делает:
+      * юникодные тире и минусы  → дефис
+      * ×, ·, ∙, ⋅               → *
+      * ÷                        → /
+      * надстрочные цифры        → ^n
+      * неразрывные пробелы      → обычный
+      * запятая МЕЖДУ ЦИФРАМИ    → точка
+      * схлопывает пробелы, обрезает края
+
+    Чего НЕ делает:
+      * не понижает регистр — «м» и «М» это милли и мега, а `x` и `X` в
+        выражении разные символы. Регистр — настройка спецификации;
+      * не трогает незначащие нули — это разбор числа, а не текста, и
+        живёт в NumberSpec;
+      * не убирает пробелы внутри — «1 000» останется как есть, потому
+        что для строки это может быть значимо. Пробелы в числе снимает
+        разбор числа.
+
+    Запятая переводится в точку только между цифрами: «1,5» → «1.5», но
+    «красный, синий» остаётся списком.
+    """
+    if not text:
+        return ""
+    out = []
+    for ch in text:
+        out.append(
+            _DASHES.get(ch)
+            or _TIMES.get(ch)
+            or _DIVIDE.get(ch)
+            or _SPACES.get(ch)
+            or _SUPERSCRIPT.get(ch)
+            or ch
+        )
+    s = "".join(out)
+    s = _DECIMAL_COMMA.sub(".", s)
+    return " ".join(s.split())
+
+
+# ======================================================================
+#  Допуск
+# ======================================================================
+
+class ToleranceKind(str, Enum):
+    EXACT = "exact"
+    ABSOLUTE = "absolute"
+    RELATIVE = "relative"
+    SIGNIFICANT = "significant"
+
+
+@dataclass(frozen=True)
+class Tolerance:
+    """
+    Правило «насколько мимо ещё считается попаданием».
+
+    EXACT        — совпадение с точностью до погрешности float
+    ABSOLUTE     — |ввод − ожидание| ≤ amount
+    RELATIVE     — |ввод − ожидание| ≤ amount · |ожидание|   (amount — доля)
+    SIGNIFICANT  — совпадение после округления до amount значащих цифр
+    """
+
+    kind: ToleranceKind = ToleranceKind.EXACT
+    amount: float = 0.0
+
+    def accepts(self, user: float, expected: float) -> bool:
+        if self.kind is ToleranceKind.EXACT:
+            return math.isclose(user, expected, rel_tol=1e-12, abs_tol=1e-12)
+        if self.kind is ToleranceKind.ABSOLUTE:
+            return abs(user - expected) <= abs(self.amount) + 1e-12
+        if self.kind is ToleranceKind.RELATIVE:
+            return abs(user - expected) <= abs(self.amount * expected) + 1e-12
+        if self.kind is ToleranceKind.SIGNIFICANT:
+            digits = max(1, int(self.amount))
+            return _round_sig(user, digits) == _round_sig(expected, digits)
+        return False
+
+    def describe(self) -> str:
+        if self.kind is ToleranceKind.EXACT:
+            return "точное значение"
+        if self.kind is ToleranceKind.ABSOLUTE:
+            return f"±{_fmt(self.amount)}"
+        if self.kind is ToleranceKind.RELATIVE:
+            return f"±{_fmt(self.amount * 100)}%"
+        return f"{max(1, int(self.amount))} значащих цифр"
+
+    def to_dict(self) -> dict:
+        return {"kind": self.kind.value, "amount": self.amount}
+
+    @classmethod
+    def from_dict(cls, data: Optional[dict]) -> "Tolerance":
+        if not data:
+            return cls()
+        return cls(
+            kind=ToleranceKind(data.get("kind", "exact")),
+            amount=float(data.get("amount", 0.0)),
+        )
+
+
+def _round_sig(x: float, digits: int) -> float:
+    if x == 0.0:
+        return 0.0
+    return round(x, -int(math.floor(math.log10(abs(x)))) + (digits - 1))
+
+
+def _fmt(x: float) -> str:
+    """Число без хвоста .0 у целых — для человекочитаемых подсказок."""
+    if x == int(x) and abs(x) < 1e15:
+        return str(int(x))
+    return repr(x)
+
+
+# ======================================================================
+#  Базовый класс
+# ======================================================================
+
+class AnswerSpec(ABC):
+    """
+    Спецификация ответа: что считается верным и как сравнивать.
+
+    Три обязанности:
+      * `check`          — вынести вердикт по вводу пользователя;
+      * `display_blocks` — породить блоки показа (инверсия из §1);
+      * `accepted_examples` — показать преподавателю, ЧТО ПРИМУТ.
+
+    Третья не менее важна первой. Без списка «эти ответы будут засчитаны»
+    рядом с переключателем механизм выключают на второй день, потому что
+    не доверяют (§5). Инвариант, закреплённый тестом: каждый пример,
+    возвращённый `accepted_examples()`, обязан проходить `check()`.
+    """
+
+    kind: ClassVar[str] = ""
+
+    mode: CheckMode = DEFAULT_MODE
+    tuning: dict = {}
+
+    # ---------- обязательное ----------
+
+    @abstractmethod
+    def check(self, user_input: str, *,
+              mode: Optional[CheckMode] = None) -> Verdict:
+        """Проверить ввод. `mode` перекрывает режим спецификации на один раз."""
+
+    @abstractmethod
+    def display_blocks(self) -> List[Block]:
+        """Блоки для показа ответа. Выводятся из данных, а не наоборот."""
+
+    @abstractmethod
+    def _candidate_examples(self, mode: CheckMode) -> List[str]:
+        """Кандидаты в примеры. Отсев делает `accepted_examples`."""
+
+    @abstractmethod
+    def _payload(self) -> dict:
+        """Поля подкласса для сериализации, без общих."""
+
+    # ---------- общее ----------
+
+    def accepted_examples(self, *,
+                          mode: Optional[CheckMode] = None) -> List[str]:
+        """
+        Примеры ответов, которые будут засчитаны в данном режиме.
+
+        Каждый кандидат прогоняется через собственный `check`, и что не
+        прошло — отбрасывается. Инвариант «предпросмотр не врёт» держится
+        по построению, а не по добросовестности подкласса: показать
+        меньше верных примеров не страшно, показать один неверный —
+        страшно, потому что механизму перестают доверять целиком.
+        """
+        active = self.effective_mode(mode)
+        seen, out = set(), []
+        for candidate in self._candidate_examples(active):
+            if not candidate or candidate in seen:
+                continue
+            seen.add(candidate)
+            if self.check(candidate, mode=active).accepted:
+                out.append(candidate)
+        return out
+
+    def effective_mode(self, mode: Optional[CheckMode]) -> CheckMode:
+        return mode if mode is not None else self.mode
+
+    def to_dict(self) -> dict:
+        """
+        Сериализация. `tuning` НЕ пишется, когда пуст.
+
+        Это половина требования «пустой слот инертен» (§5.1): отсутствие
+        настройки и пустая настройка обязаны давать посимвольно одинаковое
+        поведение. Вторая половина — что `check()` не читает из tuning
+        ничего, чего там сегодня быть не может.
+        """
+        out = {"kind": self.kind, "mode": self.mode.value}
+        out.update(self._payload())
+        if self.tuning:
+            out["tuning"] = dict(self.tuning)
+        return out
+
+    @staticmethod
+    def from_dict(data: dict) -> "AnswerSpec":
+        """Собрать спецификацию по полю `kind`."""
+        kind = data.get("kind")
+        builder = _REGISTRY.get(kind)
+        if builder is None:
+            raise ValueError(f"Неизвестный вид ответа: {kind!r}")
+        return builder(data)
+
+
+def _common(data: dict) -> dict:
+    return {
+        "mode": CheckMode(data.get("mode", DEFAULT_MODE.value)),
+        "tuning": dict(data.get("tuning") or {}),
+    }
+
+
+# ======================================================================
+#  Число
+# ======================================================================
+
+_NUMBER_HEAD = re.compile(
+    r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?"
+)
+
+
+@dataclass
+class NumberSpec(AnswerSpec):
+    """
+    Число с допуском и размерностью.
+
+    Режимы:
+      * мягкий  — значение в допуске; размерность, если объявлена, обязана
+        совпасть после нормализации;
+      * строгий — то же плюс ФОРМА записи: число значащих цифр как в
+        ожидаемом. Так «0.5» не проходит там, где просили «0.50».
+
+    Размерность сравнивается как строка. Алгебры единиц здесь нет и на
+    этом этапе не планируется: «м/с^2» и «м·с^-2» — разные строки, и это
+    честнее, чем половина алгебры, которая молча ошибается.
+    """
+
+    kind: ClassVar[str] = "number"
+
+    value: float = 0.0
+    tolerance: Tolerance = field(default_factory=Tolerance)
+    unit: str = ""
+    written: str = ""
+    """
+    Канонический вид записи, если он важен: «0.50», «1.0e-3».
+
+    Нужен, потому что `float` теряет форму: 0.50 и 0.5 — одно значение и
+    разное число значащих цифр. Строгий режим сравнивает форму, поэтому
+    ему нужен эталон записи, а не только величина. Пусто — форма берётся
+    из самого значения.
+    """
+    mode: CheckMode = DEFAULT_MODE
+    tuning: dict = field(default_factory=dict)
+
+    # ---------- проверка ----------
+
+    def check(self, user_input: str, *,
+              mode: Optional[CheckMode] = None) -> Verdict:
+        active = self.effective_mode(mode)
+        text = normalize(user_input)
+        if not text:
+            return Verdict(False, active, Reason.EMPTY, text,
+                           "Ответ не введён.")
+
+        number_text, unit_text = _split_number_and_unit(text)
+        if number_text is None:
+            return Verdict(False, active, Reason.UNPARSED, text,
+                           "Не удалось прочитать число.")
+
+        try:
+            user_value = float(number_text.replace(" ", ""))
+        except ValueError:
+            return Verdict(False, active, Reason.UNPARSED, text,
+                           "Не удалось прочитать число.")
+
+        if self.unit and normalize(unit_text) != normalize(self.unit):
+            return Verdict(
+                False, active, Reason.WRONG_UNIT, text,
+                f"Ожидалась размерность «{self.unit}».")
+
+        if not self.tolerance.accepts(user_value, self.value):
+            return Verdict(False, active, Reason.MISMATCH, text,
+                           "Значение не совпадает.")
+
+        if active is CheckMode.STRICT:
+            want = _written_significant_digits(self.written or _fmt(self.value))
+            got = _written_significant_digits(number_text)
+            if got != want:
+                return Verdict(
+                    False, active, Reason.WRONG_FORM, text,
+                    f"Ожидалось {want} значащих цифр, получено {got}.")
+
+        exact = user_value == self.value
+        return Verdict(
+            True, active,
+            Reason.EXACT if exact else Reason.WITHIN_TOLERANCE, text)
+
+    # ---------- показ ----------
+
+    def display_blocks(self) -> List[Block]:
+        from .blocks import TextBlock
+        return [TextBlock(self._written())]
+
+    def _candidate_examples(self, mode: CheckMode) -> List[str]:
+        out = [self._written()]
+        if self.unit:
+            # То же число с обычным пробелом перед размерностью — частый
+            # результат копирования из вёрстки.
+            out.append(f"{self.written or _fmt(self.value)} {self.unit}")
+        if mode is CheckMode.SOFT:
+            edge = self._tolerance_edge()
+            if edge is not None:
+                out.append(self._written(edge))
+            # Запятая вместо точки — самый частый ввод с русской
+            # раскладки, и он проходит благодаря полу нормализации.
+            out.append(self._written().replace(".", ",", 1))
+        return out
+
+    # ---------- вспомогательное ----------
+
+    def _written(self, value: Optional[float] = None) -> str:
+        if value is None:
+            head = self.written or _fmt(self.value)
+        else:
+            head = _fmt(value)
+        return f"{head} {self.unit}".strip()
+
+    def _tolerance_edge(self) -> Optional[float]:
+        """Значение на краю допуска — самый убедительный пример «примут»."""
+        if self.tolerance.kind is ToleranceKind.ABSOLUTE:
+            return self.value + abs(self.tolerance.amount)
+        if self.tolerance.kind is ToleranceKind.RELATIVE:
+            return self.value + abs(self.tolerance.amount * self.value)
+        return None
+
+    def _payload(self) -> dict:
+        out: dict = {"value": self.value, "tolerance": self.tolerance.to_dict()}
+        if self.unit:
+            out["unit"] = self.unit
+        if self.written:
+            out["written"] = self.written
+        return out
+
+
+def _split_number_and_unit(text: str) -> Tuple[Optional[str], str]:
+    """Отделить числовую голову от размерности: «9.8 м/с^2» → («9.8», «м/с^2»)."""
+    compact = text.replace(" ", "")
+    match = _NUMBER_HEAD.match(compact)
+    if match is None:
+        return None, ""
+    return match.group(0), compact[match.end():]
+
+
+def _written_significant_digits(text: str) -> int:
+    """
+    Сколько значащих цифр в ЗАПИСИ числа.
+
+    «0.50» → 2, «0.5» → 1, «1.50» → 3, «0.050» → 2.
+    У целого с нулями на конце («100» → 3) число значащих цифр по записи
+    определить нельзя; считаем их значащими — это соглашение, и другого
+    без явной пометки не построить.
+    """
+    s = text.strip().lstrip("+-").replace(" ", "")
+    if "e" in s.lower():
+        s = re.split("[eE]", s)[0]
+    if "." in s:
+        head, frac = s.split(".", 1)
+        head = head.lstrip("0")
+        digits = frac.lstrip("0") if head == "" else head + frac
+        return len(digits) or 1
+    return len(s.lstrip("0")) or 1
+
+
+# ======================================================================
+#  Строка
+# ======================================================================
+
+@dataclass
+class TextSpec(AnswerSpec):
+    """
+    Строковый ответ с нормализацией.
+
+    Режимы:
+      * мягкий  — принимает синонимы и опечатки в пределах порога
+        (расстояние Левенштейна), регистр по настройке;
+      * строгий — совпадение после нормализации, опечатки не проходят.
+
+    Обобщает `tolerant` из тренировки английских слов: там тот же
+    Левенштейн зашит внутрь `WordsSession`, здесь он свойство ответа.
+    """
+
+    kind: ClassVar[str] = "text"
+
+    value: str = ""
+    alternatives: Tuple[str, ...] = ()
+    case_sensitive: bool = False
+    max_edits: int = 1
+    mode: CheckMode = DEFAULT_MODE
+    tuning: dict = field(default_factory=dict)
+
+    def check(self, user_input: str, *,
+              mode: Optional[CheckMode] = None) -> Verdict:
+        active = self.effective_mode(mode)
+        text = normalize(user_input)
+        if not text:
+            return Verdict(False, active, Reason.EMPTY, text,
+                           "Ответ не введён.")
+
+        candidates = [self.value, *self.alternatives]
+        probe = text if self.case_sensitive else text.casefold()
+
+        for candidate in candidates:
+            target = normalize(candidate)
+            if not self.case_sensitive:
+                target = target.casefold()
+            if probe == target:
+                return Verdict(True, active, Reason.EXACT, text)
+
+        if active is CheckMode.SOFT and self.max_edits > 0:
+            for candidate in candidates:
+                target = normalize(candidate)
+                if self.case_sensitive and probe.casefold() == target.casefold():
+                    # Различие только в регистре, а регистр объявлен
+                    # значимым. Это неверный ответ, а не опечатка: иначе
+                    # допуск на опечатки молча отменял бы настройку —
+                    # «ом» проходило бы вместо «Ом».
+                    continue
+                if not self.case_sensitive:
+                    target = target.casefold()
+                if _levenshtein(probe, target) <= self.max_edits:
+                    return Verdict(True, active, Reason.TYPO, text,
+                                   f"Принято как опечатка в «{candidate}».")
+
+        return Verdict(False, active, Reason.MISMATCH, text,
+                       "Ответ не совпадает.")
+
+    def display_blocks(self) -> List[Block]:
+        from .blocks import TextBlock
+        return [TextBlock(self.value)]
+
+    def _candidate_examples(self, mode: CheckMode) -> List[str]:
+        out = [self.value, *self.alternatives]
+        if not self.case_sensitive and self.value:
+            out.append(self.value.upper())
+        if mode is CheckMode.SOFT and self.max_edits > 0:
+            typo = _make_typo(self.value)
+            if typo is not None:
+                out.append(typo)
+        return out
+
+    def _payload(self) -> dict:
+        out: dict = {"value": self.value}
+        if self.alternatives:
+            out["alternatives"] = list(self.alternatives)
+        if self.case_sensitive:
+            out["case_sensitive"] = True
+        if self.max_edits != 1:
+            out["max_edits"] = self.max_edits
+        return out
+
+
+def _levenshtein(a: str, b: str) -> int:
+    if a == b:
+        return 0
+    if not a:
+        return len(b)
+    if not b:
+        return len(a)
+    previous = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        current = [i]
+        for j, cb in enumerate(b, 1):
+            current.append(min(
+                previous[j] + 1,
+                current[j - 1] + 1,
+                previous[j - 1] + (ca != cb),
+            ))
+        previous = current
+    return previous[-1]
+
+
+def _make_typo(word: str) -> Optional[str]:
+    """
+    Правдоподобная опечатка для предпросмотра — пропущенная буква.
+
+    Именно пропуск, а не перестановка соседних букв: перестановка по
+    Левенштейну стоит ДВЕ правки, и при бюджете по умолчанию (одна) такой
+    пример не прошёл бы собственную проверку. Пропуск стоит ровно одну и
+    укладывается в любой ненулевой бюджет.
+    """
+    stripped = word.strip()
+    if len(stripped) < 4:
+        return None
+    i = len(stripped) // 2
+    return stripped[:i] + stripped[i + 1:]
+
+
+# ======================================================================
+#  Выражение
+# ======================================================================
+#
+# Разбор пользовательского ввода в sympy — это исполнение выражения.
+# `parse_expr` под капотом пользуется eval, поэтому вход проходит через
+# белый список символов и имён ДО разбора. Это та же дыра, о которой
+# говорит §9 плана, и закрывать её дешевле сразу, чем потом.
+
+_EXPR_ALLOWED = re.compile(r"^[0-9A-Za-zА-Яа-я_+\-*/^().\s]*$")
+_IDENTIFIER = re.compile(r"[A-Za-zА-Яа-я_][A-Za-zА-Яа-я_0-9]*")
+
+_EXPR_FUNCTIONS = frozenset({
+    "sin", "cos", "tan", "cot", "sec", "csc",
+    "asin", "acos", "atan", "acot",
+    "sinh", "cosh", "tanh",
+    "sqrt", "exp", "log", "ln", "abs", "Abs",
+    "pi", "E", "I", "oo", "factorial",
+})
+
+
+class ExpressionError(ValueError):
+    """Ввод не прошёл проверку до разбора или не разобрался."""
+
+
+@dataclass
+class ExpressionSpec(AnswerSpec):
+    """
+    Ответ-выражение. Здесь живёт главная опасность из §5.
+
+    Опасность не в строгости, а в НАПРАВЛЕНИИ проверки. Для задания
+    «упростите выражение» проверка `simplify(ввод − ответ) == 0` не просто
+    мягкая, а катастрофически неверная: под неё проходит само исходное
+    выражение, то есть задание принимает нерешённое.
+
+    Отсюда два механизма:
+
+      * `mode`             — мягкий (алгебраическая эквивалентность) против
+        строгого (совпадение дерева выражения после канонизации). Строгий
+        отвергает `(x-1)*(x+1)` там, где ожидалось `x**2-1`;
+      * `reject_equivalent_to` — формы, которые эквивалентны, но задание
+        не решают. Обычно туда кладут само условие. Работает и в мягком
+        режиме — именно он без этого и ломается.
+
+    Без второго механизма мягкий режим по умолчанию означал бы «принимаем
+    условие обратно», поэтому он здесь, а не в следующем этапе.
+    """
+
+    kind: ClassVar[str] = "expression"
+
+    value: str = "0"
+    symbols: Tuple[str, ...] = ()
+    reject_equivalent_to: Tuple[str, ...] = ()
+    mode: CheckMode = DEFAULT_MODE
+    tuning: dict = field(default_factory=dict)
+
+    # ---------- проверка ----------
+
+    def check(self, user_input: str, *,
+              mode: Optional[CheckMode] = None) -> Verdict:
+        active = self.effective_mode(mode)
+        text = normalize(user_input)
+        if not text:
+            return Verdict(False, active, Reason.EMPTY, text,
+                           "Ответ не введён.")
+
+        try:
+            user_expr = self._parse(text)
+            expected = self._parse(self.value)
+        except ExpressionError as exc:
+            return Verdict(False, active, Reason.UNPARSED, text, str(exc))
+
+        for forbidden in self.reject_equivalent_to:
+            try:
+                banned = self._parse(forbidden)
+            except ExpressionError:
+                continue
+            if user_expr == banned:
+                return Verdict(
+                    False, active, Reason.RESTATED, text,
+                    "Это повторяет условие — задание требует преобразования.")
+
+        if user_expr == expected:
+            return Verdict(True, active, Reason.EXACT, text)
+
+        if active is CheckMode.STRICT:
+            return Verdict(False, active, Reason.WRONG_FORM, text,
+                           "Верно по значению, но форма не та.")
+
+        import sympy
+        try:
+            equal = sympy.simplify(user_expr - expected) == 0
+        except Exception:
+            equal = False
+        if equal:
+            return Verdict(True, active, Reason.EQUIVALENT, text)
+
+        return Verdict(False, active, Reason.MISMATCH, text,
+                       "Выражение не совпадает.")
+
+    # ---------- показ ----------
+
+    def display_blocks(self) -> List[Block]:
+        """
+        Показ выводится из данных: латех получаем из разобранного
+        выражения, а не храним отдельной строкой, которая разъедется.
+        """
+        from .blocks import FormulaBlock, TextBlock
+        try:
+            import sympy
+            return [FormulaBlock(sympy.latex(self._parse(self.value)))]
+        except Exception:
+            return [TextBlock(self.value)]
+
+    def _candidate_examples(self, mode: CheckMode) -> List[str]:
+        out = [self.value]
+        if mode is not CheckMode.SOFT:
+            return out
+        try:
+            import sympy
+            expr = self._parse(self.value)
+            for form in (sympy.expand(expr), sympy.factor(expr)):
+                out.append(str(form))
+        except Exception:
+            pass
+        return out
+
+    # ---------- разбор ----------
+
+    def _allowed_names(self) -> frozenset:
+        if self.symbols:
+            return frozenset(self.symbols) | _EXPR_FUNCTIONS
+        try:
+            from sympy.parsing.sympy_parser import (
+                parse_expr, standard_transformations, convert_xor)
+            expr = parse_expr(
+                self.value.replace("^", "**"),
+                transformations=standard_transformations + (convert_xor,),
+                evaluate=True)
+            return frozenset(
+                str(s) for s in expr.free_symbols) | _EXPR_FUNCTIONS
+        except Exception:
+            return _EXPR_FUNCTIONS
+
+    def _parse(self, text: str):
+        """
+        Разобрать выражение, предварительно убедившись, что в нём нет
+        ничего, кроме разрешённых символов и имён.
+
+        Белый список — до разбора, а не после: `parse_expr` исполняет
+        ввод, и проверять уже разобранное дерево поздно.
+        """
+        source = normalize(text)
+        if not _EXPR_ALLOWED.match(source):
+            raise ExpressionError("В выражении есть недопустимые символы.")
+        if "__" in source:
+            raise ExpressionError("В выражении есть недопустимые символы.")
+
+        allowed = self._allowed_names()
+        for name in _IDENTIFIER.findall(source):
+            if name not in allowed:
+                raise ExpressionError(f"Неизвестное имя: {name}.")
+
+        from sympy.parsing.sympy_parser import (
+            parse_expr, standard_transformations, convert_xor)
+        try:
+            return parse_expr(
+                source,
+                transformations=standard_transformations + (convert_xor,),
+                evaluate=True)
+        except Exception as exc:
+            raise ExpressionError("Выражение не разобрано.") from exc
+
+    def _payload(self) -> dict:
+        out: dict = {"value": self.value}
+        if self.symbols:
+            out["symbols"] = list(self.symbols)
+        if self.reject_equivalent_to:
+            out["reject_equivalent_to"] = list(self.reject_equivalent_to)
+        return out
+
+
+# ======================================================================
+#  Набор слотов
+# ======================================================================
+
+SLOT_SEPARATORS = re.compile(r"[;\n]")
+
+
+@dataclass
+class SlotsSpec(AnswerSpec):
+    """
+    Несколько именованных полей ответа: матрица в линале, «заполни
+    пропуски», ответ «скорость и время».
+
+    Каждый слот — самостоятельная спецификация со своим правилом
+    сравнения, поэтому в одном задании соседствуют число с допуском и
+    строка с синонимами.
+
+    Собственного режима у набора нет: `mode`, переданный в `check`,
+    передаётся вниз слотам, а без него каждый слот берёт свой. Так
+    «строгий режим на задание» работает, не переписывая слоты.
+    """
+
+    kind: ClassVar[str] = "slots"
+
+    slots: Tuple[Tuple[str, AnswerSpec], ...] = ()
+    mode: CheckMode = DEFAULT_MODE
+    tuning: dict = field(default_factory=dict)
+
+    def check(self, user_input: str, *,
+              mode: Optional[CheckMode] = None) -> Verdict:
+        active = self.effective_mode(mode)
+        parts = self._split(user_input)
+        results: List[Tuple[str, Verdict]] = []
+        for index, (name, spec) in enumerate(self.slots):
+            raw = parts.get(name, parts.get(str(index), ""))
+            results.append((name, spec.check(raw, mode=mode)))
+
+        accepted = bool(results) and all(v.accepted for _, v in results)
+        if accepted:
+            reason = Reason.EXACT
+            detail = ""
+        else:
+            reason = Reason.MISMATCH
+            wrong = [name for name, v in results if not v.accepted]
+            detail = "Не совпало: " + ", ".join(wrong) if wrong else "Пустой ответ."
+
+        return Verdict(accepted, active, reason,
+                       normalize(user_input), detail, tuple(results))
+
+    def check_slots(self, values: Dict[str, str], *,
+                    mode: Optional[CheckMode] = None) -> Verdict:
+        """Проверка по словарю — путь виджета, у которого поля отдельные."""
+        active = self.effective_mode(mode)
+        results = [(name, spec.check(values.get(name, ""), mode=mode))
+                   for name, spec in self.slots]
+        accepted = bool(results) and all(v.accepted for _, v in results)
+        wrong = [name for name, v in results if not v.accepted]
+        return Verdict(
+            accepted, active,
+            Reason.EXACT if accepted else Reason.MISMATCH,
+            "", "" if accepted else "Не совпало: " + ", ".join(wrong),
+            tuple(results))
+
+    def display_blocks(self) -> List[Block]:
+        from .blocks import TextBlock
+        out: List[Block] = []
+        for name, spec in self.slots:
+            shown = " ".join(b.render_plain() for b in spec.display_blocks())
+            out.append(TextBlock(f"{name}: {shown}"))
+        return out
+
+    def _candidate_examples(self, mode: CheckMode) -> List[str]:
+        if not self.slots:
+            return []
+        parts = []
+        for name, spec in self.slots:
+            examples = spec.accepted_examples(mode=mode)
+            if not examples:
+                return []      # слот без примеров — собрать честный нечем
+            parts.append(f"{name}={examples[0]}")
+        return ["; ".join(parts)]
+
+    def _split(self, text: str) -> Dict[str, str]:
+        """
+        Разобрать одну строку в значения слотов.
+
+        Две записи: «a=1; b=2» — по именам, «1; 2» — по порядку. Именованная
+        имеет приоритет, потому что порядок полей пользователю не виден.
+        """
+        parts: Dict[str, str] = {}
+        chunks = [c.strip() for c in SLOT_SEPARATORS.split(text or "") if c.strip()]
+        positional: List[str] = []
+        for chunk in chunks:
+            if "=" in chunk:
+                name, _, value = chunk.partition("=")
+                parts[name.strip()] = value.strip()
+            else:
+                positional.append(chunk)
+        for index, value in enumerate(positional):
+            parts.setdefault(str(index), value)
+        return parts
+
+    def _payload(self) -> dict:
+        return {"slots": [{"name": name, "spec": spec.to_dict()}
+                          for name, spec in self.slots]}
+
+
+# ======================================================================
+#  Сборка из словаря
+# ======================================================================
+
+def _build_number(data: dict) -> NumberSpec:
+    return NumberSpec(
+        value=float(data.get("value", 0.0)),
+        tolerance=Tolerance.from_dict(data.get("tolerance")),
+        unit=str(data.get("unit", "")),
+        written=str(data.get("written", "")),
+        **_common(data))
+
+
+def _build_text(data: dict) -> TextSpec:
+    return TextSpec(
+        value=str(data.get("value", "")),
+        alternatives=tuple(data.get("alternatives") or ()),
+        case_sensitive=bool(data.get("case_sensitive", False)),
+        max_edits=int(data.get("max_edits", 1)),
+        **_common(data))
+
+
+def _build_expression(data: dict) -> ExpressionSpec:
+    return ExpressionSpec(
+        value=str(data.get("value", "0")),
+        symbols=tuple(data.get("symbols") or ()),
+        reject_equivalent_to=tuple(data.get("reject_equivalent_to") or ()),
+        **_common(data))
+
+
+def _build_slots(data: dict) -> SlotsSpec:
+    return SlotsSpec(
+        slots=tuple(
+            (entry["name"], AnswerSpec.from_dict(entry["spec"]))
+            for entry in data.get("slots") or ()),
+        **_common(data))
+
+
+_REGISTRY = {
+    NumberSpec.kind: _build_number,
+    TextSpec.kind: _build_text,
+    ExpressionSpec.kind: _build_expression,
+    SlotsSpec.kind: _build_slots,
+}
+
+
+__all__ = [
+    "CheckMode", "DEFAULT_MODE", "Reason", "Verdict",
+    "normalize", "Tolerance", "ToleranceKind",
+    "AnswerSpec", "NumberSpec", "TextSpec", "ExpressionSpec", "SlotsSpec",
+    "ExpressionError",
+]
