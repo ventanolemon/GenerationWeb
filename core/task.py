@@ -89,6 +89,29 @@ class StaticTask(Task):
             out["widgets"] = [w.to_dict() for w in widgets_for(self.answer_spec)]
         return out
 
+    @classmethod
+    def from_dict(cls, data: dict) -> "StaticTask":
+        """
+        Собрать задание обратно из `to_dict()`.
+
+        Нужно там, где задание пересекает границу процесса: исполнение
+        графа вынесено в отдельный рабочий процесс без доступа к БД, и
+        результат возвращается словарём.
+
+        `widgets` при разборе игнорируются: они вычисляются из
+        спецификации, и восстанавливать их из словаря значило бы завести
+        второй источник правды о совместимости.
+        """
+        from .answers import AnswerSpec
+        from .blocks import blocks_from_dicts
+        spec = data.get("answer_spec")
+        return cls(
+            statement=blocks_from_dicts(data.get("statement")),
+            answer=blocks_from_dicts(data.get("answer")),
+            meta=dict(data.get("meta") or {}),
+            answer_spec=AnswerSpec.from_dict(spec) if spec else None,
+        )
+
 
 @dataclass
 class TurnResult:

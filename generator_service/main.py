@@ -115,6 +115,13 @@ async def lifespan(app: FastAPI):
         len(registry.all_ids()),
     )
     yield
+    # Рабочий процесс исполнения графов переживёт родителя, если его не
+    # снять: он ждёт на stdin, который никто больше не закроет.
+    try:
+        from core.graph.isolation import shutdown_shared
+        shutdown_shared()
+    except Exception:                              # noqa: BLE001
+        logger.exception("не удалось снять рабочий процесс графов")
     logger.info("Generator service shutting down.")
 
 

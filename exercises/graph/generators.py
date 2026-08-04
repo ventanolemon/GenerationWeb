@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 
 from core import STATIC_DEFAULT, Task, TaskGenerator
-from core.graph import GraphExecutor, GraphSpec
+from core.graph import isolation
 
 
 class GraphConstructorGenerator(TaskGenerator):
@@ -24,33 +24,46 @@ class GraphConstructorGenerator(TaskGenerator):
     def __init__(self, partition_id: int, name: str, config: "str | dict"):
         self.partition_id = partition_id
         self.name = name
-        self._spec = self._to_spec(config)
-        self._executor: GraphExecutor | None = None
+        self._raw = self._to_raw(config)
 
     def configure(self, params: dict) -> None:
         """Обновить описание графа из БД (зовётся реестром при выдаче)."""
         if not params:
             return
-        if "raw" in params:
-            self._spec = self._to_spec(params["raw"])
-        else:
-            self._spec = self._to_spec(params)
-        self._executor = None
+        self._raw = self._to_raw(params["raw"] if "raw" in params else params)
 
     def generate(self) -> Task:
-        # Сборка/валидация графа кэшируется: spec статичен между configure().
-        if self._executor is None:
-            self._executor = GraphExecutor(self._spec)
-        return self._executor.run()
+        """
+        Исполнить граф.
+
+        Исполнение уезжает в отдельный процесс без доступа к БД (§9
+        плана): граф — пользовательский контент, а с пакетами узлов
+        буквально сторонний Python, и раньше он получал и процесс
+        сервиса, и соединение с базой.
+
+        Исполнитель здесь больше не кэшируется. Кэшировалась сборка и
+        валидация — сотые доли миллисекунды на фоне того, что процесс
+        живёт между запросами и разбирает граф у себя. Держать вторую
+        копию исполнителя в процессе сервиса значило бы вернуть туда то,
+        от чего изолируемся.
+        """
+        return isolation.run_graph(self._raw)
 
     @staticmethod
-    def _to_spec(config: "str | dict") -> GraphSpec:
+    def _to_raw(config: "str | dict") -> dict:
+        """
+        Описание графа как СЛОВАРЬ, а не разобранный GraphSpec.
+
+        Через границу процесса едет словарь, и разбирать его на этой
+        стороне значило бы делать работу дважды — второй раз в процессе,
+        который специально ничего не должен исполнять.
+        """
         if isinstance(config, str):
             try:
                 config = json.loads(config)
             except (json.JSONDecodeError, TypeError):
                 config = {}
-        return GraphSpec.parse(config if isinstance(config, dict) else {})
+        return dict(config) if isinstance(config, dict) else {}
 
 
 # ---------- Пример графа (физика v*t, для ручного запуска) ----------

@@ -31,7 +31,8 @@ import statistics
 import time
 from typing import Any, NamedTuple, Optional
 
-from .graph.errors import GraphError, RetryGeneration
+from .graph.errors import (GraphError, GraphValidationError,
+                           RetryGeneration)
 from .graph.executor import GraphExecutor
 from .graph.node import ExecContext
 from .graph.spec import GraphSpec
@@ -310,3 +311,59 @@ def _dead_nodes(spec_dict: dict, executor: GraphExecutor) -> set[str]:
                 stack.append(p)
     all_ids = {str(n.get("id")) for n in spec_dict.get("nodes") or []}
     return all_ids - cone
+
+
+# ---------- Предпросмотр с блоками ----------
+
+def blocks_json(task, field: str) -> list:
+    """
+    Блоки условия/ответа задания как список BlockJSON.
+
+    Для интерактивных заданий поле statement — синтетический текстовый
+    блок из начального промпта, answer пуст: у сессии готового ответа
+    нет, и показывать вместо него нечего.
+    """
+    blocks = getattr(task, field, None)
+    if blocks is not None:
+        return [b.to_dict() for b in blocks]
+    if field == "statement":
+        stmt, _ = task_plain(task)
+        return [{"type": "text", "content": stmt}]
+    return []
+
+
+def preview_runs(spec_dict: dict, seeds: Optional[list] = None,
+                 max_seeds: int = 8) -> dict:
+    """
+    Прогнать граф на сидах и вернуть блоки — ЧИСТАЯ часть предпросмотра.
+
+    Вынесена сюда, чтобы её могли звать оба пути: изолированный рабочий
+    процесс и прямой вызов при выключенной изоляции. Иначе логика
+    предпросмотра существовала бы в двух копиях и разошлась бы на первой
+    же правке.
+    """
+    seeds = list(seeds if seeds is not None else DEFAULT_SEEDS)[:max_seeds]
+    try:
+        executor = GraphExecutor(GraphSpec.parse(spec_dict))
+    except GraphValidationError as e:
+        return {"ok": False, "errors": [str(e)], "runs": []}
+
+    runs = []
+    for seed in seeds:
+        res = run_once(executor, seed)
+        if res.task is None or res.error is not None:
+            runs.append({"seed": seed, "statement": [], "answer": [],
+                         "attempts": res.attempts,
+                         "wall_ms": round(res.wall_ms, 2),
+                         "error": res.error or "не удалось собрать задание"})
+            continue
+        try:
+            statement = blocks_json(res.task, "statement")
+            answer = blocks_json(res.task, "answer")
+            err = None
+        except Exception as e:      # рендер блока упал — не роняем предпросмотр
+            statement, answer, err = [], [], f"ошибка рендера блока: {e}"
+        runs.append({"seed": seed, "statement": statement, "answer": answer,
+                     "attempts": res.attempts,
+                     "wall_ms": round(res.wall_ms, 2), "error": err})
+    return {"ok": True, "errors": [], "runs": runs}
