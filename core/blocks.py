@@ -238,3 +238,52 @@ class TableBlock(Block):
             "rows": [[str(c) for c in row] for row in self.rows],
             "header": list(self.header) if self.header else None,
         }
+
+
+# ---------- Обратный разбор ----------
+#
+# to_dict() у блоков был односторонним: веб-сериализация отдаёт словарь,
+# и обратно его никто не собирал — фронту хватало «type» для выбора
+# компонента. Общей интерактивной сессии этого мало: её снимок состояния
+# содержит условие вопроса, и при переезде между процессами условие надо
+# восстановить, а не показать пользователю другое.
+
+def block_from_dict(data: dict) -> Block:
+    """
+    Собрать блок из словаря, выданного `to_dict()`.
+
+    Обратимы блоки, которые целиком состоят из данных. Картинка
+    восстанавливается из base64-PNG: исходный PIL.Image или путь не
+    сохраняются, но показывается ровно то же самое.
+
+    Неизвестный тип — ValueError, а не «молча TextBlock»: подмена блока
+    заглушкой выглядит как испорченное задание, и искать причину придётся
+    в отрендеренном виде, где её уже не видно.
+    """
+    if not isinstance(data, dict):
+        raise ValueError(f"Блок должен быть словарём, получено {type(data).__name__}")
+    kind = data.get("type")
+    builder = _BLOCK_BUILDERS.get(kind)
+    if builder is None:
+        raise ValueError(f"Неизвестный тип блока: {kind!r}")
+    return builder(data)
+
+
+def blocks_from_dicts(items) -> list:
+    """Собрать список блоков. Пустой вход — пустой список."""
+    return [block_from_dict(item) for item in (items or [])]
+
+
+def _image_from_dict(data: dict) -> Block:
+    raw = data.get("image_b64")
+    payload = base64.b64decode(raw) if raw else b""
+    return ImageBlock(payload, caption=data.get("caption", ""))
+
+
+_BLOCK_BUILDERS = {
+    "text": lambda d: TextBlock(d.get("content", "")),
+    "formula": lambda d: FormulaBlock(d.get("latex", "")),
+    "code": lambda d: CodeBlock(d.get("code", ""), d.get("language", "text")),
+    "table": lambda d: TableBlock(d.get("rows") or [], d.get("header")),
+    "image": _image_from_dict,
+}

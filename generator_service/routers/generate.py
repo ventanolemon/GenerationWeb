@@ -20,7 +20,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from core import InteractiveTask, StaticTask
+from core import InteractiveTask, StaticTask, session_from_task
 from ..context import current_user_id as current_user_id_var
 
 router = APIRouter(prefix="/generate", tags=["generate"])
@@ -29,6 +29,19 @@ router = APIRouter(prefix="/generate", tags=["generate"])
 class GenerateRequest(BaseModel):
     partition_id: int = Field(..., gt=0, description="ID раздела из Partitions")
     user_id: Optional[str] = Field(None, description="ID пользователя (login или guest UUID)")
+    interactive: bool = Field(
+        False,
+        description=(
+            "Открыть сессию с автопроверкой, если у задания есть "
+            "спецификация ответа. По умолчанию выключено: прикрепление "
+            "спецификации к генератору не должно менять поведение уже "
+            "работающих вызовов."))
+    max_attempts: int = Field(
+        1, ge=1, le=10,
+        description=(
+            "Попыток на вопрос. Временно живёт здесь: по плану это "
+            "свойство сценария выдачи, который появится вместе с моделью "
+            "попытки."))
 
 
 @router.post("")
@@ -59,6 +72,21 @@ def generate_task(body: GenerateRequest, request: Request) -> dict:
             status_code=500,
             detail=f"Generator {generator.name if 'generator' in dir() else body.partition_id} failed: {e}",
         )
+
+    if isinstance(task, StaticTask) and body.interactive and task.is_checkable:
+        # Общая сессия над статическим заданием: генератор не писал ни
+        # цикла, ни подкласса — он только приложил спецификацию ответа.
+        session = session_from_task(task, max_attempts=body.max_attempts)
+        session_id = sessions.create(session, body.partition_id, body.user_id)
+        return {
+            "type": "interactive",
+            "session_id": session_id,
+            "partition_id": body.partition_id,
+            "prompt": [b.to_dict() for b in session.initial_prompt()],
+            "is_finished": session.is_finished(),
+            "supports_tolerant": False,
+            "widget": session.questions[0].widget_name(),
+        }
 
     if isinstance(task, StaticTask):
         result = task.to_dict()

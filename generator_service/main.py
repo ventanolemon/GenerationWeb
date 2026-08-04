@@ -32,7 +32,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from bootstrap import build_registry, sync_database
 from const import DB_PATH, WORDS_DIR
-from core import InteractiveTask, Repository, WordStatsStore
+from core import (InteractiveTask, Repository, WordStatsStore,
+                  session_from_task)
 
 from . import errors
 from .context import current_user_id as current_user_id_var
@@ -95,7 +96,14 @@ async def lifespan(app: FastAPI):
         task = current_registry.get(
             partition_id, partition.generation_params if partition else {}
         ).generate()
-        return task if isinstance(task, InteractiveTask) else None
+        if isinstance(task, InteractiveTask):
+            return task
+        # Статическое задание со спецификацией ответа: сессию над ним ведёт
+        # общая машинка. Пересборка даёт ДРУГОЕ случайное задание — это
+        # нормально, потому что restore() тут же заместит его вопросы теми,
+        # что лежат в снимке. Оболочка нужна только чтобы было куда их
+        # положить.
+        return session_from_task(task)
 
     app.state.repo = repo
     app.state.registry = registry

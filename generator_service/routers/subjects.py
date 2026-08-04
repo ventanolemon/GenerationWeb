@@ -55,7 +55,13 @@ def list_partitions(subject_id: int, request: Request) -> list[dict]:
         if registry.has(p.id):
             try:
                 gen = registry.get(p.id, p.generation_params)
-                is_interactive = Capability.INTERACTIVE in gen.capabilities
+                # INTERACTIVE — генератор ведёт сессию сам; CHECKABLE —
+                # отдаёт статическое задание со спецификацией, и сессию
+                # над ним ведёт общая машинка. Витрине это один и тот же
+                # ответ на вопрос «можно ли здесь отвечать интерактивно».
+                is_interactive = bool(
+                    gen.capabilities & (Capability.INTERACTIVE
+                                        | Capability.CHECKABLE))
             except Exception:
                 # Если фабрика для группы/теста не смогла собрать детей
                 # (например, после удаления одного из дочерних разделов),
