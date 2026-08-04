@@ -23,11 +23,11 @@ compute(inputs, ctx)->outputs). Компилятор разворачивает 
 
 from __future__ import annotations
 
-import json
 import keyword
 import re
 
 from .executor import GraphExecutor
+from .port_types import PortType
 from .spec import GraphSpec
 
 
@@ -72,12 +72,36 @@ class GraphCompiler:
         return f"_{_ident(node_id)}_{port}"
 
     def _input_expr(self, node_id: str, port_name: str) -> str | None:
-        """Python-выражение для значения, приходящего на вход (или None)."""
+        """
+        Python-выражение для значения, приходящего на вход (или None).
+
+        Здесь же выполняется авто-повышение типа — то же, что делает
+        исполнитель в `_coerce_input`. Без него одиночный блок, поданный
+        туда, где ждут список, доезжал до потребителя блоком, и
+        скомпилированный граф падал на `list(TextBlock)`. Повышение
+        `NUMBER → EXPR` значение не меняет, поэтому в коде его не видно —
+        как и в `coerce_value`.
+        """
         src = self.ex.in_edges.get((node_id, port_name))
         if src is None:
             return None
         from_node, from_port = src
-        return self._out_var(from_node, from_port)
+        expr = self._out_var(from_node, from_port)
+        if (self._port_type(from_node, from_port, out=True) is PortType.BLOCK
+                and self._port_type(node_id, port_name, out=False)
+                is PortType.BLOCK_LIST):
+            return f"[{expr}]"
+        return expr
+
+    def _port_type(self, node_id: str, port_name: str, *, out: bool):
+        node = self.ex.nodes.get(node_id)
+        if node is None:
+            return None
+        ports = node.output_ports() if out else node.input_ports()
+        for port in ports:
+            if port.name == port_name:
+                return port.type
+        return None
 
     # ---------- Эмиссия ----------
 
@@ -165,20 +189,42 @@ class GraphCompiler:
             pairs.append(f"{str(n)!r}: float({expr})")
         return [f"    {self._out_var(node_id, 'out')} = {{{', '.join(pairs)}}}"]
 
+    def _variables_expr(self, node_id, node) -> str:
+        """
+        Словарь переменных узла: запасной вход `vars` плюс именованные
+        входы, причём именованные важнее — как в `FormulaNode.compute`.
+
+        Раньше здесь брался только `vars`, и у скомпилированного графа
+        формула с проводами на a и b получала пустой словарь. Расхождение
+        компилятора с исполнителем — худший вид ошибки в этом месте:
+        граф работает в редакторе и ломается после компиляции.
+        """
+        items = []
+        for port in node.input_ports():
+            if port.name == "vars":
+                continue
+            expr = self._input_expr(node_id, port.name)
+            if expr is not None:
+                items.append(f"{port.name!r}: {expr}")
+        named = "{" + ", ".join(items) + "}"
+        base = self._input_expr(node_id, "vars")
+        if base is None:
+            return named
+        return f"{{**({base} or {{}}), **{named}}}"
+
     def _emit_formula(self, node_id, node) -> list[str]:
         expr = node.params.get("expr", "")
-        vars_expr = self._input_expr(node_id, "vars") or "{}"
         return [
             f"    {self._out_var(node_id, 'out')} = "
-            f"_formula({node_id!r}, {expr!r}, {vars_expr})"
+            f"_formula({node_id!r}, {expr!r}, "
+            f"{self._variables_expr(node_id, node)})"
         ]
 
     def _emit_template(self, node_id, node) -> list[str]:
         text = node.params.get("text", "")
-        vars_expr = self._input_expr(node_id, "vars") or "{}"
         return [
             f"    {self._out_var(node_id, 'out')} = "
-            f"_template({text!r}, {vars_expr})"
+            f"_template({text!r}, {self._variables_expr(node_id, node)})"
         ]
 
     def _emit_text_block(self, node_id, node) -> list[str]:
@@ -265,20 +311,15 @@ def _formula(node_id, expr, variables):
 
 
 def _template(text, variables):
-    """Подстановка #имя# (как узел template)."""
-    from exercises.fisic.formatting import format_number
-    out = str(text)
-    for name, value in (variables or {{}}).items():
-        try:
-            v = float(value)
-            if abs(v - round(v)) < 1e-9:
-                s = format_number(v, scientific_threshold_high=float("inf"))
-            else:
-                s = format_number(v)
-        except (TypeError, ValueError):
-            s = str(value)
-        out = out.replace(f"#{{name}}#", s)
-    return out
+    """
+    Подстановка #имя# — ТОЙ ЖЕ функцией, что и узел template.
+
+    Своя копия здесь умела только числа, поэтому выражение или строка,
+    подставленные в текст, печатались как repr объекта. Двух реализаций
+    подстановки быть не должно: они расходятся молча.
+    """
+    from core.graph.nodes.compute import _fill_template
+    return _fill_template(text, {{"vars": variables or {{}}}})
 
 
 def _run(ctx):
