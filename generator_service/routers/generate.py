@@ -21,6 +21,8 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from core import InteractiveTask, StaticTask, session_from_task
+from core.scenarios import (IMPLEMENTED_MODES, MAX_ATTEMPTS, Layer, Scenario,
+                            SessionMode)
 from ..context import current_user_id as current_user_id_var
 
 router = APIRouter(prefix="/generate", tags=["generate"])
@@ -36,12 +38,53 @@ class GenerateRequest(BaseModel):
             "спецификация ответа. По умолчанию выключено: прикрепление "
             "спецификации к генератору не должно менять поведение уже "
             "работающих вызовов."))
-    max_attempts: int = Field(
-        1, ge=1, le=10,
+    session_mode: str = Field(
+        "practice_free",
         description=(
-            "Попыток на вопрос. Временно живёт здесь: по плану это "
-            "свойство сценария выдачи, который появится вместе с моделью "
-            "попытки."))
+            "Режим прохождения. Определяет контракт о записи попытки: "
+            "practice_free попыток не пишет, practice пишет и считает. "
+            "homework и exam описаны в модели, но пока не открыты."))
+    max_attempts: Optional[int] = Field(
+        None, ge=1, le=10,
+        description=(
+            "Попыток на вопрос. Пусто — берётся умолчание режима. "
+            "Слой выдачи может это значение запереть."))
+
+
+def _scenario_from(body: "GenerateRequest") -> Scenario:
+    """
+    Собрать сценарий из запроса.
+
+    Неизвестный или ещё не открытый режим отвергается ЯВНО. ДЗ и зачёт
+    описаны в модели, но им нужна дисциплина выдачи, которой нет: срок,
+    единственная попытка, недоступность условия после сдачи. Записать
+    попытку с пометкой «зачёт», не обеспечив условий зачёта, значит
+    получить статистику, про которую потом нельзя сказать, что она
+    означает — а обнаружится это через семестр.
+
+    Слоя выдачи здесь ещё нет: параметры приходят от вызывающего и
+    ложатся на слой задания. Когда появится выдача, она наложится
+    следующим слоем и сможет запирать.
+    """
+    try:
+        mode = SessionMode(body.session_mode)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Неизвестный режим прохождения: {body.session_mode!r}")
+
+    if mode not in IMPLEMENTED_MODES:
+        raise HTTPException(
+            status_code=400,
+            detail=(f"Режим {mode.value!r} описан, но пока не открыт: "
+                    f"ему нужна дисциплина выдачи. Доступны: "
+                    f"{', '.join(sorted(m.value for m in IMPLEMENTED_MODES))}."))
+
+    scenario = Scenario.for_mode(mode)
+    if body.max_attempts is not None:
+        scenario = scenario.with_layer(Layer.TASK,
+                                       {MAX_ATTEMPTS: body.max_attempts})
+    return scenario
 
 
 @router.post("")
@@ -76,7 +119,8 @@ def generate_task(body: GenerateRequest, request: Request) -> dict:
     if isinstance(task, StaticTask) and body.interactive and task.is_checkable:
         # Общая сессия над статическим заданием: генератор не писал ни
         # цикла, ни подкласса — он только приложил спецификацию ответа.
-        session = session_from_task(task, max_attempts=body.max_attempts)
+        scenario = _scenario_from(body)
+        session = session_from_task(task, scenario=scenario)
         session_id = sessions.create(session, body.partition_id, body.user_id)
         return {
             "type": "interactive",
@@ -86,6 +130,7 @@ def generate_task(body: GenerateRequest, request: Request) -> dict:
             "is_finished": session.is_finished(),
             "supports_tolerant": False,
             "widget": session.questions[0].widget_name(),
+            "scenario": scenario.to_dict(),
         }
 
     if isinstance(task, StaticTask):

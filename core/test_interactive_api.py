@@ -167,13 +167,28 @@ class InteractiveOptInTests(InteractiveApiTestBase):
         self.assertTrue(body["is_finished"])
 
     def test_wrong_answer_reveals_the_expected_one(self):
+        # max_attempts=1: вопрос закрывается сразу, и ответ показывается.
+        # С умолчанием режима (три попытки) первая ошибка вопрос не
+        # закрывает — это разные ситуации, и обе проверяются.
         session_id = self.generate(
-            CHECKABLE_PARTITION, interactive=True).json()["session_id"]
+            CHECKABLE_PARTITION, interactive=True,
+            max_attempts=1).json()["session_id"]
         body = self.client.post("/interactive/submit", json={
             "session_id": session_id, "user_input": "1"}).json()
         self.assertFalse(body["correct"])
         shown = " ".join(b.get("content", "") for b in body["feedback"])
         self.assertIn("Правильный ответ", shown)
+
+    def test_first_mistake_keeps_the_answer_hidden_by_default(self):
+        # Умолчание свободной тренировки — три попытки: показывать ответ
+        # после первой ошибки значило бы отменить остальные две.
+        session_id = self.generate(
+            CHECKABLE_PARTITION, interactive=True).json()["session_id"]
+        body = self.client.post("/interactive/submit", json={
+            "session_id": session_id, "user_input": "1"}).json()
+        shown = " ".join(b.get("content", "") for b in body["feedback"])
+        self.assertNotIn("Правильный ответ", shown)
+        self.assertIn("Осталось попыток", shown)
 
     def test_attempts_are_honoured(self):
         session_id = self.generate(
@@ -195,6 +210,94 @@ class InteractiveOptInTests(InteractiveApiTestBase):
         again = self.client.post("/interactive/submit", json={
             "session_id": session_id, "user_input": "9.8 м/с^2"})
         self.assertEqual(again.status_code, 404)
+
+
+class ScenarioEndpointTests(InteractiveApiTestBase):
+
+    def attempts(self):
+        import sqlite3
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            return [dict(r) for r in conn.execute("SELECT * FROM attempts")]
+        finally:
+            conn.close()
+
+    def play(self, **extra):
+        """Открыть сессию и ответить верно один раз."""
+        opened = self.generate(
+            CHECKABLE_PARTITION, interactive=True, **extra).json()
+        self.client.post("/interactive/submit", json={
+            "session_id": opened["session_id"], "user_input": "9.8 м/с^2"})
+        return opened
+
+    def test_scenario_rides_in_the_response(self):
+        data = self.generate(CHECKABLE_PARTITION, interactive=True).json()
+        self.assertEqual(data["scenario"]["mode"], "practice_free")
+
+    def test_free_practice_writes_no_attempts(self):
+        # Не «нечего писать», а исполненный контракт режима.
+        self.play(session_mode="practice_free")
+        self.assertEqual(self.attempts(), [])
+
+    def test_practice_writes_an_attempt(self):
+        self.play(session_mode="practice")
+        rows = self.attempts()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["session_mode"], "practice")
+        self.assertEqual(rows[0]["check_mode"], "soft")
+        self.assertEqual(rows[0]["correct"], 1)
+
+    def test_attempt_carries_partition_and_user(self):
+        self.play(session_mode="practice")
+        row = self.attempts()[0]
+        self.assertEqual(row["partition_id"], CHECKABLE_PARTITION)
+        self.assertEqual(row["user_id"], "ivanov")
+
+    def test_repeated_submit_does_not_duplicate_the_attempt(self):
+        opened = self.play(session_mode="practice")
+        # Сессия уже закрыта и удалена из стора — повтор вернёт 404, но
+        # даже если бы дошёл, ключ попытки детерминирован.
+        self.client.post("/interactive/submit", json={
+            "session_id": opened["session_id"], "user_input": "9.8 м/с^2"})
+        self.assertEqual(len(self.attempts()), 1)
+
+    def test_attempt_is_written_before_the_session_ends(self):
+        # Сессию бросают чаще, чем доводят до конца: запись «в конце»
+        # потеряла бы всё, на что студент успел ответить.
+        opened = self.generate(
+            CHECKABLE_PARTITION, interactive=True,
+            session_mode="practice", max_attempts=2).json()
+        self.client.post("/interactive/submit", json={
+            "session_id": opened["session_id"], "user_input": "1"})
+        self.client.post("/interactive/submit", json={
+            "session_id": opened["session_id"], "user_input": "2"})
+        rows = self.attempts()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["correct"], 0)
+        self.assertEqual(rows[0]["attempts_used"], 2)
+
+    def test_unknown_mode_is_refused(self):
+        response = self.generate(
+            CHECKABLE_PARTITION, interactive=True, session_mode="телепатия")
+        self.assertEqual(response.status_code, 400)
+
+    def test_unimplemented_modes_are_refused_with_a_reason(self):
+        # Пометить попытку зачётом, не обеспечив условий зачёта, — это
+        # статистика, про которую потом нельзя сказать, что она означает.
+        for mode in ("homework", "exam"):
+            with self.subTest(mode=mode):
+                response = self.generate(
+                    CHECKABLE_PARTITION, interactive=True, session_mode=mode)
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("не открыт", response.json()["error"]["message"])
+
+    def test_max_attempts_overrides_the_mode_default(self):
+        data = self.generate(
+            CHECKABLE_PARTITION, interactive=True,
+            session_mode="practice", max_attempts=5).json()
+        self.assertEqual(
+            data["scenario"]["settings"]["max_attempts"]["value"], 5)
 
 
 if __name__ == "__main__":

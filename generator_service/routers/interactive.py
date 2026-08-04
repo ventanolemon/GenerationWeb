@@ -16,8 +16,12 @@ POST /interactive/submit — отправка ответа в активной �
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/interactive", tags=["interactive"])
 
@@ -49,6 +53,8 @@ def submit_answer(body: SubmitRequest, request: Request) -> dict:
             detail=f"submit() failed: {e}",
         )
 
+    _record_attempts(request, body.session_id, task)
+
     response = result.to_dict()
     if response["next_prompt"] is None:
         # Сессия завершена — освобождаем место в сторе сразу,
@@ -59,6 +65,44 @@ def submit_answer(body: SubmitRequest, request: Request) -> dict:
         # другой процесс вернул бы пользователя к предыдущему слову.
         sessions.save(body.session_id)
     return response
+
+
+def _record_attempts(request: Request, session_id: str, task) -> None:
+    """
+    Записать попытки по закрытым вопросам, если сценарий это предписывает.
+
+    Зовётся после КАЖДОГО хода, а не только на завершении сессии. Сессию
+    бросают чаще, чем доводят до конца, и запись «в конце» потеряла бы
+    всё, на что студент успел ответить. Ключ попытки детерминирован, так
+    что повторная запись тех же вопросов ничего не удваивает.
+
+    Ошибка записи не роняет ход. Телеметрия — улучшение, а не условие
+    работы: уронить из-за неё ответ студента было бы обменом ценного на
+    дешёвое.
+    """
+    scenario = getattr(task, "scenario", None)
+    if scenario is None or not scenario.contract.records_attempts:
+        return
+    if not getattr(task, "outcomes", None):
+        return
+
+    sessions = request.app.state.sessions
+    context = sessions.context(session_id)
+    repo = getattr(request.app.state, "repo", None)
+    if context is None or repo is None:
+        return
+    partition_id, user_id = context
+
+    try:
+        from core.attempts import attempts_from_session
+        repo.save_attempts(attempts_from_session(
+            task, scenario,
+            session_id=session_id,
+            user_id=user_id or "",
+            partition_id=partition_id,
+        ))
+    except Exception:
+        logger.exception("не удалось записать попытки сессии %s", session_id)
 
 
 @router.get("/stats")

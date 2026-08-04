@@ -16,6 +16,9 @@ from .answers import (AnswerSpec, CheckMode, NumberSpec, TextSpec,
                       ExpressionSpec, SlotsSpec, Tolerance,
                       ToleranceKind, Verdict)
 from .widgets import Widget, widgets_for, resolve_widget
+from .scenarios import (Scenario, SessionMode, Layer, Setting,
+                        default_scenario)
+from .attempts import AttemptRecord, attempts_from_session
 from .interactive import (Question, Outcome, SpecSession,
                           session_from_task, session_from_tasks)
 from .registry import GeneratorRegistry, GeneratorFactory
@@ -38,6 +41,9 @@ __all__ = [
     "SlotsSpec", "Tolerance", "ToleranceKind", "Verdict",
     # виджеты и общая сессия
     "Widget", "widgets_for", "resolve_widget",
+    # сценарий прохождения и попытка
+    "Scenario", "SessionMode", "Layer", "Setting", "default_scenario",
+    "AttemptRecord", "attempts_from_session",
     "Question", "Outcome", "SpecSession",
     "session_from_task", "session_from_tasks",
     # registry

@@ -673,6 +673,40 @@ def _m011_signing_keys(conn: sqlite3.Connection) -> None:
     """)
 
 
+def _m012_attempt_scenarios(conn: sqlite3.Connection) -> None:
+    """
+    Сценарий прохождения в попытке.
+
+    До этого `attempts` не знала, в каком режиме была попытка: user_id,
+    partition_id, assignment_id, payload, correct — и всё. Одно и то же
+    задание в свободной тренировке и в зачёте писалось одинаково, и
+    различить их задним числом нечем. Отсюда четыре колонки.
+
+    `session_mode` и `check_mode` — NULL у строк, записанных до появления
+    сценариев. Это честнее, чем подставить им какой-нибудь режим: мы не
+    знаем, в каком они были, и выдуманное значение потом невозможно
+    отличить от настоящего.
+
+    `counts_toward_stats` хранится, а НЕ выводится из режима на чтении.
+    Причина та же, по которой режим проверки едет в попытку: если завтра
+    контракт режима поменяется, уже записанные попытки обязаны сохранить
+    смысл, который имели в момент записи. Вывод на чтении молча переписал
+    бы историю.
+
+    `adaptive` помечает прохождения с адаптацией. Адаптация ломает
+    сравнимость результатов: «8 из 10» у двух студентов с разными
+    последовательностями значит разное. Аналитика обязана считать такие
+    прохождения отдельно, и без пометки в строке это невозможно.
+    """
+    _add_column_if_missing(conn, "attempts", "session_mode", "TEXT")
+    _add_column_if_missing(conn, "attempts", "check_mode", "TEXT")
+    _add_column_if_missing(conn, "attempts", "adaptive",
+                           "INTEGER NOT NULL DEFAULT 0")
+    _add_column_if_missing(conn, "attempts", "attempts_used",
+                           "INTEGER NOT NULL DEFAULT 1")
+    _add_column_if_missing(conn, "attempts", "counts_toward_stats",
+                           "INTEGER NOT NULL DEFAULT 1")
+
 # Порядок применения. Добавлять новые кортежами (version, name, fn).
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = [
     (1, "rbac_foundation", _m001_rbac_foundation),
@@ -686,6 +720,7 @@ MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = [
     (9, "app_releases", _m009_app_releases),
     (10, "node_packages", _m010_node_packages),
     (11, "signing_keys", _m011_signing_keys),
+    (12, "attempt_scenarios", _m012_attempt_scenarios),
 ]
 
 

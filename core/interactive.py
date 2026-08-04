@@ -32,6 +32,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Sequence
 
 from .answers import AnswerSpec, CheckMode, Verdict
+from .scenarios import Scenario
 from .blocks import TextBlock, blocks_from_dicts
 from .content import Block
 from .task import TurnResult
@@ -118,12 +119,22 @@ class SpecSession(InteractiveTask):
         self,
         questions: Sequence[Question],
         *,
+        scenario: Optional["Scenario"] = None,
         mode: Optional[CheckMode] = None,
         max_attempts: int = 1,
         reveal_answer: bool = True,
         meta: Optional[dict] = None,
     ):
         self._questions: List[Question] = list(questions)
+        self._scenario = scenario
+        # Сценарий, если он есть, — источник этих значений (§4): лимиты и
+        # «засчитывается ли» принадлежат ПРОХОЖДЕНИЮ, а не заданию.
+        # Россыпь параметров осталась для вызывающих, которым сценарий не
+        # нужен: тесты ядра и разовая проверка задания автором.
+        if scenario is not None:
+            mode = scenario.check_mode
+            max_attempts = scenario.max_attempts
+            reveal_answer = scenario.reveal_answer
         self._mode = mode
         self._max_attempts = max(1, int(max_attempts))
         self._reveal_answer = bool(reveal_answer)
@@ -138,6 +149,17 @@ class SpecSession(InteractiveTask):
     @property
     def questions(self) -> List[Question]:
         return list(self._questions)
+
+    @property
+    def scenario(self) -> Optional["Scenario"]:
+        """
+        Сценарий прохождения — источник контракта о записи попытки.
+
+        None значит, что сессию открыли без сценария: так делают тесты и
+        разовая проверка задания автором. Записывать попытки в этом случае
+        не по чему, и это не умолчание, а отсутствие контракта.
+        """
+        return self._scenario
 
     @property
     def outcomes(self) -> List[Outcome]:
@@ -250,6 +272,12 @@ class SpecSession(InteractiveTask):
             "max_attempts": self._max_attempts,
             "reveal_answer": self._reveal_answer,
             "meta": dict(self.meta),
+            # Сценарий уезжает целиком: по нему решается, писать ли
+            # попытку. Восстанови мы сессию без него — контракт был бы
+            # утрачен, и сессия «тренировки без статистики» после переезда
+            # начала бы писать попытки.
+            "scenario": (self._scenario.to_dict()
+                         if self._scenario is not None else None),
         }
 
     def restore(self, state: dict) -> None:
@@ -271,6 +299,9 @@ class SpecSession(InteractiveTask):
         self._max_attempts = max(1, int(state.get("max_attempts", 1)))
         self._reveal_answer = bool(state.get("reveal_answer", True))
         self.meta = dict(state.get("meta") or {})
+        stored_scenario = state.get("scenario")
+        self._scenario = (Scenario.from_dict(stored_scenario)
+                          if stored_scenario else None)
 
 
 # ======================================================================
