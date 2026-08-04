@@ -69,28 +69,31 @@ class GraphConstructorGenerator(TaskGenerator):
 # ---------- Пример графа (физика v*t, для ручного запуска) ----------
 
 # Пример по умолчанию — нарочно простой, на новых «умных» узлах: формула сама
-# заводит входы v,t по своей записи; узлы «Текст» подставляют #имя# и сразу дают
-# блок; одиночный блок идёт прямо в static_task (без block_list). Шесть узлов
-# вместо тринадцати — показываем новичку короткий путь.
+# заводит входы v,t по своей записи; финальный узел «Задание» принимает текст
+# условия с маркерами #имя# и значение ответа прямо в слот — узлы «Текст» на
+# условие и на ответ больше не нужны.
+#
+# Счёт: тринадцать узлов в первой версии языка, шесть после «умных» узлов,
+# четыре сейчас. Причём это задание ещё и проверяемое: слот объявил
+# размерность, и `task.is_checkable` — True, чего в шестиузловой версии не
+# было вовсе.
 EXAMPLE_GRAPH = {
     "version": 1,
     "nodes": [
         {"id": "v",    "type": "random_natural", "params": {"min": 1, "max": 50}},
         {"id": "t",    "type": "random_natural", "params": {"min": 1, "max": 50}},
         {"id": "f",    "type": "formula",        "params": {"expr": "v * t"}},
-        {"id": "cond", "type": "text",
-         "params": {"text": "Пройдено #v# м за #t# с. Найдите путь."}},
-        {"id": "ans",  "type": "text", "params": {"text": "S = #s# м"}},
-        {"id": "task", "type": "static_task"},
+        {"id": "task", "type": "task", "params": {
+            "statement": "Пройдено #v# м за #t# с. Найдите путь.",
+            "slots": ["s:number:unit=м:label=S"],
+        }},
     ],
     "edges": [
         {"from": "v:out", "to": "f:v"},
         {"from": "t:out", "to": "f:t"},
-        {"from": "v:out", "to": "cond:v"},
-        {"from": "t:out", "to": "cond:t"},
-        {"from": "f:out", "to": "ans:s"},
-        {"from": "cond:out", "to": "task:statement"},
-        {"from": "ans:out", "to": "task:answer"},
+        {"from": "v:out", "to": "task:v"},
+        {"from": "t:out", "to": "task:t"},
+        {"from": "f:out", "to": "task:s"},
     ],
     "meta": {"max_attempts": 100, "seed": None},
 }
