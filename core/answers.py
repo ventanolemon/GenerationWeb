@@ -446,6 +446,13 @@ _NUMBER_HEAD = re.compile(
     r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?"
 )
 
+#: Показательная запись «мантисса ×10^степень» — та, которой пишут физику.
+#: Ловится ПОСЛЕ нормализации, поэтому «×», «·» и надстрочные степени уже
+#: стали «*» и «^n»; отдельно допускается «10^n» без мантиссы.
+_POWER_OF_TEN = re.compile(
+    r"^([+-]?(?:\d+(?:\.\d*)?|\.\d+))?\s*\*?\s*10\s*\^\s*([+-]?\d+)"
+)
+
 
 @dataclass
 class NumberSpec(AnswerSpec):
@@ -511,8 +518,8 @@ class NumberSpec(AnswerSpec):
                            "Значение не совпадает.")
 
         if active is CheckMode.STRICT:
-            want = _written_significant_digits(self.written or _fmt(self.value))
-            got = _written_significant_digits(number_text)
+            want = significant_digits(self.written or _fmt(self.value))
+            got = significant_digits(number_text)
             if got != want:
                 return Verdict(
                     False, active, Reason.WRONG_FORM, text,
@@ -577,24 +584,46 @@ class NumberSpec(AnswerSpec):
 
 
 def _split_number_and_unit(text: str) -> Tuple[Optional[str], str]:
-    """Отделить числовую голову от размерности: «9.8 м/с^2» → («9.8», «м/с^2»)."""
+    """
+    Отделить числовую голову от размерности: «9.8 м/с^2» → («9.8», «м/с^2»).
+
+    Показательная запись разбирается наравне с обычной: «8.7×10^4 Дж» →
+    («8.7e4», «Дж»). Без этого целый пласт заданий непроверяем — физика
+    печатает так всё, что больше 10^4 или меньше 10^-3, то есть заметную
+    часть своих ответов, и задание отвергало бы собственный показанный
+    ответ, считая «*10^4» размерностью.
+    """
     compact = text.replace(" ", "")
+
+    power = _POWER_OF_TEN.match(compact)
+    if power is not None:
+        mantissa = power.group(1) or "1"
+        return f"{mantissa}e{power.group(2)}", compact[power.end():]
+
     match = _NUMBER_HEAD.match(compact)
     if match is None:
         return None, ""
     return match.group(0), compact[match.end():]
 
 
-def _written_significant_digits(text: str) -> int:
+def significant_digits(text: str) -> int:
     """
     Сколько значащих цифр в ЗАПИСИ числа.
+
+    Публичная: этим считает не только строгий режим. Генератор, который
+    ПОКАЗЫВАЕТ округлённый ответ, обязан принимать ровно то, что показал,
+    и допуск ему нужно выводить из записи. Второй такой счётчик рядом
+    разошёлся бы с этим — молча и не сразу.
 
     «0.50» → 2, «0.5» → 1, «1.50» → 3, «0.050» → 2.
     У целого с нулями на конце («100» → 3) число значащих цифр по записи
     определить нельзя; считаем их значащими — это соглашение, и другого
     без явной пометки не построить.
+
+    Показательная запись считается по мантиссе: «8.70×10^4» → 3.
     """
-    s = text.strip().lstrip("+-").replace(" ", "")
+    s = str(text).strip().lstrip("+-").replace(" ", "")
+    s = re.split(r"[*×]", s, maxsplit=1)[0] or s
     if "e" in s.lower():
         s = re.split("[eE]", s)[0]
     if "." in s:
@@ -1092,5 +1121,5 @@ __all__ = [
     "CheckMode", "DEFAULT_MODE", "Reason", "Verdict", "InputField",
     "normalize", "Tolerance", "ToleranceKind",
     "AnswerSpec", "NumberSpec", "TextSpec", "ExpressionSpec", "SlotsSpec",
-    "ExpressionError",
+    "ExpressionError", "significant_digits",
 ]

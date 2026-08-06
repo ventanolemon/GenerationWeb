@@ -224,7 +224,10 @@ class NumberSpecTests(unittest.TestCase):
 class WrittenSignificantDigitsTests(unittest.TestCase):
 
     def test_counts(self):
-        from core.answers import _written_significant_digits as count
+        # Счётчик стал публичным: им пользуется не только строгий режим, но
+        # и генератор, который показывает округлённый ответ и обязан
+        # принимать ровно то, что показал.
+        from core.answers import significant_digits as count
         self.assertEqual(count("0.50"), 2)
         self.assertEqual(count("0.5"), 1)
         self.assertEqual(count("1.50"), 3)
@@ -232,6 +235,8 @@ class WrittenSignificantDigitsTests(unittest.TestCase):
         self.assertEqual(count("100"), 3)
         self.assertEqual(count("0"), 1)
         self.assertEqual(count("-2.5e3"), 2)
+        # Показательная запись считается по мантиссе.
+        self.assertEqual(count("8.70×10^4"), 3)
 
 
 # ======================================================================

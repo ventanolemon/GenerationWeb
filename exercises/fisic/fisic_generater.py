@@ -60,12 +60,24 @@ from .generation import VariableSpec, generate_value, parse_variable_spec
 
 @dataclass
 class FisicTask:
-    """Результат успешной генерации."""
+    """
+    Результат успешной генерации.
+
+    `dimension` и `written` появились ради проверяемой формы ответа:
+    величина, размерность и ЗАПИСЬ результата вычисляются здесь и раньше
+    склеивались в строку `solution`, откуда их не достать обратно. Разбирать
+    «F = 8.7×10^4 Н» регулярным выражением значило бы восстанавливать то,
+    что только что было известно точно, — и ошибаться на буквенном
+    обозначении с индексом или знаком равенства внутри.
+    """
     condition: str
     solution: str
     values: dict[str, float] = field(default_factory=dict)
     result: float = 0.0
     formula: str = ""
+    dimension: str = ""
+    written: str = ""
+    """Результат так, как он показан: «12.5», «8.7×10^4»."""
     meta: dict = field(default_factory=dict)
 
 
@@ -79,6 +91,14 @@ class TaskConfig:
     variables: dict[str, VariableSpec]
     result_constraint: ResultConstraint
     max_attempts: int = 100
+    answer_tolerance: dict | None = None
+    """
+    Допуск проверки ответа: `{"kind": "relative", "amount": 0.05}`.
+
+    Пусто — допуск выводится из вида результата и его записи (см.
+    адаптер). Существующие конфиги в БД поля не имеют и переписывать их
+    не нужно: умолчание и есть то поведение, которого от задачи ждут.
+    """
 
     @classmethod
     def parse(cls, config: str | dict) -> "TaskConfig":
@@ -114,6 +134,15 @@ class TaskConfig:
         result_constraint = ResultConstraint.parse(config.get("result"))
         max_attempts = int(config.get("max_attempts", 100))
 
+        answer_cfg = config.get("answer") or {}
+        if not isinstance(answer_cfg, dict):
+            raise ValueError("Ключ 'answer' должен быть объектом.")
+        answer_tolerance = answer_cfg.get("tolerance")
+        if answer_tolerance is not None and not isinstance(answer_tolerance, dict):
+            raise ValueError(
+                "answer.tolerance должен быть объектом "
+                "{'kind': ..., 'amount': ...}.")
+
         return cls(
             condition_template=condition,
             result_letter=result_letter,
@@ -122,6 +151,7 @@ class TaskConfig:
             variables=variables,
             result_constraint=result_constraint,
             max_attempts=max_attempts,
+            answer_tolerance=answer_tolerance,
         )
 
 
@@ -219,8 +249,11 @@ def _build_task(
         values=dict(values),
         result=result,
         formula=cfg.formula,
+        dimension=cfg.dimension,
+        written=formatted_result,
         meta={
             "result_kind": cfg.result_constraint.kind,
+            "answer_tolerance": cfg.answer_tolerance,
         },
     )
 

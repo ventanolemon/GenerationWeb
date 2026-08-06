@@ -92,7 +92,11 @@ export interface Partition {
   constracted: number; // 0 single, 1 fisic constructor, 2 group, 3 test
   has_generator: boolean;
   view_kind: "single" | "table" | "test";
+  // Два разных вопроса. is_interactive — «можно ли здесь отвечать»;
+  // is_checkable — «есть ли у задания статическая форма помимо сессии».
+  // У тренажёра слов только первое, у физики — оба.
   is_interactive: boolean;
+  is_checkable?: boolean;
 }
 
 

@@ -26,7 +26,10 @@ public record PartitionDto(
     int Constracted,
     [property: JsonPropertyName("has_generator")] bool HasGenerator,
     [property: JsonPropertyName("view_kind")] string ViewKind,
-    [property: JsonPropertyName("is_interactive")] bool IsInteractive
+    [property: JsonPropertyName("is_interactive")] bool IsInteractive,
+    // Есть ли у задания статическая форма помимо сессии. Физика
+    // проверяема И экспортируема; тренажёр слов — только сессия.
+    [property: JsonPropertyName("is_checkable")] bool IsCheckable = false
 );
 
 /// <summary>

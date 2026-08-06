@@ -96,6 +96,13 @@ export default function GeneratorPage() {
 }
 
 function TaskView({ partition, userId }: { partition: Partition; userId: string }) {
+  // Проверяемое задание умеет и то и другое, и выбор — за пользователем.
+  // Увести его на тренажёр насильно значит отнять у преподавателя
+  // генерацию вариантов и выгрузку в Word.
+  if (partition.is_checkable) {
+    return <CheckableTaskView partition={partition} userId={userId} />;
+  }
+  // Сессия и только сессия: у такого генератора статической формы нет.
   if (partition.is_interactive) {
     return <InteractiveTaskView partition={partition} userId={userId} />;
   }
@@ -109,4 +116,35 @@ function TaskView({ partition, userId }: { partition: Partition; userId: string 
     default:
       return <div>Неизвестный тип раздела: {partition.view_kind}</div>;
   }
+}
+
+function CheckableTaskView(
+  { partition, userId }: { partition: Partition; userId: string },
+) {
+  // «Смотреть» первым: так ведёт себя раздел сегодня, и появление
+  // автопроверки не должно менять то, что человек уже привык открывать.
+  const [solving, setSolving] = useState(false);
+  return (
+    <>
+      <div className={styles.modeSwitch}>
+        <button
+          className={solving ? undefined : styles.modeActive}
+          onClick={() => setSolving(false)}
+        >
+          Смотреть
+        </button>
+        <button
+          className={solving ? styles.modeActive : undefined}
+          onClick={() => setSolving(true)}
+        >
+          Решать
+        </button>
+      </div>
+      {solving ? (
+        <InteractiveTaskView partition={partition} userId={userId} />
+      ) : (
+        <StaticTaskView partition={partition} />
+      )}
+    </>
+  );
 }
