@@ -38,7 +38,8 @@ import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import ClassVar, Dict, List, Optional, Tuple
+from typing import (Any, ClassVar, Dict, List, Optional, Sequence,
+                    Tuple)
 
 from .content import Block
 
@@ -389,6 +390,18 @@ class AnswerSpec(ABC):
             if self.check(candidate, mode=active).accepted:
                 out.append(candidate)
         return out
+
+    @property
+    def preferred_widget(self) -> str:
+        """
+        Имя виджета, которого спецификация просит для себя.
+
+        Пусто — «решает реестр, любой совместимый подойдёт». Нужно там,
+        где совместимых виджетов несколько и выбор зависит не от вида
+        ответа, а от его формы: набор слотов рисуется полями, а тот же
+        набор с объявленной формой — сеткой.
+        """
+        return ""
 
     def input_fields(self) -> List[InputField]:
         """
@@ -1085,8 +1098,67 @@ class SlotsSpec(AnswerSpec):
     kind: ClassVar[str] = "slots"
 
     slots: Tuple[Tuple[str, AnswerSpec], ...] = ()
+    shape: Optional[Tuple[int, int]] = None
+    """
+    Форма раскладки: (строк, столбцов), слоты идут построчно.
+
+    Это ЕДИНСТВЕННОЕ, что отличает матрицу от набора полей, — и потому
+    отдельного вида ответа для матриц нет. Матрица это сетка
+    типизированных ячеек, а «сетка типизированных ячеек» уже есть: у
+    каждого слота своя спецификация, свой вердикт и своё поле ввода.
+    Форма добавляет к ним только геометрию.
+
+    Отсюда же табличный ввод вообще: расписание, таблица истинности,
+    заполнение пропусков в таблице — это тот же набор слотов с формой.
+    Поэтому поле называется `shape`, а не `matrix_size`.
+    """
+
     mode: CheckMode = DEFAULT_MODE
     tuning: dict = field(default_factory=dict)
+
+    def __post_init__(self):
+        if self.shape is None:
+            return
+        rows, cols = self.shape
+        if rows * cols != len(self.slots):
+            raise ValueError(
+                f"Форма {rows}×{cols} не сходится с числом слотов "
+                f"({len(self.slots)}).")
+
+    # ---------- сборка ----------
+
+    @classmethod
+    def from_grid(cls, rows, *, tolerance: Optional[Tolerance] = None,
+                  mode: CheckMode = DEFAULT_MODE,
+                  header: Optional[Sequence[str]] = None) -> "SlotsSpec":
+        """
+        Набор слотов из таблицы значений.
+
+        Принимает что угодно, что итерируется по строкам и ячейкам:
+        список списков, `sympy.Matrix` (через `.tolist()`), вектор-строку.
+        Вид ячейки выводится из значения — число становится `NumberSpec`,
+        всё прочее `ExpressionSpec`, — потому что в одной таблице
+        соседствуют «5» и «sqrt(2)», и заставлять автора объявлять это
+        поячеечно значило бы просить его описать то, что и так видно.
+
+        Имена ячеек — `r1c1`, `r1c2`, … Они технические: в сетке подпись
+        полю даёт его место, а не имя. Но имена нужны — по ним ходят
+        вердикты и ответ по полям.
+        """
+        grid = _as_grid(rows)
+        if not grid:
+            raise ValueError("Пустая таблица: проверять нечего.")
+        width = len(grid[0])
+        if any(len(row) != width for row in grid):
+            raise ValueError("Строки таблицы разной длины.")
+
+        slots = []
+        for r, row in enumerate(grid, start=1):
+            for c, value in enumerate(row, start=1):
+                slots.append((f"r{r}c{c}",
+                              _cell_spec(value, tolerance, mode)))
+        return cls(slots=tuple(slots), shape=(len(grid), width), mode=mode,
+                   tuning={"header": list(header)} if header else {})
 
     def check(self, user_input: str, *,
               mode: Optional[CheckMode] = None) -> Verdict:
@@ -1103,8 +1175,10 @@ class SlotsSpec(AnswerSpec):
             detail = ""
         else:
             reason = Reason.MISMATCH
-            wrong = [name for name, v in results if not v.accepted]
-            detail = "Не совпало: " + ", ".join(wrong) if wrong else "Пустой ответ."
+            wrong = [self.where(name) for name, v in results if not v.accepted]
+            joiner = "; " if self.shape is not None else ", "
+            detail = ("Не совпало: " + joiner.join(wrong) if wrong
+                      else "Пустой ответ.")
 
         return Verdict(accepted, active, reason,
                        normalize(user_input), detail, tuple(results))
@@ -1116,20 +1190,60 @@ class SlotsSpec(AnswerSpec):
         results = [(name, spec.check(values.get(name, ""), mode=mode))
                    for name, spec in self.slots]
         accepted = bool(results) and all(v.accepted for _, v in results)
-        wrong = [name for name, v in results if not v.accepted]
+        wrong = [self.where(name) for name, v in results if not v.accepted]
         return Verdict(
             accepted, active,
             Reason.EXACT if accepted else Reason.MISMATCH,
-            "", "" if accepted else "Не совпало: " + ", ".join(wrong),
+            "", "" if accepted else "Не совпало: " + (
+                "; " if self.shape is not None else ", ").join(wrong),
             tuple(results))
 
     def display_blocks(self) -> List[Block]:
-        from .blocks import TextBlock
+        from .blocks import TableBlock, TextBlock
+        if self.shape is not None:
+            # Таблица, а не формула с квадратными скобками. Спецификация
+            # не знает, матрица перед ней или расписание, и не должна
+            # знать: `TableBlock` рисуется во всех трёх средах (Qt, веб,
+            # .docx), а «сетка чисел» в них выглядит одинаково уместно.
+            return [TableBlock(self._grid_text(), header=self._header())]
         out: List[Block] = []
         for name, spec in self.slots:
             shown = " ".join(b.render_plain() for b in spec.display_blocks())
             out.append(TextBlock(f"{name}: {shown}"))
         return out
+
+    def _grid_text(self) -> List[List[str]]:
+        from .blocks import FormulaBlock
+        rows, cols = self.shape
+        flat = []
+        for _, spec in self.slots:
+            parts = []
+            for block in spec.display_blocks():
+                # В ячейке таблицы `$\sqrt{2}$` — мусор: доллары нужны
+                # печати, а не сетке.
+                parts.append(block.latex if isinstance(block, FormulaBlock)
+                             else block.render_plain())
+            flat.append(" ".join(p for p in parts if p))
+        return [flat[r * cols:(r + 1) * cols] for r in range(rows)]
+
+    def where(self, name: str) -> str:
+        """Человеческое имя слота: в сетке это место, а не идентификатор."""
+        if self.shape is None:
+            return name
+        index = next((i for i, (n, _) in enumerate(self.slots) if n == name), -1)
+        if index < 0:
+            return name
+        _, cols = self.shape
+        return f"строка {index // cols + 1}, столбец {index % cols + 1}"
+
+    def _header(self) -> Optional[List[str]]:
+        header = (self.tuning or {}).get("header")
+        return list(header) if header else None
+
+    @property
+    def preferred_widget(self) -> str:
+        """Сетка знает про свою форму, поэтому и просит сеточный виджет."""
+        return "grid_fields" if self.shape is not None else ""
 
     def input_fields(self) -> List[InputField]:
         """
@@ -1146,7 +1260,11 @@ class SlotsSpec(AnswerSpec):
             inner = spec.input_fields()
             hint = inner[0].hint if inner else ""
             kind = inner[0].kind if inner else spec.kind
-            out.append(InputField(name=name, label=name, kind=kind, hint=hint))
+            # В сетке подпись полю даёт его МЕСТО. Имена там технические
+            # («r1c2»), и печатать их рядом с ячейкой — шум, который
+            # мешает читать таблицу как таблицу.
+            label = "" if self.shape is not None else name
+            out.append(InputField(name=name, label=label, kind=kind, hint=hint))
         return out
 
     def _candidate_examples(self, mode: CheckMode) -> List[str]:
@@ -1181,13 +1299,57 @@ class SlotsSpec(AnswerSpec):
         return parts
 
     def _payload(self) -> dict:
-        return {"slots": [{"name": name, "spec": spec.to_dict()}
-                          for name, spec in self.slots]}
+        out: dict = {"slots": [{"name": name, "spec": spec.to_dict()}
+                               for name, spec in self.slots]}
+        if self.shape is not None:
+            out["shape"] = list(self.shape)
+        return out
 
 
 # ======================================================================
 #  Сборка из словаря
 # ======================================================================
+
+def _as_grid(rows) -> List[list]:
+    """
+    Привести что угодно табличное к списку списков.
+
+    `sympy.Matrix` отдаёт себя через `.tolist()`; одиночная строка чисел
+    считается таблицей из одной строки — вектор-строку авторы пишут
+    именно так, и требовать от них лишней вложенности незачем.
+    """
+    tolist = getattr(rows, "tolist", None)
+    if callable(tolist):
+        rows = tolist()
+    out: List[list] = []
+    for row in rows:
+        if isinstance(row, (str, bytes)) or not hasattr(row, "__iter__"):
+            return [list(rows)]
+        out.append(list(row))
+    return out
+
+
+def _cell_spec(value: Any, tolerance: Optional[Tolerance],
+               mode: CheckMode) -> AnswerSpec:
+    """
+    Спецификация одной ячейки по её значению.
+
+    Вид выводится из значения, а не объявляется: в одной таблице
+    соседствуют «5» и «sqrt(2)», и просить автора расписать это
+    поячеечно значило бы просить его описать то, что и так видно.
+    """
+    if isinstance(value, bool):
+        return TextSpec(value="да" if value else "нет", mode=mode)
+    if isinstance(value, (int, float)):
+        return NumberSpec(value=float(value), mode=mode,
+                          tolerance=tolerance or Tolerance())
+    text = str(value).strip()
+    number = _NUMBER_HEAD.fullmatch(text)
+    if number is not None:
+        return NumberSpec(value=float(text), written=text, mode=mode,
+                          tolerance=tolerance or Tolerance())
+    return ExpressionSpec(value=text, mode=mode)
+
 
 def _build_number(data: dict) -> NumberSpec:
     return NumberSpec(
@@ -1220,6 +1382,7 @@ def _build_slots(data: dict) -> SlotsSpec:
         slots=tuple(
             (entry["name"], AnswerSpec.from_dict(entry["spec"]))
             for entry in data.get("slots") or ()),
+        shape=tuple(data["shape"]) if data.get("shape") else None,
         **_common(data))
 
 

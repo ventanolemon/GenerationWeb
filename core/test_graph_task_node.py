@@ -468,3 +468,80 @@ class ExistingGraphsKeepWorkingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class MatrixSlotTests(unittest.TestCase):
+    """
+    Матрица в слоте ответа — то, чего не хватало линейной алгебре.
+
+    Отдельного вида ответа под неё не заведено: `matrix` строит тот же
+    набор слотов, только с объявленной формой. Поэтому и опции у слота
+    числовые — допуск применяется к каждой ячейке.
+    """
+
+    GRAPH = {
+        "nodes": [
+            {"id": "m", "type": "matrix_const", "params": {"data": "1,2;3,4"}},
+            {"id": "d", "type": "matrix_transpose"},
+            {"id": "t", "type": "task", "params": {
+                "statement": "Транспонируйте матрицу.",
+                "slots": ["A:matrix"]}},
+        ],
+        "edges": [{"from": "m:out", "to": "d:in"},
+                  {"from": "d:out", "to": "t:A"}],
+    }
+
+    def test_matrix_slot_makes_the_task_checkable(self):
+        task = run_graph(self.GRAPH)
+        self.assertTrue(task.is_checkable)
+        self.assertEqual(task.answer_spec.shape, (2, 2))
+
+    def test_port_is_typed_as_a_matrix(self):
+        node = DEFAULT_REGISTRY.create("task", "t", {"slots": ["A:matrix"]})
+        ports = {p.name: p for p in node.input_ports()}
+        self.assertEqual(ports["A"].type, PortType.MATRIX)
+
+    def test_answer_is_checked_cell_by_cell(self):
+        spec = run_graph(self.GRAPH).answer_spec
+        self.assertTrue(spec.check_slots(
+            {"r1c1": "1", "r1c2": "3", "r2c1": "2", "r2c2": "4"}).accepted)
+        wrong = spec.check_slots(
+            {"r1c1": "1", "r1c2": "3", "r2c1": "9", "r2c2": "4"})
+        self.assertFalse(wrong.accepted)
+        self.assertIn("строка 2, столбец 1", wrong.detail)
+
+    def test_tolerance_reaches_every_cell(self):
+        graph = {
+            "nodes": [
+                {"id": "m", "type": "matrix_const",
+                 "params": {"data": "1.0,2.0"}},
+                {"id": "t", "type": "task", "params": {
+                    "statement": "?", "slots": ["A:matrix:abs=0.1"]}},
+            ],
+            "edges": [{"from": "m:out", "to": "t:A"}],
+        }
+        spec = run_graph(graph).answer_spec
+        self.assertTrue(spec.check_slots({"r1c1": "1.05", "r1c2": "2"}).accepted)
+
+    def test_non_matrix_value_is_refused_loudly(self):
+        graph = {
+            "nodes": [
+                {"id": "n", "type": "constant_number", "params": {"value": 5}},
+                {"id": "t", "type": "task", "params": {
+                    "statement": "?", "slots": ["A:matrix"]}},
+            ],
+            "edges": [{"from": "n:out", "to": "t:A"}],
+        }
+        # Порт объявлен MATRIX, поэтому провод от числа не соединяется —
+        # ошибка ловится на сборке графа, а не при генерации.
+        with self.assertRaises(GraphValidationError):
+            run_graph(graph)
+
+    def test_matrix_slot_refuses_text_options(self):
+        with self.assertRaises(GraphValidationError):
+            DEFAULT_REGISTRY.create("task", "t", {"slots": ["A:matrix:alt=1"]})
+
+    def test_the_grid_crosses_the_process_boundary(self):
+        task = run_graph(self.GRAPH)
+        restored = StaticTask.from_dict(task.to_dict())
+        self.assertEqual(restored.answer_spec.shape, (2, 2))

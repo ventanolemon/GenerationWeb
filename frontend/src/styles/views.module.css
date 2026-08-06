@@ -275,3 +275,23 @@
   font-size: 0.85em;
   color: var(--text-muted);
 }
+
+/* Сетка ответа: матрица, таблица истинности, расписание. Подпись ячейке
+   даёт её место, поэтому подписей нет — есть выравнивание. */
+.gridForm {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+.grid {
+  display: grid;
+  gap: 0.35rem;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.gridCell {
+  flex: none;
+  text-align: center;
+  padding: 0.4em 0.3em;
+}

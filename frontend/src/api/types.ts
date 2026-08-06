@@ -128,6 +128,8 @@ export interface InteractiveStartResponse {
   // здесь НЕТ, и это осознанно: она содержит ответ.
   widget?: string;
   fields?: InputField[];
+  // [строк, столбцов] — если ответ сетка. Поля идут построчно.
+  shape?: [number, number] | null;
   scenario?: Scenario;
 }
 

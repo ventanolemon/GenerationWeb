@@ -135,6 +135,11 @@ def generate_task(body: GenerateRequest, request: Request) -> dict:
             # полей знает только спецификация, а её студенту не отдают.
             "fields": [f.to_dict()
                        for f in session.questions[0].spec.input_fields()],
+            # Форма раскладки, если ответ — сетка (матрица, таблица).
+            # Поля идут построчно; без формы клиент нарисует их столбцом
+            # и таблица перестанет читаться как таблица.
+            "shape": list(getattr(session.questions[0].spec, "shape", None)
+                          or ()) or None,
             "scenario": scenario.to_dict(),
         }
 

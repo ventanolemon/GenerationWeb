@@ -102,7 +102,18 @@ class WidgetRegistry:
         преподаватель выбирает сам.
         """
         compatible = self.for_spec(spec)
-        return compatible[0] if compatible else None
+        if not compatible:
+            return None
+        # Спецификация вправе попросить конкретный виджет: совместимых по
+        # виду ответа бывает несколько, и выбор между ними зависит не от
+        # вида, а от формы — набор слотов рисуется полями, а тот же набор
+        # с объявленной формой сеткой.
+        wanted = getattr(spec, "preferred_widget", "")
+        if wanted:
+            for widget in compatible:
+                if widget.name == wanted:
+                    return widget
+        return compatible[0]
 
     def resolve(self, spec: AnswerSpec, name: str = "") -> Optional[Widget]:
         """
@@ -153,6 +164,14 @@ SLOT_FIELDS = Widget(
     hint="По полю на каждый слот. Порядок полей задаётся спецификацией.",
 )
 
+GRID_FIELDS = Widget(
+    name="grid_fields",
+    title="Сетка полей",
+    kinds=frozenset({"slots"}),
+    hint="Таблица полей по форме ответа: матрица, расписание, "
+         "таблица истинности.",
+)
+
 SLOT_INLINE = Widget(
     name="slot_inline",
     title="Пропуски в тексте",
@@ -162,7 +181,8 @@ SLOT_INLINE = Widget(
 
 
 def _register_builtin(registry: "WidgetRegistry") -> "WidgetRegistry":
-    for widget in (TEXT_INPUT, FORMULA_INPUT, SLOT_FIELDS, SLOT_INLINE):
+    for widget in (TEXT_INPUT, FORMULA_INPUT, SLOT_FIELDS, GRID_FIELDS,
+                   SLOT_INLINE):
         registry.register(widget)
     return registry
 
@@ -183,5 +203,6 @@ def resolve_widget(spec: AnswerSpec, name: str = "") -> Optional[Widget]:
 
 __all__ = [
     "Widget", "WidgetRegistry", "registry", "widgets_for", "resolve_widget",
-    "TEXT_INPUT", "FORMULA_INPUT", "SLOT_FIELDS", "SLOT_INLINE",
+    "TEXT_INPUT", "FORMULA_INPUT", "SLOT_FIELDS", "GRID_FIELDS",
+    "SLOT_INLINE",
 ]

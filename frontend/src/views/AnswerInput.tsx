@@ -7,6 +7,14 @@ interface Props {
   widget?: string;
   /** Описания полей. Ответа не содержат — только подписи и подсказки. */
   fields?: InputField[];
+  /**
+   * [строк, столбцов] — если ответ сетка. Поля идут построчно.
+   *
+   * Матрица и таблица тут одно и то же, и специального «матричного»
+   * режима нет: сетка типизированных ячеек это сетка типизированных
+   * ячеек, чем бы она ни была по смыслу.
+   */
+  shape?: [number, number] | null;
   disabled?: boolean;
   /**
    * Меняется после каждого хода — сигнал очистить форму. Своего
@@ -41,7 +49,9 @@ const SINGLE: InputField[] = [{ kind: "text" }];
  * рисуем поля по их видам, потому что отказать студенту в вводе хуже,
  * чем показать не тот компонент.
  */
-export default function AnswerInput({ widget, fields, disabled, resetKey, onAnswer }: Props) {
+export default function AnswerInput({
+  widget, fields, shape, disabled, resetKey, onAnswer,
+}: Props) {
   const list = fields && fields.length > 0 ? fields : SINGLE;
   const [values, setValues] = useState<Record<string, string>>({});
   const firstRef = useRef<HTMLInputElement | null>(null);
@@ -53,7 +63,9 @@ export default function AnswerInput({ widget, fields, disabled, resetKey, onAnsw
   // Чтобы этого не делать, клиенту нужно знать, тот же это вопрос или
   // следующий, а ход сегодня такого признака не возвращает. Отдельная
   // задача — здесь важнее не оставить чужой ответ в поле нового вопроса.
-  const signature = list.map((f) => `${f.name ?? ""}:${f.kind}`).join("|");
+  const grid = shape && shape[0] * shape[1] === list.length ? shape : null;
+  const signature =
+    list.map((f) => `${f.name ?? ""}:${f.kind}`).join("|") + `@${grid ?? ""}`;
   useEffect(() => {
     setValues({});
     firstRef.current?.focus();
@@ -77,6 +89,50 @@ export default function AnswerInput({ widget, fields, disabled, resetKey, onAnsw
     onAnswer(payload);
     setValues({});
     firstRef.current?.focus();
+  }
+
+  function cell(field: InputField, index: number) {
+    const key = field.name ?? "";
+    return (
+      <input
+        key={key || index}
+        ref={index === 0 ? firstRef : undefined}
+        className={`${styles.answerInput} ${styles.gridCell}`}
+        inputMode={field.kind === "number" ? "decimal" : "text"}
+        value={values[key] ?? ""}
+        onChange={(e) => set(key, e.target.value)}
+        disabled={disabled}
+        aria-label={`строка ${Math.floor(index / grid![1]) + 1}, столбец ${
+          (index % grid![1]) + 1
+        }`}
+        autoFocus={index === 0}
+      />
+    );
+  }
+
+  if (grid) {
+    // У ячейки нет подписи: её подпись — место в сетке. Поэтому
+    // placeholder тоже пуст, а имя для доступности собирается из
+    // координат — так же, как ядро называет ячейку в разборе ошибок.
+    return (
+      <form
+        className={styles.gridForm}
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit();
+        }}
+      >
+        <div
+          className={styles.grid}
+          style={{ gridTemplateColumns: `repeat(${grid[1]}, minmax(3rem, 1fr))` }}
+        >
+          {list.map(cell)}
+        </div>
+        <button type="submit" disabled={disabled || !filled}>
+          Ответить
+        </button>
+      </form>
+    );
   }
 
   return (

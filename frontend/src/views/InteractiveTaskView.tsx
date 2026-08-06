@@ -21,6 +21,7 @@ interface SessionState {
   // старый тренажёр со свободным полем ввода.
   widget?: string;
   fields?: InputField[];
+  shape?: [number, number] | null;
   maxAttempts?: number;
 }
 
@@ -89,6 +90,7 @@ export default function InteractiveTaskView({ partition, userId }: Props) {
         supportsTolerant: result.supports_tolerant ?? false,
         widget: result.widget,
         fields: result.fields,
+        shape: result.shape,
         maxAttempts: typeof attempts === "number" ? attempts : undefined,
       });
     } catch (e) {
@@ -194,6 +196,7 @@ export default function InteractiveTaskView({ partition, userId }: Props) {
                 <AnswerInput
                   widget={session.widget}
                   fields={session.fields}
+                  shape={session.shape}
                   disabled={loading}
                   resetKey={session.history.length}
                   onAnswer={(values) => void submit(values)}

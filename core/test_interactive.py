@@ -103,7 +103,21 @@ class WidgetRegistryTests(unittest.TestCase):
     def test_slots_get_slot_widgets_only(self):
         spec = SlotsSpec(slots=(("a", NumberSpec(value=1.0)),))
         names = [w.name for w in widgets_for(spec)]
-        self.assertEqual(set(names), {"slot_fields", "slot_inline"})
+        # Все три обслуживают набор слотов; `grid_fields` появился вместе
+        # с формой раскладки и совместим по тому же признаку — вид ответа
+        # у сетки и у набора полей один.
+        self.assertEqual(set(names),
+                         {"slot_fields", "grid_fields", "slot_inline"})
+
+    def test_shape_decides_between_compatible_slot_widgets(self):
+        """
+        Совместимость по виду ответа не различает набор полей и сетку:
+        различает ФОРМА, и спрашивают о ней саму спецификацию.
+        """
+        plain = SlotsSpec(slots=(("a", NumberSpec(value=1.0)),))
+        grid = SlotsSpec.from_grid([[1, 2]])
+        self.assertEqual(resolve_widget(plain).name, "slot_fields")
+        self.assertEqual(resolve_widget(grid).name, "grid_fields")
 
     def test_default_is_first_compatible(self):
         self.assertEqual(resolve_widget(ExpressionSpec(value="x")).name,

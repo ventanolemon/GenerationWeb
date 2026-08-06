@@ -51,7 +51,7 @@ from ..errors import GraphValidationError
 from ..port_types import PortType
 
 
-KINDS = ("number", "expr", "text")
+KINDS = ("number", "expr", "text", "matrix")
 
 #: Опции, осмысленные для каждого вида, плюс общие. Список нужен не для
 #: подсказки, а для отказа: `alt=` у числового слота почти наверняка значит,
@@ -61,6 +61,11 @@ _OPTIONS: Dict[str, Tuple[str, ...]] = {
     "number": ("unit", "abs", "rel", "sig"),
     "expr": ("vars", "reject"),
     "text": ("alt", "case", "typos"),
+    # Матрица — та же сетка ячеек, поэтому и опции у неё числовые: допуск
+    # применяется к КАЖДОЙ ячейке. Своего словаря настроек у матрицы нет,
+    # и заводить его значило бы объявить её отдельной сущностью, каковой
+    # она не является.
+    "matrix": ("abs", "rel", "sig"),
 }
 _COMMON_OPTIONS = ("label", "mode")
 
@@ -70,6 +75,7 @@ _PORT_TYPES = {
     # поэтому слот-выражение работает и там, где ответ посчитан численно.
     "expr": PortType.EXPR,
     "text": PortType.STRING,
+    "matrix": PortType.MATRIX,
 }
 
 
@@ -115,6 +121,8 @@ class SlotDecl:
             return self._number(value, active)
         if self.kind == "expr":
             return self._expression(value, active)
+        if self.kind == "matrix":
+            return self._matrix(value, active)
         return self._text(value, active)
 
     # ---------- сборка по видам ----------
@@ -166,6 +174,38 @@ class SlotDecl:
                 _split_list(self.options.get("reject", ""), sep="|")),
             mode=mode,
         )
+
+    def _matrix(self, value: Any, mode):
+        """
+        Матрица как набор ячеек с формой.
+
+        Отдельного вида ответа для матриц нет и не заводится: матрица —
+        это сетка типизированных ячеек, а сетка типизированных ячеек уже
+        есть (`SlotsSpec` с `shape`). Отсюда же бесплатно получается
+        табличный ввод вообще: расписание и таблица истинности собираются
+        тем же способом.
+        """
+        from core.answers import SlotsSpec
+
+        try:
+            return SlotsSpec.from_grid(value, tolerance=self._tolerance(),
+                                       mode=mode)
+        except (TypeError, ValueError) as exc:
+            raise GraphValidationError(
+                f"Слот {self.name!r}: на вход пришло {type(value).__name__}, "
+                f"а объявлена матрица ({exc}).")
+
+    def _tolerance(self):
+        """Допуск, общий для всех ячеек. Пусто — точное совпадение."""
+        from core.answers import Tolerance, ToleranceKind
+
+        if "abs" in self.options:
+            return Tolerance(ToleranceKind.ABSOLUTE, self._float("abs"))
+        if "rel" in self.options:
+            return Tolerance(ToleranceKind.RELATIVE, self._float("rel"))
+        if "sig" in self.options:
+            return Tolerance(ToleranceKind.SIGNIFICANT, self._int("sig"))
+        return None
 
     def _text(self, value: Any, mode):
         from core.answers import TextSpec
