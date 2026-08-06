@@ -192,3 +192,86 @@
   border-radius: var(--radius);
   font-weight: 600;
 }
+
+/* ─── Ответ по полям и предпросмотр «что примут» ─────────────────────── */
+/* Форма с несколькими полями: в отличие от .inputRow здесь поля переносятся,
+   потому что слотов в линале бывает и шесть, а ужимать их в одну строку
+   значит сделать каждое нечитаемым. */
+
+.answerForm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.6rem 0.8rem;
+}
+.answerField {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+.answerLabel {
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+.answerHint {
+  font-size: 0.78em;
+  color: var(--text-muted);
+}
+.answerInputMono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.answerWidgetNote {
+  font-size: 0.8em;
+  color: var(--text-muted);
+  align-self: center;
+}
+.attemptsNote {
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+/* Панель преподавателя. Визуально отделена от ответа: это не сам ответ,
+   а обещание проверки — и путать их нельзя. */
+.acceptedPanel {
+  margin-top: 1rem;
+  padding: 0.8rem 1rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+}
+.acceptedHead {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+}
+.acceptedMode {
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+.acceptedRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  margin-bottom: 0.4rem;
+  flex-wrap: wrap;
+}
+.acceptedList {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+.acceptedExample {
+  padding: 0.1em 0.45em;
+  background: var(--surface-alt, rgba(127, 127, 127, 0.12));
+  border-radius: var(--radius-sm);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.88em;
+}
+.acceptedHint,
+.acceptedEmpty {
+  font-size: 0.85em;
+  color: var(--text-muted);
+}

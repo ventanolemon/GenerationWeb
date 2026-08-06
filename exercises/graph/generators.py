@@ -11,7 +11,7 @@
 from __future__ import annotations
 import json
 
-from core import STATIC_DEFAULT, Task, TaskGenerator
+from core import CHECKABLE_DEFAULT, STATIC_DEFAULT, Task, TaskGenerator
 from core.graph import isolation
 
 
@@ -25,12 +25,36 @@ class GraphConstructorGenerator(TaskGenerator):
         self.partition_id = partition_id
         self.name = name
         self._raw = self._to_raw(config)
+        self.capabilities = self._capabilities()
 
     def configure(self, params: dict) -> None:
         """Обновить описание графа из БД (зовётся реестром при выдаче)."""
         if not params:
             return
         self._raw = self._to_raw(params["raw"] if "raw" in params else params)
+        self.capabilities = self._capabilities()
+
+    def _capabilities(self):
+        """
+        CHECKABLE — свойство КОНКРЕТНОГО графа, а не класса генератора.
+
+        Один и тот же класс обслуживает все графы сразу, и объявить его
+        проверяемым целиком нельзя: граф на `static_task` отдаёт
+        отрендеренные блоки, проверять в них нечего. Витрина же должна
+        ответить ДО генерации — по ней фронт выбирает экран, — поэтому
+        читаем объявление, а не результат.
+
+        Смотрим на объявленные слоты финального узла, а не исполняем
+        граф: исполнение стоит запуска рабочего процесса и даёт лишь
+        ОДИН случайный вариант, тогда как слоты у графа фиксированы.
+        """
+        for node in self._raw.get("nodes") or []:
+            if not isinstance(node, dict) or node.get("type") != "task":
+                continue
+            slots = (node.get("params") or {}).get("slots") or []
+            if any(str(s).strip() for s in slots):
+                return CHECKABLE_DEFAULT
+        return STATIC_DEFAULT
 
     def generate(self) -> Task:
         """

@@ -12,8 +12,8 @@ from .dynamic_blocks import FillInTheBlankBlock, WordCorrectionBlock
 from .task import Task, StaticTask, InteractiveTask, TurnResult
 from .generator import (TaskGenerator, Capability, STATIC_DEFAULT,
                         CHECKABLE_DEFAULT)
-from .answers import (AnswerSpec, CheckMode, NumberSpec, TextSpec,
-                      ExpressionSpec, SlotsSpec, Tolerance,
+from .answers import (AnswerSpec, CheckMode, ExpressionSpec, InputField,
+                      NumberSpec, SlotsSpec, TextSpec, Tolerance,
                       ToleranceKind, Verdict)
 from .widgets import Widget, widgets_for, resolve_widget
 from .scenarios import (Scenario, SessionMode, Layer, Setting,
@@ -38,7 +38,7 @@ __all__ = [
     "TaskGenerator", "Capability", "STATIC_DEFAULT", "CHECKABLE_DEFAULT",
     # спецификация ответа
     "AnswerSpec", "CheckMode", "NumberSpec", "TextSpec", "ExpressionSpec",
-    "SlotsSpec", "Tolerance", "ToleranceKind", "Verdict",
+    "SlotsSpec", "Tolerance", "ToleranceKind", "Verdict", "InputField",
     # виджеты и общая сессия
     "Widget", "widgets_for", "resolve_widget",
     # сценарий прохождения и попытка

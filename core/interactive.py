@@ -29,7 +29,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence
 
 from .answers import AnswerSpec, CheckMode, Verdict
 from .scenarios import Scenario
@@ -191,8 +191,35 @@ class SpecSession(InteractiveTask):
         question = self.current()
         if question is None:
             return TurnResult(False, [TextBlock("Сессия уже завершена.")], None)
+        return self._turn(question,
+                          question.spec.check(user_input, mode=self._mode))
 
-        verdict = question.spec.check(user_input, mode=self._mode)
+    def submit_values(self, values: Dict[str, str]) -> TurnResult:
+        """
+        Ход виджета, у которого поля раздельные.
+
+        Без этого пути многополевой ответ пришлось бы склеивать в строку
+        «a=1; b=2» на клиенте, и значение с точкой с запятой или знаком
+        равенства ломало бы разбор — то есть корректность ответа зависела
+        бы от того, какие символы в нём встретились. `SlotsSpec.check_slots`
+        написан ровно для этого случая.
+
+        Спецификация с одним полем словарь тоже принимает: клиенту не
+        нужно знать заранее, сколько полей у вопроса, — он шлёт то, что
+        собрал с формы.
+        """
+        question = self.current()
+        if question is None:
+            return TurnResult(False, [TextBlock("Сессия уже завершена.")], None)
+
+        check_slots = getattr(question.spec, "check_slots", None)
+        if check_slots is None:
+            single = next(iter(values.values()), "") if len(values) == 1 else ""
+            return self.submit(single)
+        return self._turn(question, check_slots(values, mode=self._mode))
+
+    def _turn(self, question: Question, verdict: Verdict) -> TurnResult:
+        """Общий хвост хода: попытки, итог, следующий вопрос."""
         self._attempts += 1
 
         retry_left = (not verdict.accepted

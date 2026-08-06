@@ -2,6 +2,8 @@
 POST /interactive/submit — отправка ответа в активной сессии.
 
 Формат запроса:  { "session_id": "...", "user_input": "..." }
+                 либо, для виджета с раздельными полями,
+                 { "session_id": "...", "values": {"v": "3.5", "t": "2"} }
 Формат ответа:   {
                    "correct": bool,
                    "feedback": [<block>],
@@ -18,6 +20,8 @@ from __future__ import annotations
 
 import logging
 
+from typing import Dict, Optional
+
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
@@ -28,7 +32,15 @@ router = APIRouter(prefix="/interactive", tags=["interactive"])
 
 class SubmitRequest(BaseModel):
     session_id: str = Field(..., min_length=1)
-    user_input: str = Field(..., description="Ответ пользователя; может быть пустой строкой")
+    user_input: str = Field("", description="Ответ пользователя; может быть пустой строкой")
+    values: Optional[Dict[str, str]] = Field(
+        None,
+        description=(
+            "Ответ по полям — для виджета, у которого их несколько. "
+            "Склеивать поля в строку на клиенте нельзя: значение со знаком "
+            "равенства или точкой с запятой сломало бы разбор, то есть "
+            "корректность ответа зависела бы от того, какие символы в нём "
+            "встретились."))
     tolerant: bool = Field(False, description="Принимать мелкие опечатки (расстояние Левенштейна)")
 
 
@@ -45,8 +57,12 @@ def submit_answer(body: SubmitRequest, request: Request) -> dict:
     if hasattr(task, "tolerant"):
         task.tolerant = body.tolerant
 
+    submit_values = getattr(task, "submit_values", None)
     try:
-        result = task.submit(body.user_input)
+        if body.values is not None and submit_values is not None:
+            result = submit_values(body.values)
+        else:
+            result = task.submit(body.user_input)
     except Exception as e:
         raise HTTPException(
             status_code=500,

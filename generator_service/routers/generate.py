@@ -130,6 +130,11 @@ def generate_task(body: GenerateRequest, request: Request) -> dict:
             "is_finished": session.is_finished(),
             "supports_tolerant": False,
             "widget": session.questions[0].widget_name(),
+            # Виджет говорит, ЧЕМ рисовать; поля — сколько их и что
+            # подписать. Без этого набор слотов нарисовать нельзя: имена
+            # полей знает только спецификация, а её студенту не отдают.
+            "fields": [f.to_dict()
+                       for f in session.questions[0].spec.input_fields()],
             "scenario": scenario.to_dict(),
         }
 

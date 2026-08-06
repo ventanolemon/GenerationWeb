@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import type { Block, Partition } from "../api/types";
+import type { Block, InputField, Partition } from "../api/types";
 import { api, ApiError } from "../api/client";
 import { BlockList } from "../blocks/BlockRenderer";
+import AnswerInput from "./AnswerInput";
 import styles from "../styles/views.module.css";
 
 interface Props {
@@ -16,6 +17,11 @@ interface SessionState {
   score: { correct: number; total: number };
   finished: boolean;
   supportsTolerant: boolean;
+  // Появляются у сессии над заданием со спецификацией ответа. Пусто —
+  // старый тренажёр со свободным полем ввода.
+  widget?: string;
+  fields?: InputField[];
+  maxAttempts?: number;
 }
 
 /**
@@ -60,12 +66,20 @@ export default function InteractiveTaskView({ partition, userId }: Props) {
     setSession(null);
     setInput("");
     try {
-      const result = await api.generate(partition.id, userId);
+      // interactive: true — просьба открыть сессию над статическим
+      // заданием, если у него есть спецификация ответа. Без этого флага
+      // раздел с автопроверкой вернул бы статическое задание, и экран
+      // упёрся бы в «попал не в тот компонент»: генератор такого раздела
+      // сессию не ведёт, её ведёт общая машинка.
+      const result = await api.generate(partition.id, userId, {
+        interactive: true,
+      });
       if (result.type !== "interactive") {
         throw new Error(
           "Раздел не интерактивный, попал не в тот компонент",
         );
       }
+      const attempts = result.scenario?.settings?.max_attempts?.value;
       setSession({
         sessionId: result.session_id,
         prompt: result.prompt,
@@ -73,6 +87,9 @@ export default function InteractiveTaskView({ partition, userId }: Props) {
         score: { correct: 0, total: 0 },
         finished: result.is_finished,
         supportsTolerant: result.supports_tolerant ?? false,
+        widget: result.widget,
+        fields: result.fields,
+        maxAttempts: typeof attempts === "number" ? attempts : undefined,
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -81,12 +98,23 @@ export default function InteractiveTaskView({ partition, userId }: Props) {
     }
   }
 
-  async function submit() {
-    if (!session || session.finished || input.trim() === "") return;
+  async function submit(values?: Record<string, string>) {
+    if (!session || session.finished) return;
+    if (values === undefined && input.trim() === "") return;
     const userInput = input;
-    setInput("");
+    if (values === undefined) setInput("");
     try {
-      const result = await api.submit(session.sessionId, userInput, tolerant);
+      // Один безымянный ключ — обычная строка: раздельные поля нужны
+      // только там, где их больше одного, и гонять словарь ради одного
+      // значения значило бы усложнить и клиент, и разбор на сервере.
+      const single =
+        values !== undefined && Object.keys(values).length === 1 && "" in values;
+      const result =
+        values === undefined
+          ? await api.submit(session.sessionId, userInput, tolerant)
+          : single
+            ? await api.submit(session.sessionId, values[""], tolerant)
+            : await api.submitValues(session.sessionId, values);
       setSession((prev) => {
         if (!prev) return prev;
         return {
@@ -120,6 +148,11 @@ export default function InteractiveTaskView({ partition, userId }: Props) {
       {session && (
         <div className={styles.scoreLine}>
           Счёт: {session.score.correct} / {session.score.total}
+          {session.maxAttempts !== undefined && session.maxAttempts > 1 && (
+            <span className={styles.attemptsNote}>
+              {" "}· попыток на вопрос: {session.maxAttempts}
+            </span>
+          )}
           {"  "}
           <button onClick={startSession} className={styles.smallBtn}>
             Заново
@@ -154,25 +187,38 @@ export default function InteractiveTaskView({ partition, userId }: Props) {
               <div className={styles.prompt}>
                 <BlockList blocks={session.prompt} />
               </div>
-              <form
-                className={styles.inputRow}
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void submit();
-                }}
-              >
-                <input
-                  ref={inputRef}
-                  className={styles.answerInput}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder="Ваш ответ"
-                  autoFocus
+              {session.fields ? (
+                // Сессия со спецификацией ответа: поля рисуются по её
+                // виду. Старый тренажёр полей не присылает и остаётся на
+                // свободном поле ввода — менять его незачем, он работает.
+                <AnswerInput
+                  widget={session.widget}
+                  fields={session.fields}
+                  disabled={loading}
+                  resetKey={session.history.length}
+                  onAnswer={(values) => void submit(values)}
                 />
-                <button type="submit" disabled={loading || input.trim() === ""}>
-                  Ответить
-                </button>
-              </form>
+              ) : (
+                <form
+                  className={styles.inputRow}
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void submit();
+                  }}
+                >
+                  <input
+                    ref={inputRef}
+                    className={styles.answerInput}
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    placeholder="Ваш ответ"
+                    autoFocus
+                  />
+                  <button type="submit" disabled={loading || input.trim() === ""}>
+                    Ответить
+                  </button>
+                </form>
+              )}
             </>
           ) : (
             <div className={styles.finishedBanner}>

@@ -6,6 +6,8 @@
 import type {
   AdminUser,
   AnalyticsOverview,
+  AnswerPreview,
+  AnswerSpec,
   Assignment,
   AssignmentProgress,
   ChangePasswordRequest,
@@ -97,10 +99,24 @@ export const api = {
     return request<Partition[]>(`/api/subjects/${subjectId}/partitions`);
   },
 
-  generate(partitionId: number, userId?: string | null): Promise<GenerateResponse> {
+  // Параметры прохождения (не генерации): одно и то же задание в
+  // тренировке и в зачёте живёт по-разному. interactive=false по
+  // умолчанию — появление спецификации ответа у генератора не должно
+  // менять поведение уже работающих экранов.
+  generate(
+    partitionId: number,
+    userId?: string | null,
+    session?: { interactive?: boolean; sessionMode?: string; maxAttempts?: number },
+  ): Promise<GenerateResponse> {
     return request<GenerateResponse>("/api/generate", {
       method: "POST",
-      body: JSON.stringify({ partitionId, userId: userId ?? null }),
+      body: JSON.stringify({
+        partitionId,
+        userId: userId ?? null,
+        interactive: session?.interactive ?? false,
+        sessionMode: session?.sessionMode ?? "practice_free",
+        maxAttempts: session?.maxAttempts ?? null,
+      }),
     });
   },
 
@@ -108,6 +124,30 @@ export const api = {
     return request<TurnResultResponse>("/api/interactive/submit", {
       method: "POST",
       body: JSON.stringify({ sessionId, userInput, tolerant }),
+    });
+  },
+
+  // Ответ по полям — для виджета, у которого их несколько. Склеивать
+  // поля в строку здесь нельзя: значение со знаком равенства или точкой
+  // с запятой сломало бы разбор на стороне ядра.
+  submitValues(
+    sessionId: string,
+    values: Record<string, string>,
+  ): Promise<TurnResultResponse> {
+    return request<TurnResultResponse>("/api/interactive/submit", {
+      method: "POST",
+      body: JSON.stringify({ sessionId, userInput: "", values }),
+    });
+  },
+
+  // «Что примут» — материал ПРЕПОДАВАТЕЛЯ, поэтому отдельный запрос, а не
+  // поле в ответе /generate: для выражения он стоит около 200 мс, и
+  // платить их на каждой генерации ради подсказки, которую смотрят раз
+  // при настройке, незачем.
+  previewAnswer(spec: AnswerSpec, mode?: string): Promise<AnswerPreview> {
+    return request<AnswerPreview>("/api/answers/preview", {
+      method: "POST",
+      body: JSON.stringify({ spec, mode: mode ?? null }),
     });
   },
 

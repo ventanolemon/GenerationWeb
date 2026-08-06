@@ -105,6 +105,11 @@ export interface StaticTaskResponse {
   statement: Block[];
   answer: Block[];
   meta: Record<string, unknown>;
+  // Появляется, когда у задания есть проверяемая форма ответа. Ответ при
+  // этом остаётся отрендеренными блоками — spec лежит РЯДОМ, а не вместо.
+  is_checkable?: boolean;
+  answer_spec?: AnswerSpec;
+  widgets?: WidgetInfo[];
 }
 
 export interface InteractiveStartResponse {
@@ -114,9 +119,67 @@ export interface InteractiveStartResponse {
   prompt: Block[];
   is_finished: boolean;
   supports_tolerant: boolean;
+  // Появляются у сессии над заданием со спецификацией ответа. widget —
+  // чем рисовать, fields — сколько полей и что подписать; спецификации
+  // здесь НЕТ, и это осознанно: она содержит ответ.
+  widget?: string;
+  fields?: InputField[];
+  scenario?: Scenario;
 }
 
 export type GenerateResponse = StaticTaskResponse | InteractiveStartResponse;
+
+
+// ─── Ответ как данные ────────────────────────────────────────────────────
+// Спецификация ответа приходит целиком только туда, где и так виден ответ
+// (статическое задание). Структура её внутренностей фронту не нужна: он
+// пересылает её в /answers/preview и показывает, что вернули.
+
+export interface AnswerSpec {
+  kind: "number" | "text" | "expression" | "slots" | string;
+  mode: "soft" | "strict";
+  [key: string]: unknown;
+}
+
+export interface WidgetInfo {
+  name: string;
+  title: string;
+  kinds: string[];
+  hint?: string;
+}
+
+/** Одно поле ввода. Ответа не содержит — только подпись и подсказку. */
+export interface InputField {
+  kind: "number" | "text" | "expression" | string;
+  name?: string;
+  label?: string;
+  hint?: string;
+}
+
+/**
+ * Сценарий прохождения. Зеркало Scenario.to_dict: у каждой настройки не
+ * только значение, но и кто её поставил и заперта ли она — каскад
+ * «умолчание задания → выдача → выбор студента» виден целиком, иначе
+ * интерфейс не сможет отличить «студент выбрал 3 попытки» от «выдача
+ * запретила менять».
+ */
+export interface ScenarioSetting {
+  value: string | number | boolean;
+  set_by: string;
+  locked: boolean;
+}
+
+export interface Scenario {
+  mode: string;
+  settings: Record<string, ScenarioSetting>;
+}
+
+export interface AnswerPreview {
+  mode: "soft" | "strict";
+  examples: string[];
+  fields: InputField[];
+  tolerance: string;
+}
 
 
 // ─── Интерактив ──────────────────────────────────────────────────────────

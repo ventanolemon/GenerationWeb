@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Partition, StaticTaskResponse } from "../api/types";
 import { api, ApiError } from "../api/client";
 import { BlockList } from "../blocks/BlockRenderer";
+import AcceptedAnswers from "./AcceptedAnswers";
 import styles from "../styles/views.module.css";
 
 interface Props {
@@ -76,6 +77,12 @@ export default function StaticTaskView({ partition }: Props) {
       {task && (
         <div className={styles.content}>
           <BlockList blocks={showingAnswer ? task.answer : task.statement} />
+          {/* Предпросмотр «что примут» показываем только вместе с
+              ответом. Список засчитываемых ответов — это ответ и есть,
+              и рядом с условием ему не место. */}
+          {showingAnswer && task.answer_spec && (
+            <AcceptedAnswers spec={task.answer_spec} />
+          )}
         </div>
       )}
     </div>

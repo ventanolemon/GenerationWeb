@@ -42,6 +42,7 @@ from .routers import admin_clients as admin_clients_router
 from .routers import admin_content as admin_content_router
 from .routers import assignments as assignments_router
 from .routers import analytics as analytics_router
+from .routers import answers as answers_router
 from .routers import auth as auth_router
 from .routers import groups as groups_router
 from .routers import export as export_router
@@ -147,6 +148,8 @@ app = FastAPI(
         {"name": "generate", "description": "Генерация задания по разделу."},
         {"name": "interactive",
          "description": "Ходы интерактивной сессии (тренажёр)."},
+        {"name": "answers",
+         "description": "Предпросмотр «что примут» для преподавателя."},
         {"name": "partitions", "description": "CRUD разделов."},
         {"name": "graph", "description": "Каталог узлов, валидация, превью."},
         {"name": "sync", "description": "Offline-синхронизация десктопа."},
@@ -205,6 +208,7 @@ app.include_router(admin_content_router.router)
 app.include_router(subjects_router.router)
 app.include_router(generate_router.router)
 app.include_router(interactive_router.router)
+app.include_router(answers_router.router)
 app.include_router(export_router.router)
 app.include_router(partitions_router.router)
 app.include_router(stats_router.router)

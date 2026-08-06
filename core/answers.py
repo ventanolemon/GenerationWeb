@@ -101,6 +101,42 @@ class Reason(str, Enum):
 
 
 @dataclass(frozen=True)
+class InputField:
+    """
+    Описание одного поля ввода — то, что можно показать ОТВЕЧАЮЩЕМУ.
+
+    Виджет говорит, каким компонентом рисовать (`widgets.py`), а это —
+    сколько полей и что подписать. Для числа, строки и выражения поле
+    одно; у набора слотов их столько, сколько слотов, и без имён
+    нарисовать их невозможно.
+
+    Главное свойство — **здесь нет ответа**. В подсказку идёт то, что и
+    так есть в условии: размерность, имена переменных. Значение,
+    синонимы, допуск и канонический вид записи сюда не попадают, и это
+    закреплено тестом: описание полей едет студенту, а спецификация — нет.
+    """
+
+    name: str = ""
+    """Имя слота. Пусто — поле единственное и безымянное."""
+
+    label: str = ""
+    kind: str = "text"
+    """Вид спецификации поля: number / text / expression."""
+
+    hint: str = ""
+
+    def to_dict(self) -> dict:
+        out: dict = {"kind": self.kind}
+        if self.name:
+            out["name"] = self.name
+        if self.label:
+            out["label"] = self.label
+        if self.hint:
+            out["hint"] = self.hint
+        return out
+
+
+@dataclass(frozen=True)
 class Verdict:
     """
     Результат проверки одного ответа.
@@ -354,6 +390,19 @@ class AnswerSpec(ABC):
                 out.append(candidate)
         return out
 
+    def input_fields(self) -> List[InputField]:
+        """
+        Поля ввода, которыми отвечают на эту спецификацию.
+
+        По умолчанию одно безымянное поле вида самой спецификации:
+        число, строка и выражение отличаются виджетом, а не количеством
+        полей. Переопределяет только набор слотов.
+
+        Содержимое обязано быть безопасным для показа отвечающему —
+        см. `InputField`.
+        """
+        return [InputField(kind=self.kind)]
+
     def effective_mode(self, mode: Optional[CheckMode]) -> CheckMode:
         return mode if mode is not None else self.mode
 
@@ -479,6 +528,12 @@ class NumberSpec(AnswerSpec):
     def display_blocks(self) -> List[Block]:
         from .blocks import TextBlock
         return [TextBlock(self._written())]
+
+    def input_fields(self) -> List[InputField]:
+        # Размерность — не подсказка к ответу, а часть условия: её и так
+        # видно в вопросе. Зато рядом с полем она снимает половину
+        # «неверно» из-за того, что человек написал число без единиц.
+        return [InputField(kind=self.kind, hint=self.unit)]
 
     def _candidate_examples(self, mode: CheckMode) -> List[str]:
         out = [self._written()]
@@ -788,6 +843,12 @@ class ExpressionSpec(AnswerSpec):
         except Exception:
             return [TextBlock(self.value)]
 
+    def input_fields(self) -> List[InputField]:
+        # Имена переменных названы в условии; в подсказке они экономят
+        # попытку, потраченную на «а какой буквой обозначать».
+        hint = ("переменные: " + ", ".join(self.symbols)) if self.symbols else ""
+        return [InputField(kind=self.kind, hint=hint)]
+
     def _candidate_examples(self, mode: CheckMode) -> List[str]:
         out = [self.value]
         if mode is not CheckMode.SOFT:
@@ -927,6 +988,24 @@ class SlotsSpec(AnswerSpec):
             out.append(TextBlock(f"{name}: {shown}"))
         return out
 
+    def input_fields(self) -> List[InputField]:
+        """
+        По полю на слот. Единственная спецификация, где количество полей
+        не единица, — и единственная, для которой без имён виджет
+        нарисовать нельзя.
+
+        Подсказка берётся у самого слота, поэтому «м/с» у числового и
+        список переменных у символьного работают внутри набора так же,
+        как поодиночке.
+        """
+        out: List[InputField] = []
+        for name, spec in self.slots:
+            inner = spec.input_fields()
+            hint = inner[0].hint if inner else ""
+            kind = inner[0].kind if inner else spec.kind
+            out.append(InputField(name=name, label=name, kind=kind, hint=hint))
+        return out
+
     def _candidate_examples(self, mode: CheckMode) -> List[str]:
         if not self.slots:
             return []
@@ -1010,7 +1089,7 @@ _REGISTRY = {
 
 
 __all__ = [
-    "CheckMode", "DEFAULT_MODE", "Reason", "Verdict",
+    "CheckMode", "DEFAULT_MODE", "Reason", "Verdict", "InputField",
     "normalize", "Tolerance", "ToleranceKind",
     "AnswerSpec", "NumberSpec", "TextSpec", "ExpressionSpec", "SlotsSpec",
     "ExpressionError",
