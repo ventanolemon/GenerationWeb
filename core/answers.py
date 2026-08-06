@@ -779,6 +779,93 @@ _EXPR_FUNCTIONS = frozenset({
 })
 
 
+#: Точки, в которых сравниваются выражения перед символьным упрощением.
+#: Иррациональные и не круглые нарочно: в 0, 1 и 2 слишком многое
+#: случайно совпадает, а на π/7 и e/3 — почти ничего.
+_PROBE_POINTS = (0.4363323129985824, 1.2817181715409552,
+                 2.6180339887498949, 0.9061798459386640)
+
+
+def _differs_numerically(user, expected) -> bool:
+    """
+    Доказать, что выражения РАЗНЫЕ, не прибегая к упрощению.
+
+    Возвращает True, только если нашлась точка, где значения заметно
+    расходятся, — это доказательство неравенства. Во всех прочих
+    случаях (совпало, не посчиталось, слишком много переменных,
+    комплексные значения) возвращается False, и решение принимает
+    `simplify`. Ложного «не совпало» здесь быть не может: отсев
+    срабатывает только на доказанном различии.
+
+    Зачем: `simplify` на производной средней тяжести занимает около
+    секунды и ничем не ограничен сверху, а неверный ответ — самый частый
+    случай в тренировке. Численная проверка стоит доли миллисекунды.
+    """
+    try:
+        import sympy
+    except ImportError:
+        return False
+
+    free = sorted(user.free_symbols | expected.free_symbols, key=str)
+    if len(free) > 3:
+        # Много переменных — перебор точек перестаёт быть дешёвым, а
+        # выигрыш от отсева всё равно съедается подстановками.
+        return False
+
+    for shift, point in enumerate(_PROBE_POINTS):
+        values = {s: sympy.Float(point + 0.13 * index + 0.07 * shift)
+                  for index, s in enumerate(free)}
+        try:
+            a = complex(user.evalf(subs=values))
+            b = complex(expected.evalf(subs=values))
+        except (TypeError, ValueError, ZeroDivisionError, AttributeError):
+            # Символы остались, полюс, комплексная ветвь — не наш случай.
+            continue
+        except Exception:                              # noqa: BLE001
+            return False
+        if not (math.isfinite(a.real) and math.isfinite(a.imag)
+                and math.isfinite(b.real) and math.isfinite(b.imag)):
+            continue
+        # Порог относительный: у больших значений абсолютная разница
+        # накапливается на самом вычислении, а не на разнице выражений.
+        if abs(a - b) > 1e-6 * max(1.0, abs(b)):
+            return True
+    return False
+
+
+def _expr_transformations():
+    """
+    Преобразования разбора выражений.
+
+    Кроме стандартных — «^» как степень и НЕЯВНОЕ УМНОЖЕНИЕ: «2x+1» и
+    «2*x+1» это одна и та же запись, а не разные ответы. Отвергать первую
+    значит отвергать то, как математику пишут от руки, — причём с
+    вердиктом «не разобрано», из которого человеку неясно, что не так.
+
+    Берётся `implicit_multiplication`, а НЕ `..._application`: последнее
+    превращает «f(x)» в «f*x» для необъявленных имён и «sin x» в вызов —
+    то есть начинает домысливать за отвечающего. Здесь домысливать нельзя.
+    """
+    from sympy.parsing.sympy_parser import (
+        convert_xor, implicit_multiplication, standard_transformations)
+    return standard_transformations + (convert_xor, implicit_multiplication)
+
+
+_EXPR_TRANSFORMATIONS = None
+
+
+def _transformations():
+    global _EXPR_TRANSFORMATIONS
+    if _EXPR_TRANSFORMATIONS is None:
+        _EXPR_TRANSFORMATIONS = _expr_transformations()
+    return _EXPR_TRANSFORMATIONS
+
+
+#: До скольких операций выражения ещё имеет смысл показывать его
+#: альтернативные формы в предпросмотре.
+_EXAMPLE_FORMS_LIMIT = 40
+
+
 class ExpressionError(ValueError):
     """Ввод не прошёл проверку до разбора или не разобрался."""
 
@@ -847,6 +934,19 @@ class ExpressionSpec(AnswerSpec):
             return Verdict(False, active, Reason.WRONG_FORM, text,
                            "Верно по значению, но форма не та.")
 
+        # Быстрый отсев ПЕРЕД symbolic-упрощением. Замер на реальных
+        # заданиях матана: неверный ответ на производную стоил до секунды,
+        # и вся эта секунда уходила в `simplify` — внутри синхронного
+        # веб-запроса, без какого-либо предела сверху.
+        #
+        # Численное расхождение ДОКАЗЫВАЕТ неравенство, поэтому отсев
+        # вердикта не меняет: он только сокращает путь там, где ответ и
+        # так неверен. Совпадение в точках ничего не доказывает —
+        # оттуда по-прежнему идём в `simplify`.
+        if _differs_numerically(user_expr, expected):
+            return Verdict(False, active, Reason.MISMATCH, text,
+                           "Выражение не совпадает.")
+
         import sympy
         try:
             equal = sympy.simplify(user_expr - expected) == 0
@@ -885,8 +985,18 @@ class ExpressionSpec(AnswerSpec):
         try:
             import sympy
             expr = self._parse(self.value)
-            for form in (sympy.expand(expr), sympy.factor(expr)):
-                out.append(str(form))
+            # Порог по размеру выражения, а не по времени. Замер на
+            # матане: `factor()` неявной логарифмической производной —
+            # 3.5 секунды, и предела сверху у неё нет, а предпросмотр
+            # живёт внутри синхронного запроса преподавателя.
+            #
+            # Дело не только в скорости. Развёрнутая и разложенная формы
+            # выражения из двухсот узлов — это не «пример принимаемого
+            # ответа», а три строки нечитаемого; показать одну
+            # каноническую запись честнее и полезнее.
+            if sympy.count_ops(expr) <= _EXAMPLE_FORMS_LIMIT:
+                for form in (sympy.expand(expr), sympy.factor(expr)):
+                    out.append(str(form))
         except Exception:
             pass
         return out
@@ -896,17 +1006,24 @@ class ExpressionSpec(AnswerSpec):
     def _allowed_names(self) -> frozenset:
         if self.symbols:
             return frozenset(self.symbols) | _EXPR_FUNCTIONS
+        # Разбор ответа ради одних только имён — самая дорогая часть
+        # проверки, когда ответ большой (производная в матане). Зависит
+        # он только от `value`, который у спецификации не меняется,
+        # поэтому считается один раз.
+        cached = getattr(self, "_names_cache", None)
+        if cached is not None:
+            return cached
         try:
-            from sympy.parsing.sympy_parser import (
-                parse_expr, standard_transformations, convert_xor)
-            expr = parse_expr(
-                self.value.replace("^", "**"),
-                transformations=standard_transformations + (convert_xor,),
-                evaluate=True)
-            return frozenset(
+            from sympy.parsing.sympy_parser import parse_expr
+            expr = parse_expr(self.value.replace("^", "**"),
+                              transformations=_transformations(),
+                              evaluate=True)
+            names = frozenset(
                 str(s) for s in expr.free_symbols) | _EXPR_FUNCTIONS
         except Exception:
-            return _EXPR_FUNCTIONS
+            names = _EXPR_FUNCTIONS
+        object.__setattr__(self, "_names_cache", names)
+        return names
 
     def _parse(self, text: str):
         """
@@ -927,13 +1044,10 @@ class ExpressionSpec(AnswerSpec):
             if name not in allowed:
                 raise ExpressionError(f"Неизвестное имя: {name}.")
 
-        from sympy.parsing.sympy_parser import (
-            parse_expr, standard_transformations, convert_xor)
+        from sympy.parsing.sympy_parser import parse_expr
         try:
-            return parse_expr(
-                source,
-                transformations=standard_transformations + (convert_xor,),
-                evaluate=True)
+            return parse_expr(source, transformations=_transformations(),
+                              evaluate=True)
         except Exception as exc:
             raise ExpressionError("Выражение не разобрано.") from exc
 

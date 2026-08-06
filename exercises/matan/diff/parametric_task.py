@@ -98,7 +98,8 @@ def get_parametric_task(max_attempts=20):
 
             return (("text", f" 5.\tВычислить производную функции, заданной параметрически в точке {str(t0).replace('pi', 'π')}.\n"),
                     ("formula", system_latex),
-                    ("formula", answer_latex))
+                    ("formula", answer_latex),
+                    ("answer", result))
 
 
 # Пример использования

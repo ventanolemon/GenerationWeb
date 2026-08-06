@@ -50,7 +50,8 @@ def get_lopital_law():
     answer = sp.limit(res_ev, x, 0)
     return (("text", " 7.\tВычислить предел с помощью правила Лопиталя\n"),
             ("formula", r"\lim_{x \to 0} {" + clear_latex(sp.latex(res_ev)) + "}"),
-            ("formula", clear_latex(sp.latex(answer))))
+            ("formula", clear_latex(sp.latex(answer))),
+            ("answer", answer))
 
 
 if __name__ == "__main__":

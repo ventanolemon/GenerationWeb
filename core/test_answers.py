@@ -556,3 +556,89 @@ class SerializationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ExpressionNotationTests(unittest.TestCase):
+    """
+    Как математику пишут руками — это запись, а не другой ответ.
+
+    Отвергать «2x+1» с вердиктом «не разобрано» хуже, чем отвергать
+    неверный ответ: человеку неясно, что именно не так, и он начинает
+    подозревать проверку, а не себя.
+    """
+
+    def setUp(self):
+        self.spec = ExpressionSpec(value="2*x + 1", symbols=("x",))
+
+    def test_implicit_multiplication(self):
+        for probe in ("2x+1", "2 x + 1", "1+2x", "x*2+1"):
+            with self.subTest(probe=probe):
+                self.assertTrue(self.spec.check(probe).accepted)
+
+    def test_functions_are_not_broken_into_products(self):
+        """
+        Берётся `implicit_multiplication`, а не `..._application`: второе
+        превратило бы «f(x)» в «f*x» и стало бы домысливать за
+        отвечающего.
+        """
+        spec = ExpressionSpec(value="sin(x) + 2*x", symbols=("x",))
+        self.assertTrue(spec.check("sin(x)+2x").accepted)
+        self.assertFalse(spec.check("sin*x+2x").accepted)
+
+
+class NumericShortCircuitTests(unittest.TestCase):
+    """
+    Численный отсев перед `simplify`.
+
+    Замер на матане: неверный ответ на производную стоил до секунды, и
+    вся она уходила в `simplify` внутри синхронного запроса. Отсев
+    доказывает НЕравенство, поэтому вердиктов не меняет — только
+    сокращает путь там, где ответ и так неверен.
+    """
+
+    def test_wrong_answer_is_still_wrong(self):
+        spec = ExpressionSpec(value="x**2 - 1", symbols=("x",))
+        self.assertFalse(spec.check("x**2 + 1").accepted)
+
+    def test_equivalent_forms_still_pass(self):
+        spec = ExpressionSpec(value="x**2 - 1", symbols=("x",))
+        for probe in ("(x-1)*(x+1)", "-1 + x*x",
+                      "sin(x)**2 + cos(x)**2 - 1 + x**2 - 1"):
+            with self.subTest(probe=probe):
+                self.assertTrue(spec.check(probe).accepted)
+
+    def test_constants_are_unaffected(self):
+        spec = ExpressionSpec(value="3/2")
+        self.assertTrue(spec.check("1.5").accepted)
+        self.assertFalse(spec.check("2/3").accepted)
+
+    def test_short_circuit_never_claims_equality(self):
+        """
+        Отсев умеет говорить только «точно разные». Утверждать равенство
+        по совпадению в четырёх точках нельзя — это решает `simplify`.
+        """
+        from core.answers import _differs_numerically
+        import sympy
+        x = sympy.Symbol("x")
+        self.assertFalse(_differs_numerically(x ** 2 - 1, (x - 1) * (x + 1)))
+        self.assertTrue(_differs_numerically(x ** 2 - 1, x ** 2 + 1))
+
+
+class PreviewIsBoundedTests(unittest.TestCase):
+    """
+    Предпросмотр «что примут» живёт в запросе преподавателя, и время его
+    работы должно быть ограничено чем-то, кроме удачи.
+    """
+
+    def test_small_expression_shows_alternative_forms(self):
+        spec = ExpressionSpec(value="x**2 - 1", symbols=("x",))
+        self.assertGreater(len(spec.accepted_examples()), 1)
+
+    def test_large_expression_shows_only_the_canonical_form(self):
+        # Развёрнутая и разложенная формы выражения из сотен узлов — это
+        # не пример принимаемого ответа, а три строки нечитаемого.
+        big = " + ".join(f"{i}*x**{i}" for i in range(1, 30))
+        spec = ExpressionSpec(value=big, symbols=("x",))
+        examples = spec.accepted_examples()
+        self.assertEqual(len(examples), 1)
+        self.assertTrue(spec.check(examples[0]).accepted)
