@@ -17,7 +17,8 @@ MODULES: имя модуля → {title, description, categories, core}. categor
 from __future__ import annotations
 
 
-MODULE_ORDER = ["core", "symbolic", "linalg", "ode", "english", "image", "plot"]
+MODULE_ORDER = ["core", "symbolic", "linalg", "ode", "english",
+                "informatics", "image", "plot"]
 
 MODULES: dict[str, dict] = {
     "core": {
@@ -51,6 +52,14 @@ MODULES: dict[str, dict] = {
         "title": "Английский язык",
         "description": "Словари слов, тренажёр, предложения с пропусками.",
         "categories": ["english"],
+        "core": False,
+    },
+    "informatics": {
+        "title": "Информатика",
+        "description": ("Системы счисления и прочее, что нужно заданиям по "
+                        "информатике. Своих типов портов не заводит — всё "
+                        "едет числами, строками и списками."),
+        "categories": ["informatics"],
         "core": False,
     },
     "image": {

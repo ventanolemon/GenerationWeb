@@ -20,6 +20,7 @@ from .english import (
     WordsTrainerNode,
 )
 from .image import ImageBlockNode, ImageFileNode, LogicCircuitNode
+from .informatics import BaseNameNode, NumberBaseNode
 from .plot import (
     ComplexPointsPlotNode, ComplexRegionPlotNode, ConformalMapPlotNode,
 )
@@ -109,6 +110,8 @@ _ALL_NODES = [
     # english (английский язык)
     WordsFileNode, WordsPickNode, WordsTrainerNode, SentencesFileNode,
     SentencePickNode,
+    # informatics (информатика)
+    NumberBaseNode, BaseNameNode,
     # image (изображения / ОПВС)
     LogicCircuitNode, ImageFileNode, ImageBlockNode,
     # plot (графика на комплексной плоскости)
