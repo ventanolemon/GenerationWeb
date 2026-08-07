@@ -194,3 +194,91 @@ class UsersMixin:
                 (hash_password(new_password), login),
             )
         return True
+
+    # ---------- Сессии входа ----------
+    # Хранение токенов; выдача и проверка — в core/auth_sessions.py. Здесь
+    # только доступ к строкам, как и в остальных методах слоя.
+
+    def add_auth_session(self, token_hash: str, login: str, *,
+                         expires_at: float, user_agent: str = "") -> None:
+        now = time.time()
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO auth_sessions (token_hash, login, created_at, "
+                "last_seen_at, expires_at, user_agent) VALUES (?,?,?,?,?,?)",
+                (token_hash, login, now, now, float(expires_at),
+                 user_agent[:200]),
+            )
+
+    def find_auth_session(self, token_hash: str) -> Optional[dict]:
+        """
+        Строка сессии вместе со СВЕЖЕЙ ролью из `users`.
+
+        Роль join'ится, а не хранится в сессии: она обязана меняться в тот
+        же миг, что и в БД. Хранили бы — понижение админа не действовало бы
+        до истечения его сессии.
+        """
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT s.token_hash, s.login, s.created_at, s.last_seen_at, "
+                "       s.expires_at, s.revoked_at, u.role "
+                "FROM auth_sessions s JOIN users u ON u.login = s.login "
+                "WHERE s.token_hash = ?",
+                (token_hash,),
+            ).fetchone()
+        if row is None:
+            return None
+        return {"token_hash": row[0], "login": row[1], "created_at": row[2],
+                "last_seen_at": row[3], "expires_at": row[4],
+                "revoked_at": row[5], "role": row[6]}
+
+    def touch_auth_session(self, token_hash: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE auth_sessions SET last_seen_at = ? WHERE token_hash = ?",
+                (time.time(), token_hash),
+            )
+
+    def revoke_auth_session(self, token_hash: str) -> bool:
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE auth_sessions SET revoked_at = ? "
+                "WHERE token_hash = ? AND revoked_at IS NULL",
+                (time.time(), token_hash),
+            )
+            return cur.rowcount > 0
+
+    def revoke_auth_sessions_for(self, login: str) -> int:
+        """Погасить все сессии пользователя — смена пароля, увольнение,
+        разбор инцидента. Возвращает, сколько погасило."""
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE auth_sessions SET revoked_at = ? "
+                "WHERE login = ? AND revoked_at IS NULL",
+                (time.time(), login),
+            )
+            return cur.rowcount
+
+    def purge_expired_auth_sessions(self, *, keep_seconds: float = 0.0) -> int:
+        """Выбросить давно просроченные строки. Отозванные держим `keep_seconds`
+        после истечения — по ним разбирают инциденты."""
+        with self._connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM auth_sessions WHERE expires_at < ?",
+                (time.time() - float(keep_seconds),),
+            )
+            return cur.rowcount
+
+    def list_auth_sessions(self, login: str) -> List[dict]:
+        """Живые сессии пользователя — для экрана «где я вошёл»."""
+        now = time.time()
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT token_hash, created_at, last_seen_at, expires_at, "
+                "       user_agent FROM auth_sessions "
+                "WHERE login = ? AND revoked_at IS NULL AND expires_at > ? "
+                "ORDER BY last_seen_at DESC",
+                (login, now),
+            ).fetchall()
+        return [{"token_hash": r[0], "created_at": r[1], "last_seen_at": r[2],
+                 "expires_at": r[3], "user_agent": r[4]} for r in rows]

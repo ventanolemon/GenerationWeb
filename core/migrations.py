@@ -707,6 +707,54 @@ def _m012_attempt_scenarios(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "attempts", "counts_toward_stats",
                            "INTEGER NOT NULL DEFAULT 1")
 
+def _m013_auth_sessions(conn: sqlite3.Connection) -> None:
+    """
+    Сессии входа: заверенная идентичность вместо заявленной.
+
+    До этого личность приходила заголовками `X-User-Id`/`X-User-Role`,
+    которые пишет клиент, и сервер им верил. Замер перед §8
+    (organizations_readiness.md) показал, чем это кончается: преподаватель
+    навсегда повышал студента до админа, просто написав про себя
+    `X-User-Role: admin`. Проверок роли в коде 46, и все они опирались на
+    строку из браузера.
+
+    **Роль в сессии НЕ хранится.** Только логин; роль читается из `users`
+    при каждом обращении. Иначе появился бы третий источник правды (БД,
+    заголовок, токен), и понижение админа не действовало бы до истечения
+    его сессии. Заодно это снимает вопрос «протухшей роли в токене»,
+    из-за которого JWT здесь был бы хуже: отзыв в нём стоит дорого, а
+    выигрыш в скорости на таком объёме мнимый.
+
+    Токен хранится ХЭШЕМ, как ключи приложений (`api_keys.key_hash`):
+    утечка базы не должна давать возможность войти. Открытое значение
+    показывается ровно один раз — в ответе на вход.
+
+    `expires_at` абсолютный, `last_seen_at` скользящий: первый ограничивает
+    жизнь сессии сверху, второй нужен, чтобы отличить брошенную сессию от
+    активной, не продлевая её бесконечно.
+
+    `revoked_at` вместо DELETE: выход и принудительный отзыв обязаны быть
+    отличимы от «сессия не существовала», иначе разбирать инцидент не по
+    чему.
+    """
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS auth_sessions (
+            token_hash   TEXT    PRIMARY KEY,
+            login        TEXT    NOT NULL,
+            created_at   REAL    NOT NULL DEFAULT 0,
+            last_seen_at REAL    NOT NULL DEFAULT 0,
+            expires_at   REAL    NOT NULL DEFAULT 0,
+            user_agent   TEXT    NOT NULL DEFAULT '',
+            revoked_at   REAL
+        );
+        CREATE INDEX IF NOT EXISTS ix_auth_sessions_login
+            ON auth_sessions(login);
+        -- Чистка просроченных идёт по времени, без привязки к логину.
+        CREATE INDEX IF NOT EXISTS ix_auth_sessions_expires
+            ON auth_sessions(expires_at);
+    """)
+
+
 # Порядок применения. Добавлять новые кортежами (version, name, fn).
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = [
     (1, "rbac_foundation", _m001_rbac_foundation),
@@ -721,6 +769,7 @@ MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = [
     (10, "node_packages", _m010_node_packages),
     (11, "signing_keys", _m011_signing_keys),
     (12, "attempt_scenarios", _m012_attempt_scenarios),
+    (13, "auth_sessions", _m013_auth_sessions),
 ]
 
 
