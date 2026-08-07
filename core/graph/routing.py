@@ -53,6 +53,19 @@ class EdgeSpec:
     net: object
     src_node: Optional[str] = None
     dst_node: Optional[str] = None
+    bends: tuple[Point, ...] = ()
+    """
+    Ручные точки перегиба — провод обязан пройти через них.
+
+    Живут они не здесь, а в `meta["bends"]` документа (§7.2 плана): в
+    соединении им нельзя, потому что тогда синк начнёт ловить
+    LWW-конфликты из-за того, что двое просто подвигали провода.
+    Сюда они приезжают на время укладки.
+
+    Заданы — трассировщик не выбирает маршрут, а исполняет заданный.
+    Автор поправил провод руками именно потому, что автомат его не
+    устроил, и «улучшать» поправку значит спорить с автором.
+    """
 
 
 @dataclass
@@ -182,19 +195,302 @@ def _simplify(points: list[Point]) -> list[Point]:
     return out
 
 
+@dataclass
+class RouteResult:
+    """
+    Проложенные провода и точки ветвления.
+
+    Точки ветвления возвращаются, а не рисуются вызывающим по догадке:
+    место, где сеть расходится, знает только тот, кто её проложил. И
+    отдельной сущности «узел-контакт» для них не заводится — она попала
+    бы в документ и засорила диффы (§7.2 плана); это чисто
+    геометрический результат укладки, живущий ровно до следующей.
+    """
+    routes: dict[object, list[Point]] = field(default_factory=dict)
+    junctions: dict[object, list[Point]] = field(default_factory=dict)
+    """
+    Точки ветвления ПО СЕТЯМ, а не общим списком.
+
+    Сеть у точки спрашивают сразу же: рисуется она цветом своего
+    сигнала, как и провода. Общий список заставил бы вызывающего искать
+    хозяина по координатам — то есть заново решать задачу, ответ на
+    которую здесь уже есть.
+    """
+
+    # Совместимости со «просто словарём», который возвращался раньше,
+    # здесь нарочно нет. Пробовал `__getitem__` — и получил ровно тот
+    # случай, ради которого её и не делают: `set(result)` не упало, а
+    # тихо пошло по старому протоколу итерации и вернуло НЕ ТО. Явная
+    # ошибка на границе лучше молчаливой подмены; вызывающих двое.
+
+
+def _merge_segments(polylines: list[list[Point]]) -> list[tuple[Point, Point]]:
+    """
+    То, что РЕАЛЬНО нарисовано: совпадающие куски соседних ветвей — один
+    отрезок, а не два.
+
+    Без склейки ветвление считается неверно. Провода одной сети идут по
+    стволу вместе, и в точке, где стоит обычный угол, сходятся четыре
+    конца отрезков — по два от каждой ветви, лежащих друг на друге. По
+    счёту концов это ветвление, на экране — угол. Считать надо по
+    нарисованному.
+    """
+    lines: dict[tuple[str, float], list[tuple[float, float]]] = {}
+    for pts in polylines:
+        for a, b in zip(pts, pts[1:]):
+            if abs(a[0] - b[0]) < 1e-6 and abs(a[1] - b[1]) < 1e-6:
+                continue
+            if abs(a[0] - b[0]) < 1e-6:
+                key = ("v", round(a[0], 3))
+                span = (min(a[1], b[1]), max(a[1], b[1]))
+            else:
+                key = ("h", round(a[1], 3))
+                span = (min(a[0], b[0]), max(a[0], b[0]))
+            lines.setdefault(key, []).append(span)
+
+    out: list[tuple[Point, Point]] = []
+    for (kind, coord), spans in lines.items():
+        spans.sort()
+        lo, hi = spans[0]
+        for s0, s1 in spans[1:]:
+            if s0 <= hi + 1e-6:
+                hi = max(hi, s1)
+            else:
+                out.append(_span_points(kind, coord, lo, hi))
+                lo, hi = s0, s1
+        out.append(_span_points(kind, coord, lo, hi))
+    return out
+
+
+def _span_points(kind: str, coord: float,
+                 lo: float, hi: float) -> tuple[Point, Point]:
+    if kind == "v":
+        return ((coord, lo), (coord, hi))
+    return ((lo, coord), (hi, coord))
+
+
+def _junctions_of(polylines: list[list[Point]],
+                  ports: set[Point]) -> list[Point]:
+    """
+    Точки, где сеть расходится.
+
+    Считаются ПО НАРИСОВАННОМУ, а не назначаются при укладке. Так они и
+    «выпадают сами», как требует §7.2: ветвление — это место, где к
+    одной точке сходится больше двух отрезков, либо конец одного
+    отрезка упирается в середину другого (T-образный отвод). Дерево при
+    этом нигде не описано отдельно и не может разойтись с тем, что
+    видит глаз.
+
+    Сами порты исключаются. Из выходного порта веера тоже выходит
+    несколько проводов, и формально это ветвление — но точка на порту
+    читается как «здесь контакт», а контакт там и так нарисован самим
+    портом.
+    """
+    segments = _merge_segments(polylines)
+    ends: dict[Point, int] = {}
+    for a, b in segments:
+        for p in (a, b):
+            key = (round(p[0], 3), round(p[1], 3))
+            ends[key] = ends.get(key, 0) + 1
+
+    out: list[Point] = []
+    for point, count in ends.items():
+        if point in ports:
+            continue
+        if count >= 3:
+            out.append(point)
+            continue
+        for a, b in segments:
+            if _strictly_inside(point, a, b):
+                out.append(point)
+                break
+    out.sort()
+    return out
+
+
+def _strictly_inside(p: Point, a: Point, b: Point) -> bool:
+    """Точка внутри отрезка, не совпадая с его концами."""
+    if abs(a[0] - b[0]) < 1e-6:                      # вертикаль
+        if abs(p[0] - a[0]) > 1e-6:
+            return False
+        lo, hi = min(a[1], b[1]), max(a[1], b[1])
+        return lo + 1e-6 < p[1] < hi - 1e-6
+    if abs(a[1] - b[1]) < 1e-6:                      # горизонталь
+        if abs(p[1] - a[1]) > 1e-6:
+            return False
+        lo, hi = min(a[0], b[0]), max(a[0], b[0])
+        return lo + 1e-6 < p[0] < hi - 1e-6
+    return False
+
+
+def _route_manual(e: EdgeSpec, tracks: _Tracks) -> list[Point]:
+    """
+    Провод по заданным вручную точкам перегиба.
+
+    Обход препятствий здесь НЕ делается, и это не упущение: точки
+    поставил человек, глядя на холст, — если провод идёт сквозь узел,
+    значит так и просили. Автомат, «исправляющий» ручную поправку,
+    выглядел бы поломкой, а не помощью.
+
+    Между соседними точками — колено: сначала по горизонтали, потом по
+    вертикали. Из выходного порта провод обязан выйти горизонтально, и
+    во входной зайти тоже горизонтально, иначе он утыкается в тело узла
+    сбоку.
+
+    Последний участок — ступенька, а не колено. Коленом (вертикаль, потом
+    горизонталь) провод возвращался бы по той же вертикали, по которой
+    только что пришёл в перегиб; `_simplify` такой шпиль схлопывает, и
+    ручная точка ПРОПАДАЛА, молча. Ступенька «горизонталь — вертикаль —
+    горизонталь» и через перегиб проходит, и в порт заходит сбоку.
+    """
+    pts: list[Point] = [e.src]
+    cur = e.src
+    for bend in e.bends:
+        pts.append((bend[0], cur[1]))
+        pts.append((bend[0], bend[1]))
+        cur = (bend[0], bend[1])
+
+    if abs(cur[1] - e.dst[1]) < 1e-6:
+        pts.append(e.dst)
+    else:
+        step_x = (cur[0] + e.dst[0]) / 2.0
+        # Ступенька обязана остаться между перегибом и портом: иначе
+        # провод уходит назад и рисует петлю.
+        step_x = min(max(step_x, min(cur[0], e.dst[0])), e.dst[0] - STUB) \
+            if e.dst[0] - STUB > min(cur[0], e.dst[0]) else step_x
+        pts.append((step_x, cur[1]))
+        pts.append((step_x, e.dst[1]))
+        pts.append(e.dst)
+
+    route = _simplify(pts)
+    # Регистрируем занятое: следующие провода обязаны видеть ручную
+    # трассу, иначе автомат уложит свои поверх неё.
+    for a, b in zip(route, route[1:]):
+        if abs(a[0] - b[0]) < 1e-6:
+            tracks.add_v(a[0], a[1], b[1], e.net)
+        else:
+            tracks.add_h(a[1], a[0], b[0], e.net)
+    return route
+
+
+def _route_net_tree(edges: list[EdgeSpec], tracks: _Tracks,
+                    obst: _Obstacles) -> Optional[dict[object, list[Point]]]:
+    """
+    Веер из одного выхода — деревом с общим стволом (§7.2).
+
+    Маршрутизируется СЕТЬ, а не каждое соединение по отдельности. По
+    отдельности каждый провод честно идёт своей буквой «П», они
+    накладываются (одна сеть — накладываться можно), и на экране это
+    выглядит почти как ствол, но провода при этом втрое длиннее, а
+    ветвление нигде не обозначено.
+
+    Дерево простое, как и предписано («в приближении жадное»): один
+    вертикальный ствол между источником и приёмниками, от него
+    горизонтальные отводы. Ствол обязан быть чистым сразу для всех
+    ветвей — иначе `None`, и сеть раскладывается по-старому, поштучно.
+    Деградация без падения здесь важнее красоты: зажатый веер должен
+    остаться нарисованным.
+    """
+    net = edges[0].net
+    sx, sy = edges[0].src
+    src_node = edges[0].src_node
+
+    lo = sx + STUB
+    hi = min(e.dst[0] for e in edges) - STUB
+    if lo > hi:
+        return None
+
+    ys = [sy] + [e.dst[1] for e in edges]
+    y0, y1 = min(ys), max(ys)
+    # Ствол ближе к приёмникам: отводы тогда короткие и не тянутся через
+    # весь канал, а общий участок наоборот длинный — ради него всё и
+    # затевалось.
+    x_hint = lo + (hi - lo) * 0.6
+
+    trunk_x = None
+    for off in _offsets():
+        x = x_hint + off
+        if x < lo or x > hi:
+            continue
+        # Ствол проходит мимо ЧУЖИХ узлов: свой у него только источник.
+        if not tracks.v_free(x, y0, y1, net) or \
+                obst.v_hits(x, y0, y1, (src_node,) if src_node else ()):
+            continue
+        if not tracks.h_free(sy, sx, x, net) or \
+                obst.h_hits(sy, sx + STUB, x, (src_node,) if src_node else ()):
+            continue
+        if any(not tracks.h_free(e.dst[1], x, e.dst[0], net) or
+               obst.h_hits(e.dst[1], x, e.dst[0] - STUB,
+                           tuple(n for n in (src_node, e.dst_node) if n))
+               for e in edges):
+            continue
+        trunk_x = x
+        break
+    if trunk_x is None:
+        return None
+
+    tracks.add_h(sy, sx, trunk_x, net)
+    tracks.add_v(trunk_x, y0, y1, net)
+
+    out: dict[object, list[Point]] = {}
+    for e in edges:
+        dx, dy = e.dst
+        # Каждая ветвь — полный путь от порта-источника: провод остаётся
+        # проводом, его можно выделить и подсветить целиком. Общий кусок
+        # у соседей совпадает точка в точку, поэтому рисуется он один
+        # раз и стволом и выглядит.
+        out[e.key] = _simplify([(sx, sy), (trunk_x, sy),
+                                (trunk_x, dy), (dx, dy)])
+        tracks.add_h(dy, trunk_x, dx, net)
+    return out
+
+
 def route_edges(node_rects: dict[str, Rect],
-                edges: list[EdgeSpec]) -> dict[object, list[Point]]:
+                edges: list[EdgeSpec]) -> RouteResult:
     """
     Проложить все провода холста разом (совместная укладка — в этом смысл:
     поодиночке провода не знают о треках друг друга и накладываются).
-    Возвращает {key: [точки ломаной]}.
+
+    Веера (один выход → несколько входов) укладываются СЕТЬЮ, деревом с
+    общим стволом, — см. `_route_net_tree`. Остальное по-прежнему
+    поштучно.
     """
     tracks = _Tracks()
     obst = _Obstacles(node_rects)
     routes: dict[object, list[Point]] = {}
 
-    forward = [e for e in edges if e.dst[0] - e.src[0] >= 2 * STUB + TRACK_SEP]
-    backward = [e for e in edges if e not in forward]
+    # ── Ручные трассы — первыми ──────────────────────────────────────────
+    # Занятое ими место автомат обязан видеть с самого начала: иначе он
+    # разложит свои провода, а поправленный руками ляжет поверх.
+    manual = [e for e in edges if e.bends]
+    for e in manual:
+        routes[e.key] = _route_manual(e, tracks)
+    auto = [e for e in edges if not e.bends]
+
+    forward = [e for e in auto
+               if e.dst[0] - e.src[0] >= 2 * STUB + TRACK_SEP]
+
+    # ── Веера: сеть целиком, деревом ─────────────────────────────────────
+    # Раньше остальных: ствол занимает место осмысленно, и одиночным
+    # проводам достаётся то, что осталось, а не наоборот.
+    fans: dict[object, list[EdgeSpec]] = {}
+    for e in forward:
+        fans.setdefault(e.net, []).append(e)
+    routed_by_tree: set = set()
+    for net, group in fans.items():
+        if len(group) < 2:
+            continue
+        tree = _route_net_tree(group, tracks, obst)
+        if tree is None:
+            continue
+        routes.update(tree)
+        routed_by_tree.update(e.key for e in group)
+
+    forward = [e for e in forward if e.key not in routed_by_tree]
+    # Уложенные деревом сюда попасть не должны: их уже нет ни в `forward`,
+    # ни в остатке, и повторная укладка перечеркнула бы ствол.
+    backward = [e for e in auto
+                if e.key not in routed_by_tree and e not in forward]
 
     # ── Прямые рёбра: канал между источником и приёмником ────────────────
     # Группировка по каналу (пара X-колонок с округлением: после раскладки
@@ -232,7 +528,26 @@ def route_edges(node_rects: dict[str, Rect],
     for e in backward:
         routes[e.key] = _route_flyover(e, tracks, obst)
 
-    return routes
+    # Ветвления считаются по сетям: провода РАЗНЫХ сетей пересекаются, и
+    # точка пересечения — не ветвление, а перекрёсток. Нарисовать там
+    # кружок значило бы показать соединение, которого нет.
+    by_net: dict[object, list[list[Point]]] = {}
+    ports: set[Point] = set()
+    for e in edges:
+        ports.add((round(e.src[0], 3), round(e.src[1], 3)))
+        ports.add((round(e.dst[0], 3), round(e.dst[1], 3)))
+        route = routes.get(e.key)
+        if route:
+            by_net.setdefault(e.net, []).append(route)
+    junctions: dict[object, list[Point]] = {}
+    for net, polylines in by_net.items():
+        if len(polylines) < 2:
+            continue
+        found = _junctions_of(polylines, ports)
+        if found:
+            junctions[net] = found
+
+    return RouteResult(routes=routes, junctions=junctions)
 
 
 def _route_forward(e: EdgeSpec, x_hint: float, lo: float, hi: float,
