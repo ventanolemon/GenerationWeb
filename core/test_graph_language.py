@@ -23,9 +23,10 @@ import collections
 import random
 import unittest
 
-from core.graph.errors import GraphValidationError
-from core.graph.node import ExecContext
+from core.graph.errors import GraphValidationError, RetryGeneration
+from core.graph.node import ExecContext, Node, Port
 from core.graph.nodes import DEFAULT_REGISTRY
+from core.graph.port_types import PortType
 
 
 def _ctx(seed: int = 0) -> ExecContext:
@@ -222,6 +223,99 @@ class LogarithmTests(unittest.TestCase):
     def test_summary_shows_the_base(self):
         self.assertEqual(_make("expr_log", {}).summary(), "ln")
         self.assertEqual(_make("expr_log", {"base": "3"}).summary(), "log_3")
+
+
+# ======================================================================
+#  Обращение к узлу в текстах ошибок (Node.node_ref)
+# ======================================================================
+
+class NodeRefInErrorMessagesTests(unittest.TestCase):
+    """
+    RetryGeneration/GraphValidationError раньше вели с сырым type_id
+    (`f"random_choice {self.node_id!r}: ..."`) — идентификатором, которого
+    автор графа не видит нигде в интерфейсе (в палитре и на холсте узел
+    подписан display_name). Node.node_ref() — единый источник формы
+    обращения к узлу для ~200 таких сообщений (docs/architecture/
+    july_language_russification.md, §1.6).
+    """
+
+    def test_human_display_name_leads_the_message(self):
+        # Пример из инвентаризации: «Случайный выбор», а не random_choice.
+        node = _make("random_choice", {"items": []})
+        with self.assertRaises(RetryGeneration) as cm:
+            node.compute({}, _ctx())
+        text = str(cm.exception)
+        self.assertTrue(text.startswith("«Случайный выбор»"), text)
+        self.assertFalse(text.startswith("random_choice"), text)
+
+    def test_node_id_stays_in_the_message_to_locate_it_on_the_canvas(self):
+        node = DEFAULT_REGISTRY.create("random_choice", "my_node_7",
+                                       {"items": []})
+        with self.assertRaises(RetryGeneration) as cm:
+            node.compute({}, _ctx())
+        self.assertIn("my_node_7", str(cm.exception))
+
+    def test_type_id_is_kept_but_no_longer_leads(self):
+        """
+        type_id не убирается совсем — он полезен в логах и обращениях в
+        поддержку (см. §1.6) — но теперь стоит вторым, в скобках, после
+        человеческого имени, а не первым словом сообщения.
+        """
+        import sympy
+        node = DEFAULT_REGISTRY.create("matrix_det", "matrix_det_1")
+        non_square = sympy.Matrix([[1, 2, 3], [4, 5, 6]])
+        with self.assertRaises(RetryGeneration) as cm:
+            node.compute({"in": non_square}, _ctx())
+        text = str(cm.exception)
+        self.assertTrue(text.startswith("«Определитель»"), text)
+        self.assertIn("matrix_det", text)          # диагностика сохранена
+        self.assertIn("matrix_det_1", text)
+
+    def test_validation_errors_use_the_same_form(self):
+        # GraphValidationError (не только RetryGeneration) тоже унифицирован.
+        with self.assertRaises(GraphValidationError) as cm:
+            DEFAULT_REGISTRY.create("constant_number", "cn1",
+                                    {"value": "abc"})
+        text = str(cm.exception)
+        self.assertTrue(text.startswith("«Константа (число)»"), text)
+        self.assertIn("cn1", text)
+
+    def test_empty_display_name_falls_back_sanely(self):
+        """
+        Пустой display_name не должен рожать пустые кавычки «»: узел без
+        имени называется по type_id, а не остаётся безымянным.
+        """
+        class _NoNameProbe(Node):
+            type_id = "no_name_probe"
+            display_name = ""
+            OUTPUTS = [Port("out", PortType.NUMBER)]
+
+            def compute(self, inputs, ctx):
+                return {"out": 0.0}
+
+        ref = _NoNameProbe("n1").node_ref()
+        self.assertNotIn("«»", ref)
+        self.assertIn("no_name_probe", ref)
+        self.assertIn("n1", ref)
+        # type_id не должен дублироваться (он же уже подставлен как имя).
+        self.assertEqual(ref.count("no_name_probe"), 1)
+
+    def test_require_param_helper_uses_node_ref_too(self):
+        # Node._require_param — общая утилита подклассов, тоже должна
+        # использовать node_ref(), а не собственное форматирование.
+        class _NeedsParam(Node):
+            type_id = "needs_param_probe"
+            display_name = "Нужен параметр"
+            OUTPUTS = [Port("out", PortType.NUMBER)]
+
+            def compute(self, inputs, ctx):
+                self._require_param("missing")
+                return {"out": 0.0}
+
+        with self.assertRaises(GraphValidationError) as cm:
+            _NeedsParam("p1").compute({}, _ctx())
+        text = str(cm.exception)
+        self.assertTrue(text.startswith("«Нужен параметр» (p1"), text)
 
 
 class RegisteredInTheCatalogTests(unittest.TestCase):

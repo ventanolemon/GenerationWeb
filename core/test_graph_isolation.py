@@ -279,6 +279,98 @@ class ErrorKindsTests(RunnerTestBase):
 
 
 # ======================================================================
+#  Необработанные исключения — русская фраза, а не голое имя класса
+# ======================================================================
+#
+# worker.py ловит исключения, которые движок графа не предвидел (баг узла,
+# а не GraphValidationError/RetryGeneration) — раньше они уходили автору
+# графа как есть: f"{type(exc).__name__}: {exc}" (например
+# "TypeError: unsupported operand type(s)..."). errors.internal_error_text
+# отделяет русскую фразу для человека от технической части.
+
+class InternalErrorTextTests(unittest.TestCase):
+    """Юнит-тест самой функции форматирования — не зависит от процесса."""
+
+    def test_starts_with_a_russian_phrase(self):
+        from core.graph.errors import internal_error_text
+        text = internal_error_text(
+            TypeError("unsupported operand type(s) for +: 'int' and 'str'"))
+        self.assertTrue(
+            text.startswith("Внутренняя ошибка исполнения графа."), text)
+        self.assertFalse(text.startswith("TypeError"), text)
+
+    def test_keeps_the_class_name_and_message_for_diagnostics(self):
+        # Убирать техническую часть нельзя — она нужна в логах и при
+        # обращении в поддержку; она просто больше не идёт первой.
+        from core.graph.errors import internal_error_text
+        text = internal_error_text(ZeroDivisionError("division by zero"))
+        self.assertIn("ZeroDivisionError", text)
+        self.assertIn("division by zero", text)
+
+
+class WorkerInternalErrorFormattingTests(unittest.TestCase):
+    """
+    `_handle`/`_preview` не должны отдавать `f"{type(exc).__name__}: {exc}"`
+    как есть. Вызывается напрямую (без рабочего процесса) — так тест
+    целится точно в код worker.py, который бросает необработанное
+    исключение, а не в поведение sympy/PIL, которое могло бы его вызвать.
+    """
+
+    def _break_executor_run(self, exc: Exception) -> None:
+        import core.graph.executor as executor_mod
+        original_run = executor_mod.GraphExecutor.run
+
+        def _boom(self):
+            raise exc
+
+        executor_mod.GraphExecutor.run = _boom
+        self.addCleanup(setattr, executor_mod.GraphExecutor, "run", original_run)
+
+    def test_handle_translates_an_unexpected_exception_during_run(self):
+        from core.graph import worker as graph_worker
+        self._break_executor_run(
+            TypeError("unsupported operand type(s) for +: 'int' and 'str'"))
+
+        response = graph_worker._handle({"spec": EXAMPLE_SIMPLE_TASK})  # noqa: SLF001
+
+        self.assertFalse(response["ok"])
+        self.assertEqual(response["kind"], "runtime")
+        self.assertTrue(
+            response["error"].startswith("Внутренняя ошибка исполнения графа."),
+            response["error"])
+        self.assertIn("TypeError", response["error"])
+
+    def test_worker_error_raised_by_isolation_carries_the_russian_prefix(self):
+        """
+        isolation.py само не форматирует `ClassName: message` — оно лишь
+        перекладывает текст ответа worker.py в WorkerError как есть
+        (`run_graph`: `raise WorkerError(response.get("error") or ...)`).
+        Проверяем РЕАЛЬНЫЙ код isolation.run_graph с ответом ровно такой
+        формы, какую отдаёт починенный _handle, — чтобы не полагаться на
+        то, что оба файла чинились синхронно, а убедиться в этом.
+        """
+        from core.graph.errors import internal_error_text
+
+        class _FakeRunner:
+            def run(self, spec, *, seed=None):
+                return {"ok": False, "kind": "runtime",
+                        "error": internal_error_text(ValueError("boom"))}
+
+        # isolation_enabled() гейтит, использует ли run_graph переданный
+        # runner вообще (при выключенной изоляции граф исполняется в
+        # текущем процессе, минуя runner) — фиксируем состояние явно,
+        # чтобы тест не зависел от порядка запуска других тестов файла.
+        os.environ["GRAPH_ISOLATION"] = "1"
+        self.addCleanup(os.environ.pop, "GRAPH_ISOLATION", None)
+
+        with self.assertRaises(WorkerError) as cm:
+            isolation.run_graph(EXAMPLE_SIMPLE_TASK, runner=_FakeRunner())
+        self.assertTrue(
+            str(cm.exception).startswith("Внутренняя ошибка исполнения графа."),
+            str(cm.exception))
+
+
+# ======================================================================
 #  Переключатель
 # ======================================================================
 
