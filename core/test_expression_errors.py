@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 import unittest
 
-from core.answers import CheckMode, ExpressionSpec, Reason
+from core.answers import CheckMode, ExpressionSpec, Reason, HOLE
 
 
 def _spec() -> ExpressionSpec:
@@ -206,3 +206,44 @@ class StrictModeUnaffectedTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FormulaHolesTests(unittest.TestCase):
+    """
+    Пустое место из палитры формул (этап 7, §10.2).
+
+    Кнопку «Ответить» клиент при незаполненных местах не даёт, но ответ
+    может прийти и не от него — набранным руками или из другого клиента.
+    Сообщение «в выражении есть недопустимые символы» здесь особенно
+    бестолково: студент видит в своей формуле пустой квадратик и ровно
+    про него спрашивает.
+    """
+
+    SPEC = ExpressionSpec(value="x**2 - 1", symbols=("x",))
+
+    def test_a_hole_is_named_as_a_hole(self):
+        for text in (HOLE, f"x + {HOLE}", f"\\frac{{{HOLE}}}{{3}}"):
+            with self.subTest(text=text):
+                verdict = self.SPEC.check(text)
+                self.assertFalse(verdict.accepted)
+                self.assertIn("незаполненные", verdict.detail)
+
+    def test_a_filled_formula_is_unaffected(self):
+        self.assertTrue(self.SPEC.check("x**2 - 1").accepted)
+
+    def test_the_symbol_matches_the_client(self):
+        """
+        Символ объявлен дважды — в ядре и во фронте, — потому что ставит
+        его клиент, а узнавать обязана проверка. Разъехавшись, они дадут
+        «недопустимые символы» там, где место просто не заполнено.
+        """
+        import pathlib
+        import re
+        root = pathlib.Path(__file__).resolve().parent.parent
+        source = (root / "frontend" / "src" / "formula" / "fields.ts")
+        if not source.exists():
+            self.skipTest("фронта нет в этом репозитории")
+        found = re.search(r'export const HOLE = "(.+?)"',
+                          source.read_text(encoding="utf-8"))
+        self.assertIsNotNone(found, "во фронте не нашлось объявления HOLE")
+        self.assertEqual(found.group(1), HOLE)

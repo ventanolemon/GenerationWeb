@@ -1,0 +1,89 @@
+/* Поле ввода формулы: палитра, исходник, предпросмотр.
+   Три полосы сверху вниз — в том порядке, в каком ими пользуются. */
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 44rem;
+}
+
+.palette {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+/* Кнопка показывает саму конструкцию, а не слово: палитра для того, кто
+   LaTeX не знает, и «дробь» он ищет глазами, а не по названию. */
+.key {
+  min-width: 2.6rem;
+  min-height: 2.4rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  line-height: 1;
+}
+.key:hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+}
+.key:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+/* Формула на кнопке мельче обычной: кнопка должна остаться кнопкой. */
+.key :global(.katex) {
+  font-size: 0.95em;
+}
+
+.paletteGap {
+  flex: 1 1 0.5rem;
+  min-width: 0.5rem;
+}
+
+/* Исходник — моноширинный: в нём считают скобки. */
+.source {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+.source:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Предпросмотр держит высоту всегда, даже пустой: иначе форма прыгает
+   на каждый символ, который делает формулу нерисуемой и обратно. */
+.preview {
+  min-height: 3.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.4rem 0.6rem;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  overflow-x: auto;
+}
+.previewEmpty,
+.previewPending {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}

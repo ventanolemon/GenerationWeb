@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { Block, InputField, TextBlock } from "../api/types";
 import BlockRenderer from "../blocks/BlockRenderer";
+import FormulaInput from "../formula/FormulaInput";
+import { hasHoles } from "../formula/fields";
 import styles from "../styles/views.module.css";
 
 /** Чем ядро помечает пропуск в тексте условия. */
@@ -101,14 +103,14 @@ const SINGLE: InputField[] = [{ kind: "text" }];
  * именем; ядро headless и про React ничего не знает, связь идёт по
  * имени — ровно как блоки связаны с фронтом полем `type`.
  *
- * Четыре раскладки: варианты (тест), пропуски в тексте, сетка (матрица
- * и таблица) и поля. Первая подходящая выигрывает — они не
- * комбинируются.
+ * Пять раскладок: варианты (тест), формула с палитрой, пропуски в
+ * тексте, сетка (матрица и таблица) и поля. Первая подходящая
+ * выигрывает — они не комбинируются.
  *
- * Чего здесь НЕТ: палитры формул (этап 7 плана), выбора НЕСКОЛЬКИХ,
- * перетаскивания карточек. Незнакомое имя виджета не ломает экран —
- * рисуем поля по их видам, потому что отказать студенту в вводе хуже,
- * чем показать не тот компонент.
+ * Чего здесь НЕТ: выбора НЕСКОЛЬКИХ, перетаскивания карточек.
+ * Незнакомое имя виджета не ломает экран — рисуем поля по их видам,
+ * потому что отказать студенту в вводе хуже, чем показать не тот
+ * компонент.
  */
 export default function AnswerInput({
   widget, fields, shape, options, prompt, disabled, resetKey, onAnswer,
@@ -182,6 +184,36 @@ export default function AnswerInput({
           Ответить
         </button>
       </form>
+    );
+  }
+
+  // Формула с палитрой. Единственная спецификация — выражение, поэтому
+  // и поле одно; набор слотов палитрой не задаётся, и реестр виджетов
+  // такую пару не пропустит (`core/widgets.py`).
+  //
+  // Проверяет ответ та же спецификация, что приняла бы набранное руками:
+  // палитра — способ ВВОДА, а не отдельный вид ответа. Это то же
+  // решение, что у теста и у пропусков в тексте.
+  if (widget === "formula_input" && list.length === 1) {
+    const key = list[0].name ?? "";
+    return (
+      <div className={styles.answerForm}>
+        <FormulaInput
+          value={values[key] ?? ""}
+          onChange={(next) => set(key, next)}
+          onSubmit={submit}
+          disabled={disabled}
+          autoFocus
+          placeholder={list[0].hint || "Ответ формулой"}
+        />
+        <button
+          type="button"
+          onClick={submit}
+          disabled={disabled || !filled || hasHoles(values[key] ?? "")}
+        >
+          Ответить
+        </button>
+      </div>
     );
   }
 
