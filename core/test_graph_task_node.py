@@ -545,3 +545,117 @@ class MatrixSlotTests(unittest.TestCase):
         task = run_graph(self.GRAPH)
         restored = StaticTask.from_dict(task.to_dict())
         self.assertEqual(restored.answer_spec.shape, (2, 2))
+
+
+class ListSlotTests(unittest.TestCase):
+    """
+    `много` — слот, число полей в котором приносят ДАННЫЕ.
+
+    Понадобилось на «вставьте пропущенные слова»: у одного предложения
+    один пропуск, у другого три, а объявление слотов одно на все выпуски
+    задания. До этого такое задание нельзя было собрать типизированно
+    вообще — и оно существовало блоками, которые ничего не проверяют.
+
+    Новой сущности здесь опять нет: несколько именованных полей — это
+    `SlotsSpec`, тот же, что обслуживает матрицу. Списочный слот
+    добавляет к нему ровно одно свойство.
+    """
+
+    def _run(self, values, slot="п:text:много"):
+        return run_graph({
+            "nodes": [
+                {"id": "l", "type": "string_list",
+                 "params": {"items": values}},
+                {"id": "t", "type": "task",
+                 "params": {"statement": "?", "slots": [slot]}},
+            ],
+            "edges": [{"from": "l:out", "to": "t:п"}],
+        })
+
+    def test_the_flag_needs_no_value(self):
+        (decl,) = parse_slots(["п:text:много"])
+        self.assertTrue(decl.many)
+        self.assertEqual(decl.kind, "text")
+
+    def test_the_port_takes_a_list(self):
+        node = DEFAULT_REGISTRY.create("task", "t", {"slots": ["п:text:много"]})
+        ports = {p.name: p for p in node.input_ports()}
+        self.assertEqual(ports["п"].type, PortType.LIST)
+
+    def test_a_plain_slot_is_untouched(self):
+        (decl,) = parse_slots(["п:text"])
+        self.assertFalse(decl.many)
+        self.assertIs(decl.port_type, PortType.STRING)
+
+    def test_fields_follow_the_data(self):
+        """Объявление одно, а полей столько, сколько принесли."""
+        for values in (["a"], ["a", "b"], ["a", "b", "c", "d"]):
+            with self.subTest(values=values):
+                spec = self._run(values).answer_spec
+                self.assertEqual(len(spec.input_fields()), len(values))
+
+    def test_names_are_numbered_from_one(self):
+        spec = self._run(["a", "b"]).answer_spec
+        self.assertEqual([f.name for f in spec.input_fields()], ["п1", "п2"])
+
+    def test_every_field_is_checked(self):
+        spec = self._run(["раз", "два"]).answer_spec
+        self.assertTrue(spec.check_slots({"п1": "раз", "п2": "два"}).accepted)
+        self.assertFalse(spec.check_slots({"п1": "раз", "п2": "три"}).accepted)
+
+    def test_options_reach_every_field(self):
+        """Опция вида описывает ЭЛЕМЕНТ, а не список целиком."""
+        spec = self._run(["Москва"], slot="п:text:много:alt=Moscow").answer_spec
+        self.assertTrue(spec.check_slots({"п1": "Moscow"}).accepted)
+
+    def test_numbers_work_too(self):
+        """`много` — общая опция, а не свойство строк."""
+        spec = self._run([1, 2, 3], slot="п:number:много:abs=0.5").answer_spec
+        self.assertTrue(spec.check_slots(
+            {"п1": "1.2", "п2": "2", "п3": "3"}).accepted)
+
+    def test_there_is_no_grid(self):
+        """
+        Пропуски идут подряд, а не сеткой. Форма 1×N сказала бы клиенту
+        «рисуй таблицу» там, где таблицы нет.
+        """
+        self.assertIsNone(self._run(["a", "b"]).answer_spec.shape)
+
+    def test_a_single_value_is_refused(self):
+        with self.assertRaises(GraphValidationError):
+            run_graph({
+                "nodes": [
+                    {"id": "c", "type": "constant_string",
+                     "params": {"value": "раз"}},
+                    {"id": "t", "type": "task",
+                     "params": {"statement": "?", "slots": ["п:text:много"]}},
+                ],
+                "edges": [{"from": "c:out", "to": "t:п"}],
+            })
+
+    def test_an_empty_list_is_not_a_task(self):
+        """
+        Пустой список — повод перегенерировать, а не упасть на сборке:
+        отличить «список пуст всегда» от «пуст в этот раз» на этапе
+        разбора нельзя. Причина обязана дожить до итогового сообщения,
+        иначе автор увидит только «не удалось за 100 попыток».
+        """
+        from core.graph.errors import GraphError
+        with self.assertRaises(GraphError) as caught:
+            self._run([])
+        self.assertIn("пустой список", str(caught.exception))
+
+    def test_no_test_port_for_a_list_slot(self):
+        """
+        Тестом задаётся вопрос целиком, а не отдельное поле из
+        нескольких: неверные варианты тут вешать не на что.
+        """
+        node = DEFAULT_REGISTRY.create(
+            "task", "t", {"slots": ["п:text:много:choices=4"]})
+        self.assertNotIn("п_wrong", [p.name for p in node.input_ports()])
+
+    def test_the_list_slot_crosses_the_process_boundary(self):
+        task = self._run(["раз", "два"])
+        restored = StaticTask.from_dict(task.to_dict())
+        self.assertTrue(restored.answer_spec.check_slots(
+            {"п1": "раз", "п2": "два"}).accepted)

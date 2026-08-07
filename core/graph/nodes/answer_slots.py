@@ -28,7 +28,7 @@
 Опции числа      : unit=, abs=, rel=, sig=
 Опции выражения  : vars=, reject=
 Опции строки     : alt=, wrong=, case, typos=
-Общие            : label=, mode=
+Общие            : label=, mode=, choices=, много
 
 Примеры::
 
@@ -36,6 +36,19 @@
     y:expr:vars=x:reject=(x-1)*(x+1)
     city:text:alt=Москва|Moscow:typos=1
     city:text:wrong=Казань|Тверь|Самара:choices=4
+    пропуски:text:много:typos=0
+
+Сколько полей — знают данные
+----------------------------
+`много` объявляет слот, число полей в котором приходит СПИСКОМ, а не
+пишется в объявлении. Понадобилось это на «вставьте пропущенные слова»:
+у одного предложения один пропуск, у другого три, а объявление слотов
+одно на все выпуски задания. Без этого такое задание вообще не собрать
+типизированно — и именно поэтому оно годами существовало блоками,
+которые ничего не проверяют.
+
+Поля получают технические имена `имя1`, `имя2`, … — тот же приём, что у
+ячеек матрицы (`r1c1`): в списке подпись полю даёт его номер.
 
 Разбор строгий: неизвестный вид, неизвестная опция, два взаимоисключающих
 допуска — это `GraphValidationError`, а не молчаливое умолчание. Ошибка в
@@ -46,9 +59,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Sequence, Tuple
 
-from ..errors import GraphValidationError
+from ..errors import GraphValidationError, RetryGeneration
 from ..port_types import PortType
 
 
@@ -73,7 +86,13 @@ _OPTIONS: Dict[str, Tuple[str, ...]] = {
 }
 #: `choices=N` — показать ответ ТЕСТОМ из N вариантов. Общая опция, а
 #: не свойство вида: тестом задаётся и число, и выражение, и строка.
-_COMMON_OPTIONS = ("label", "mode", "choices")
+#: `много` — число полей приходит списком, см. модульную докстроку.
+_COMMON_OPTIONS = ("label", "mode", "choices", "много")
+
+#: Опции без значения. Их приходится знать разбору в лицо: `имя:case`
+#: неотличимо от `имя:вид` без списка, и молчаливо принять «case» за вид
+#: значило бы получить невнятное «неизвестный вид» вместо работы.
+_BARE_FLAGS = ("case", "много")
 
 _PORT_TYPES = {
     "number": PortType.NUMBER,
@@ -94,8 +113,15 @@ class SlotDecl:
     options: Dict[str, str] = field(default_factory=dict)
 
     @property
+    def many(self) -> bool:
+        """Число полей приходит списком, а не написано в объявлении."""
+        return "много" in self.options
+
+    @property
     def port_type(self) -> PortType:
-        return _PORT_TYPES[self.kind]
+        # Список ответов — это LIST на входе, каким бы ни был вид ячеек:
+        # вид описывает ЭЛЕМЕНТ, а по проводу едет весь список.
+        return PortType.LIST if self.many else _PORT_TYPES[self.kind]
 
     @property
     def choices(self) -> int:
@@ -134,8 +160,12 @@ class SlotDecl:
         переводы из того же словаря), а не литералами в объявлении.
         Литеральный `wrong=` остаётся как статический запасной вариант —
         тот же приём, что у весов случайного выбора.
+
+        Списочный слот сюда не попадает: тестом задаётся вопрос целиком,
+        а не отдельное поле из нескольких.
         """
-        return self.kind == "text" and bool(self.options.get("choices"))
+        return (self.kind == "text" and not self.many
+                and bool(self.options.get("choices")))
 
     def build(self, value: Any, mode, wrong=None) -> "Any":
         """
@@ -158,6 +188,11 @@ class SlotDecl:
         else:
             active = mode
 
+        if self.many:
+            return self._many(value, active)
+        return self._one(value, active, wrong)
+
+    def _one(self, value: Any, active, wrong=None):
         if self.kind == "number":
             return self._number(value, active)
         if self.kind == "expr":
@@ -165,6 +200,35 @@ class SlotDecl:
         if self.kind == "matrix":
             return self._matrix(value, active)
         return self._text(value, active, wrong)
+
+    def _many(self, value: Any, active):
+        """
+        Набор полей по числу элементов списка.
+
+        Отдельного вида ответа для «нескольких одинаковых» нет и не
+        заводится: несколько именованных полей — это `SlotsSpec`, ровно
+        то же, что обслуживает матрицу и ответ «скорость и время».
+        Списочный слот добавляет к нему только одно: количество берётся
+        из данных, а не из объявления.
+
+        Формы (`shape`) здесь нет намеренно. Пропуски в предложении идут
+        подряд, а не сеткой, и объявить их таблицей 1×N значило бы
+        сказать клиенту «рисуй таблицу» там, где таблицы нет.
+        """
+        from core.answers import SlotsSpec
+
+        if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
+            raise GraphValidationError(
+                f"Слот {self.name!r} объявлен списочным (много), а на вход "
+                f"пришло {type(value).__name__}.")
+        items = list(value)
+        if not items:
+            raise RetryGeneration(
+                f"Слот {self.name!r}: пустой список — проверять нечего.")
+        return SlotsSpec(
+            slots=tuple((f"{self.name}{i}", self._one(item, active))
+                        for i, item in enumerate(items, start=1)),
+            mode=active)
 
     # ---------- сборка по видам ----------
 
@@ -329,7 +393,7 @@ def _parse_one(line: str) -> SlotDecl:
 
     kind = "number"
     rest = parts[1:]
-    if rest and "=" not in rest[0] and rest[0] not in ("case",):
+    if rest and "=" not in rest[0] and rest[0] not in _BARE_FLAGS:
         kind = rest[0]
         rest = rest[1:]
         if kind not in KINDS:

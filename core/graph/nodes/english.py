@@ -175,20 +175,39 @@ class WordsTrainerNode(Node):
     """
     Интерактивный тренажёр слов из словаря WORDS → TASK.
 
-    Оборачивает словарь в WordsSession (перевод RU→EN, антиповтор, мягкая
-    проверка по расстоянию Левенштейна). Финальный узел графа (как static_task).
+    Оборачивает словарь в WordsSession (антиповтор, межсессионная
+    статистика по каждому слову, мягкая проверка по расстоянию
+    Левенштейна). Финальный узел графа (как static_task).
+
+    Терминальность здесь законная, в отличие от `sentence_fill`: сессия
+    делает то, чего из частей не собрать — помнит, какие слова этому
+    ученику давались тяжело, между запусками. Ради одного задания
+    берите `words_pick` и `task`.
+
+    Направление перевода раньше было зашито внутрь (RU→EN), и автор
+    графа до него не дотягивался — то же самое, из-за чего словарь
+    оказался типом на один сценарий. Теперь оно параметр, и называется
+    так же, как у `words_pick`.
     """
     type_id = "words_trainer"
     category = "english"
     display_name = "Тренажёр слов"
-    description = ("Интерактивный тренажёр перевода RU→EN из словаря. "
-                   "Вход: WORDS. Выход: TASK.")
+    description = ("Интерактивный тренажёр перевода из словаря, с "
+                   "межсессионной статистикой. Вход: WORDS. Выход: TASK.")
     INPUTS = [Port("words", PortType.WORDS)]
     OUTPUTS = [Port("out", PortType.TASK)]
     PARAMS_SCHEMA = {
         "tolerant": {"type": "enum", "values": ["no", "yes"], "default": "no",
                      "optional": True},
+        "direction": {"type": "enum",
+                      "values": ["translation_to_term", "term_to_translation"],
+                      "default": "translation_to_term", "optional": True},
     }
+
+    def summary(self) -> str:
+        return ("рус→англ" if self.params.get(
+            "direction", "translation_to_term") == "translation_to_term"
+            else "англ→рус")
 
     def compute(self, inputs, ctx: ExecContext):
         from exercises.english.generators import WordsSession
@@ -198,6 +217,12 @@ class WordsTrainerNode(Node):
                 f"{self.node_ref()}: на вход не пришёл непустой словарь."
             )
         tolerant = str(self.params.get("tolerant", "no")) == "yes"
+        # Обратное направление — тот же словарь, перевёрнутый. Заводить
+        # ради него второй класс сессии незачем: она спрашивает ключ и
+        # ждёт значение, а что считать ключом — дело вызывающего.
+        if str(self.params.get("direction", "translation_to_term")) \
+                == "term_to_translation":
+            words = {v: k for k, v in words.items()}
         return {"out": WordsSession(dict(words), tolerant=tolerant)}
 
 
@@ -231,10 +256,90 @@ class SentencesFileNode(Node):
         return {"out": items}
 
 
+class SentencePickNode(Node):
+    """
+    Взять из набора одно предложение: шаблон, пропущенные слова, перевод.
+
+    Тот же разбор, что и у `words_pick`, и по той же причине. Готовый
+    `sentence_fill` отдаёт наружу только СОБРАННЫЕ БЛОКИ, а значения —
+    шаблон, ответы, перевод — остаются внутри. Выглядит это как узел
+    посреди графа, то есть как нечто составное, но составить с ним
+    ничего нельзя: блок не проверишь, не превратишь в тест и не
+    подставишь в чужой текст.
+
+    Цена этого замера: задание, собранное через `sentence_fill`, имеет
+    `is_checkable == False` — то есть не проверяется вовсе, не идёт в
+    задание с оценкой и не попадает в статистику. А правильные ответы
+    при этом уезжают в браузер прямо в условии, потому что сверять их
+    больше негде.
+
+    Отсюда четыре выхода. `answers` идёт списком в слот `много`, и это
+    единственный способ проверять пропуски: сколько их — знает
+    предложение, а не автор графа.
+    """
+    type_id = "sentence_pick"
+    category = "english"
+    display_name = "Предложение из набора"
+    description = ("Случайное предложение: шаблон с пропусками, ответы, "
+                   "перевод, готовый текст. Вход: SENTENCES. "
+                   "Выходы: STRING, LIST, STRING, STRING.")
+    INPUTS = [Port("in", PortType.SENTENCES)]
+    OUTPUTS = [Port("template", PortType.STRING),
+               Port("answers", PortType.LIST),
+               Port("translation", PortType.STRING),
+               Port("filled", PortType.STRING)]
+    PARAMS_SCHEMA = {
+        # Чем рисовать пропуск в условии. '___' — то, что стоит в файлах;
+        # но в печатном задании длинное подчёркивание читается лучше, а
+        # менять из-за этого сами файлы неправильно.
+        "blank": {"type": "str", "default": "___", "optional": True},
+    }
+
+    def compute(self, inputs, ctx: ExecContext):
+        from core.dynamic_blocks import FillInTheBlankBlock
+        items = inputs.get("in") or []
+        if not isinstance(items, (list, tuple)) or not items:
+            raise RetryGeneration(
+                f"{self.node_ref()}: на вход не пришёл непустой список.")
+
+        item = ctx.rng.choice(list(items))
+        try:
+            template = str(item["template"])
+            answers = [str(a) for a in item["answers"]]
+        except (KeyError, TypeError):
+            raise RetryGeneration(
+                f"{self.node_ref()}: у предложения нет template/answers.")
+        if template.count(FillInTheBlankBlock.PLACEHOLDER) != len(answers):
+            raise RetryGeneration(
+                f"{self.node_ref()}: пропусков в шаблоне не столько, "
+                f"сколько ответов.")
+
+        filled = template
+        for answer in answers:
+            filled = filled.replace(FillInTheBlankBlock.PLACEHOLDER, answer, 1)
+
+        blank = str(self.params.get("blank", "___")) or "___"
+        shown = template.replace(FillInTheBlankBlock.PLACEHOLDER, blank)
+
+        return {"template": shown, "answers": answers, "filled": filled,
+                "translation": str(item.get("translation", ""))
+                if isinstance(item, dict) else ""}
+
+
 class SentenceFillNode(Node):
     """
     Задание «вставьте пропущенные слова»: выбирает случайное предложение из
     набора SENTENCES и строит интерактивный блок с пропусками.
+
+    Проверки у этого узла нет и быть не может: наружу уходят готовые
+    блоки, а `FillInTheBlankBlock` сверяет ввод сам, у себя — в Qt по
+    подсветке поля, в браузере по списку `answers`, который для этого
+    едет в условии. Ни попытка, ни результат никуда не записываются.
+
+    Узел остаётся ради заданий, где нужен именно ввод ПО МЕСТУ, внутри
+    предложения. Если задание должно проверяться и оцениваться, берите
+    `sentence_pick` и слот `много` у `task`: там сверка на сервере, а
+    ответы клиенту не показываются.
 
     Выходы — два BLOCK_LIST (как у static_task): statement (условие с полями
     ввода + перевод) и answer (правильное предложение + список слов). Выбор

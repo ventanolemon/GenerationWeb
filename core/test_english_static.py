@@ -286,3 +286,209 @@ class AnsweringTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+# ======================================================================
+#  Та же болезнь у соседей
+# ======================================================================
+
+SENTENCES = [{"template": "She ___ to school and ___ home at five.",
+              "answers": ["goes", "comes"],
+              "translation": "Она ходит в школу и приходит домой в пять."},
+             {"template": "I ___ tea.", "answers": ["like"],
+              "translation": "Я люблю чай."}]
+
+
+def _sentences_file() -> str:
+    import json
+    import os
+    import tempfile
+    fd, path = tempfile.mkstemp(suffix=".json")
+    os.close(fd)
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(SENTENCES, fh, ensure_ascii=False)
+    return path
+
+
+class SentenceFillIsNotCheckedTests(unittest.TestCase):
+    """
+    Замер, ради которого сосед и проверялся.
+
+    `sentence_fill` стоит ПОСРЕДИ графа и потому выглядит составным, но
+    отдаёт наружу только собранные блоки. Составить с ними ничего
+    нельзя: блок не проверишь, не превратишь в тест и не подставишь в
+    чужой текст. Тест закрепляет цену этого — и заодно не даёт принять
+    её за случайность, если узел когда-нибудь начнут править.
+    """
+
+    def setUp(self):
+        import os
+        self.path = _sentences_file()
+        self.addCleanup(lambda: os.unlink(self.path))
+
+    def _task(self):
+        return GraphExecutor(GraphSpec.parse({
+            "nodes": [
+                {"id": "s", "type": "sentences_file",
+                 "params": {"file": self.path}},
+                {"id": "f", "type": "sentence_fill", "params": {}},
+                {"id": "t", "type": "static_task", "params": {}},
+            ],
+            "edges": [{"from": "s:out", "to": "f:in"},
+                      {"from": "f:statement", "to": "t:statement"},
+                      {"from": "f:answer", "to": "t:answer"}],
+        })).run()
+
+    def test_the_task_cannot_be_checked_at_all(self):
+        task = self._task()
+        self.assertFalse(task.is_checkable)
+        self.assertIsNone(task.answer_spec)
+        self.assertIsNone(session_from_task(task))
+
+    def test_the_answers_travel_to_the_client(self):
+        """
+        Сверять ввод больше негде, поэтому правильные ответы уезжают в
+        условии — их видно в devtools. Это не регрессия и не новость:
+        так узел устроен с самого начала, и ровно поэтому у него
+        появилась проверяемая замена.
+        """
+        payload = [b.to_dict() for b in self._task().statement]
+        blanks = [b for b in payload if b["type"] == "fill_in_blank"]
+        self.assertTrue(blanks)
+        self.assertTrue(any(b.get("answers") for b in blanks))
+
+
+class SentencePickTests(unittest.TestCase):
+    """Лечение то же, что у словаря: узел отдаёт ЧАСТИ, а не блоки."""
+
+    def setUp(self):
+        import os
+        self.path = _sentences_file()
+        self.addCleanup(lambda: os.unlink(self.path))
+
+    def _task(self, slot="пропуск:text:много:typos=0"):
+        return GraphExecutor(GraphSpec.parse({
+            "nodes": [
+                {"id": "s", "type": "sentences_file",
+                 "params": {"file": self.path}},
+                {"id": "p", "type": "sentence_pick", "params": {}},
+                {"id": "t", "type": "task", "params": {
+                    "statement": "Вставьте пропущенные слова:\n"
+                                 "#предложение#\nПеревод: #перевод#",
+                    "slots": [slot],
+                    "layout": "template",
+                    "answer_template": "#целиком#"}},
+            ],
+            "edges": [{"from": "s:out", "to": "p:in"},
+                      {"from": "p:template", "to": "t:предложение"},
+                      {"from": "p:answers", "to": "t:пропуск"},
+                      {"from": "p:translation", "to": "t:перевод"},
+                      {"from": "p:filled", "to": "t:целиком"}],
+        })).run()
+
+    def test_the_task_is_checkable(self):
+        self.assertTrue(self._task().is_checkable)
+
+    def test_the_statement_keeps_no_answers(self):
+        """Главное отличие от блока: сверка на сервере, ответов у клиента нет."""
+        for _ in range(10):
+            task = self._task()
+            shown = " ".join(b.render_plain() for b in task.statement)
+            answers = [a for s in SENTENCES for a in s["answers"]]
+            leaked = [a for a in answers if a in shown]
+            self.assertEqual(leaked, [], f"ответ виден в условии: {shown!r}")
+
+    def test_fields_follow_the_sentence(self):
+        """
+        У одного предложения один пропуск, у другого два, а объявление
+        слотов одно на все выпуски. Ради этого `много` и заведено.
+        """
+        seen = set()
+        for _ in range(30):
+            task = self._task()
+            seen.add(len(task.answer_spec.input_fields()))
+        self.assertEqual(seen, {1, 2})
+
+    def test_every_blank_is_checked(self):
+        for _ in range(20):
+            task = self._task()
+            session = session_from_task(task)
+            right = {f.name: a for f, a in
+                     zip(task.answer_spec.input_fields(),
+                         self._expected(task))}
+            self.assertTrue(session.submit_values(right).correct)
+
+    def test_a_wrong_blank_is_refused(self):
+        for _ in range(20):
+            task = self._task()
+            values = {f.name: "нет" for f in task.answer_spec.input_fields()}
+            self.assertFalse(session_from_task(task).submit_values(values).correct)
+
+    def _expected(self, task):
+        shown = " ".join(b.render_plain() for b in task.answer)
+        for item in SENTENCES:
+            filled = item["template"]
+            for a in item["answers"]:
+                filled = filled.replace("___", a, 1)
+            if filled in shown:
+                return item["answers"]
+        self.fail(f"ответ не совпал ни с одним предложением: {shown!r}")
+
+    def test_the_answer_shows_the_whole_sentence(self):
+        task = self._task()
+        shown = " ".join(b.render_plain() for b in task.answer)
+        self.assertNotIn("___", shown)
+
+    def test_the_blank_marker_is_a_parameter(self):
+        """
+        В печатном задании длинное подчёркивание читается лучше, но
+        менять из-за этого сами файлы неправильно.
+        """
+        graph = {
+            "nodes": [
+                {"id": "s", "type": "sentences_file",
+                 "params": {"file": self.path}},
+                {"id": "p", "type": "sentence_pick",
+                 "params": {"blank": "………"}},
+                {"id": "t", "type": "task", "params": {
+                    "statement": "#предложение#",
+                    "slots": ["пропуск:text:много"]}},
+            ],
+            "edges": [{"from": "s:out", "to": "p:in"},
+                      {"from": "p:template", "to": "t:предложение"},
+                      {"from": "p:answers", "to": "t:пропуск"}],
+        }
+        task = GraphExecutor(GraphSpec.parse(graph)).run()
+        self.assertIn("………", task.statement[0].render_plain())
+
+
+class WordsTrainerReachesItsDecisionsTests(unittest.TestCase):
+    """
+    Терминальность тренажёра законная, в отличие от `sentence_fill`:
+    сессия помнит, какие слова этому ученику давались тяжело, между
+    запусками — из частей такого не собрать. Болезнь была мягче:
+    направление перевода лежало внутри, и автор графа до него не
+    дотягивался.
+    """
+
+    def _session(self, **params):
+        return GraphExecutor(GraphSpec.parse({
+            "nodes": [{"id": "d", "type": "words_file",
+                       "params": {"inline": dict(WORDS)}},
+                      {"id": "w", "type": "words_trainer", "params": params}],
+            "edges": [{"from": "d:out", "to": "w:words"}],
+        })).run()
+
+    def test_default_direction_is_unchanged(self):
+        asked = self._session().initial_prompt()[1].render_plain()
+        self.assertIn(asked, WORDS.values())
+
+    def test_direction_can_be_reversed(self):
+        session = self._session(direction="term_to_translation")
+        asked = session.initial_prompt()[1].render_plain()
+        self.assertIn(asked, WORDS)
+        self.assertTrue(session.submit(WORDS[asked]).correct)
+
+    def test_the_reversed_trainer_still_checks(self):
+        session = self._session(direction="term_to_translation")
+        self.assertFalse(session.submit("ерунда").correct)
