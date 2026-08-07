@@ -378,3 +378,290 @@ class Generator7Tests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class ComparisonOperatorAsDataTests(unittest.TestCase):
+    """
+    Знак сравнения — данные, а не настройка узла.
+
+    Поймано на задании «сколько раз программа выведет YES»: знак там
+    выбирается случайно. Обойти это было нечем — четыре узла с
+    фиксированными знаками надо было бы выбирать мультиплексором, а
+    `pick` булевы каналы не берёт вовсе.
+    """
+
+    def _cmp(self, a, b, *, param="==", wired=None):
+        graph = {"nodes": [
+            {"id": "a", "type": "constant_number", "params": {"value": a}},
+            {"id": "b", "type": "constant_number", "params": {"value": b}},
+            {"id": "c", "type": "compare", "params": {"op": param}},
+            {"id": "n", "type": "bool_number", "params": {}},
+            {"id": "t", "type": "task", "params": {
+                "statement": "?", "slots": ["x:number"]}},
+        ], "edges": [
+            {"from": "a:out", "to": "c:a"}, {"from": "b:out", "to": "c:b"},
+            {"from": "c:out", "to": "n:in"}, {"from": "n:out", "to": "t:x"},
+        ]}
+        if wired is not None:
+            graph["nodes"].append({"id": "op", "type": "constant_string",
+                                   "params": {"value": wired}})
+            graph["edges"].append({"from": "op:out", "to": "c:op"})
+        return _run(graph).answer_spec.value == 1.0
+
+    def test_every_operator_works_through_the_wire(self):
+        cases = {"<": (1, 2), "<=": (2, 2), ">": (3, 2), ">=": (2, 2),
+                 "==": (2, 2), "!=": (1, 2)}
+        for op, (a, b) in cases.items():
+            with self.subTest(op=op):
+                self.assertTrue(self._cmp(a, b, wired=op))
+
+    def test_the_wire_beats_the_parameter(self):
+        # Параметр говорит «равно», провод — «меньше».
+        self.assertTrue(self._cmp(1, 2, param="==", wired="<"))
+
+    def test_the_parameter_still_works_alone(self):
+        self.assertTrue(self._cmp(2, 2, param="=="))
+        self.assertFalse(self._cmp(1, 2, param="=="))
+
+    def test_garbage_on_the_wire_does_not_pass_silently(self):
+        """
+        Подставить «==» молча значило бы сравнивать не тем знаком, и
+        никто бы не заметил.
+        """
+        from core.graph.errors import GraphError
+        with self.assertRaises(GraphError):
+            self._cmp(1, 2, wired="≈")
+
+
+class BoolReachesArithmeticTests(unittest.TestCase):
+    """
+    «Сколько случаев подходит» — форма, которой полна информатика.
+    Без превращения логического в число она собиралась мультиплексором с
+    двумя константами на каждое сравнение.
+    """
+
+    def _value(self, flag):
+        graph = {"nodes": [
+            {"id": "b", "type": "constant_bool", "params": {"value": flag}},
+            {"id": "n", "type": "bool_number", "params": {}},
+            {"id": "t", "type": "task", "params": {
+                "statement": "?", "slots": ["x:number"]}},
+        ], "edges": [{"from": "b:out", "to": "n:in"},
+                     {"from": "n:out", "to": "t:x"}]}
+        return _run(graph).answer_spec.value
+
+    def test_yes_is_one_no_is_zero(self):
+        self.assertEqual(self._value(True), 1.0)
+        self.assertEqual(self._value(False), 0.0)
+
+    def test_the_editor_can_insert_it_automatically(self):
+        """
+        Провод BOOL → NUMBER теперь предлагает конвертер, а не отказ.
+        """
+        from core.graph.conversions import find_converter
+        from core.graph.port_types import PortType
+        self.assertEqual(find_converter(PortType.BOOL, PortType.NUMBER),
+                         "bool_number")
+
+
+class Generator6Tests(unittest.TestCase):
+    """
+    Старое задание «сколько раз выведет YES»: одиннадцать узлов снаружи и
+    девятнадцать в теле цикла.
+
+    Проверяется независимым пересчётом: ответ обязан совпасть с тем, что
+    даёт прямое вычисление предиката по показанным наборам.
+    """
+
+    OPS = ["<", "<=", ">", ">="]
+    BODY = {"nodes": [
+        {"id": "i", "type": "loop_index", "params": {}},
+        {"id": "N_", "type": "input_var", "params": {"name": "N", "type": "list"}},
+        {"id": "T_", "type": "input_var", "params": {"name": "T", "type": "list"}},
+        {"id": "n", "type": "list_get", "params": {"elem_type": "number"}},
+        {"id": "t", "type": "list_get", "params": {"elem_type": "number"}},
+        {"id": "пN", "type": "input_var",
+         "params": {"name": "порогN", "type": "number"}},
+        {"id": "пT", "type": "input_var",
+         "params": {"name": "порогT", "type": "number"}},
+        {"id": "оN", "type": "input_var",
+         "params": {"name": "опN", "type": "string"}},
+        {"id": "оT", "type": "input_var",
+         "params": {"name": "опT", "type": "string"}},
+        {"id": "срN", "type": "compare", "params": {}},
+        {"id": "срT", "type": "compare", "params": {}},
+        {"id": "чN", "type": "bool_number", "params": {}},
+        {"id": "чT", "type": "bool_number", "params": {}},
+        {"id": "и", "type": "formula",
+         "params": {"expr": "p*q", "constants": "off"}},
+        {"id": "акк", "type": "shift_get",
+         "params": {"name": "счёт", "type": "number"}},
+        {"id": "плюс", "type": "formula",
+         "params": {"expr": "a + b", "constants": "off"}},
+        {"id": "зап", "type": "shift_set",
+         "params": {"name": "счёт", "type": "number"}},
+        {"id": "о", "type": "output_var",
+         "params": {"name": "итог", "type": "number"}},
+        {"id": "tb", "type": "to_block", "params": {}}],
+        "edges": [
+            {"from": "i:out", "to": "n:index"},
+            {"from": "N_:out", "to": "n:list"},
+            {"from": "i:out", "to": "t:index"},
+            {"from": "T_:out", "to": "t:list"},
+            {"from": "n:out", "to": "срN:a"},
+            {"from": "пN:out", "to": "срN:b"},
+            {"from": "оN:out", "to": "срN:op"},
+            {"from": "t:out", "to": "срT:a"},
+            {"from": "пT:out", "to": "срT:b"},
+            {"from": "оT:out", "to": "срT:op"},
+            {"from": "срN:out", "to": "чN:in"},
+            {"from": "срT:out", "to": "чT:in"},
+            {"from": "чN:out", "to": "и:p"},
+            {"from": "чT:out", "to": "и:q"},
+            {"from": "акк:out", "to": "плюс:a"},
+            {"from": "и:out", "to": "плюс:b"},
+            {"from": "плюс:out", "to": "зап:value"},
+            {"from": "зап:out", "to": "о:value"},
+            {"from": "зап:out", "to": "tb:in"}], "meta": {}}
+
+    @property
+    def GRAPH(self):
+        return {"nodes": [
+            {"id": "диап", "type": "number_range",
+             "params": {"start": -25, "stop": 100, "step": 1}},
+            {"id": "N", "type": "random_choice", "params": {
+                "elem_type": "number", "count": 9, "allow_duplicates": True}},
+            {"id": "T", "type": "random_choice", "params": {
+                "elem_type": "number", "count": 9, "allow_duplicates": True}},
+            {"id": "пN", "type": "random_natural", "params": {"min": 1, "max": 100}},
+            {"id": "пT", "type": "random_natural", "params": {"min": 1, "max": 100}},
+            {"id": "оN", "type": "random_choice", "params": {
+                "elem_type": "string", "items": self.OPS, "count": 1}},
+            {"id": "оT", "type": "random_choice", "params": {
+                "elem_type": "string", "items": self.OPS, "count": 1}},
+            {"id": "ц", "type": "repeat", "params": {
+                "count": 9,
+                "imports": ["N:list", "T:list", "порогN:number",
+                            "порогT:number", "опN:string", "опT:string"],
+                "registers": ["счёт:number:0"],
+                "outputs": ["итог:number:last"], "body": self.BODY}},
+            {"id": "jN", "type": "list_join", "params": {"sep": ", "}},
+            {"id": "jT", "type": "list_join", "params": {"sep": ", "}},
+            {"id": "t", "type": "task", "params": {
+                "statement": "Печатает YES, если N #опN# #пN# И T #опT# #пT#.\n"
+                             "N: #сN#\nT: #сT#\nСколько раз?",
+                "slots": ["сколько:number"]}}],
+            "edges": [
+                {"from": "диап:out", "to": "N:list"},
+                {"from": "диап:out", "to": "T:list"},
+                {"from": "N:out", "to": "ц:N"}, {"from": "T:out", "to": "ц:T"},
+                {"from": "пN:out", "to": "ц:порогN"},
+                {"from": "пT:out", "to": "ц:порогT"},
+                {"from": "оN:out", "to": "ц:опN"},
+                {"from": "оT:out", "to": "ц:опT"},
+                {"from": "N:out", "to": "jN:in"},
+                {"from": "T:out", "to": "jT:in"},
+                {"from": "jN:out", "to": "t:сN"},
+                {"from": "jT:out", "to": "t:сT"},
+                {"from": "оN:out", "to": "t:опN"},
+                {"from": "оT:out", "to": "t:опT"},
+                {"from": "пN:out", "to": "t:пN"},
+                {"from": "пT:out", "to": "t:пT"},
+                {"from": "ц:итог", "to": "t:сколько"}]}
+
+    def test_the_count_matches_a_direct_recount(self):
+        import operator
+        import re
+        ops = {"<": operator.lt, "<=": operator.le,
+               ">": operator.gt, ">=": operator.ge}
+        for _ in range(25):
+            task = _run(self.GRAPH)
+            shown = task.statement[0].render_plain()
+            found = re.search(r"N (\S+) (\d+) И T (\S+) (\d+)", shown)
+            ns = [int(x) for x in
+                  shown.split("N: ")[1].split("\n")[0].split(", ")]
+            ts = [int(x) for x in
+                  shown.split("T: ")[1].split("\n")[0].split(", ")]
+            want = sum(1 for n, t in zip(ns, ts)
+                       if ops[found.group(1)](n, int(found.group(2)))
+                       and ops[found.group(3)](t, int(found.group(4))))
+            self.assertEqual(
+                int(float(task.answer_spec.accepted_examples()[0])), want,
+                shown)
+
+    def test_the_task_is_checkable(self):
+        task = _run(self.GRAPH)
+        self.assertTrue(task.is_checkable)
+
+
+class Generator8Tests(unittest.TestCase):
+    """
+    Старое задание про поисковые запросы: включение-исключение.
+    Тринадцать узлов, семнадцать проводов, ни одного нового узла.
+    """
+
+    GRAPH = {
+        "nodes": [
+            {"id": "x", "type": "random_word", "params": {
+                "min_length": 3, "max_length": 7, "unique_letters": "yes"}},
+            {"id": "y", "type": "random_word", "params": {
+                "min_length": 3, "max_length": 7, "unique_letters": "yes"}},
+            {"id": "nx", "type": "random_natural",
+             "params": {"min": 5, "max": 50, "step": 1}},
+            {"id": "ny", "type": "random_natural",
+             "params": {"min": 5, "max": 50, "step": 1}},
+            {"id": "пер", "type": "random_natural", "params": {"min": 1, "max": 4}},
+            {"id": "мин", "type": "formula",
+             "params": {"expr": "min(a,b)", "constants": "off"}},
+            {"id": "inter", "type": "formula",
+             "params": {"expr": "floor(m/k)", "constants": "off"}},
+            {"id": "union", "type": "formula",
+             "params": {"expr": "a + b - i", "constants": "off"}},
+            {"id": "сотX", "type": "formula",
+             "params": {"expr": "100*a", "constants": "off"}},
+            {"id": "сотU", "type": "formula",
+             "params": {"expr": "100*u", "constants": "off"}},
+            {"id": "сотI", "type": "formula",
+             "params": {"expr": "100*i", "constants": "off"}},
+            {"id": "сотY", "type": "formula",
+             "params": {"expr": "100*b", "constants": "off"}},
+            {"id": "t", "type": "task", "params": {
+                "statement": "Найдено страниц:\n#X# — #nX#\n#X# | #Y# — #nU#\n"
+                             "#X# & #Y# — #nI#\nСколько найдёт #Y#?",
+                "slots": ["сколько:number"]}}],
+        "edges": [
+            {"from": "nx:out", "to": "мин:a"}, {"from": "ny:out", "to": "мин:b"},
+            {"from": "мин:out", "to": "inter:m"},
+            {"from": "пер:out", "to": "inter:k"},
+            {"from": "nx:out", "to": "union:a"},
+            {"from": "ny:out", "to": "union:b"},
+            {"from": "inter:out", "to": "union:i"},
+            {"from": "nx:out", "to": "сотX:a"},
+            {"from": "union:out", "to": "сотU:u"},
+            {"from": "inter:out", "to": "сотI:i"},
+            {"from": "ny:out", "to": "сотY:b"},
+            {"from": "x:out", "to": "t:X"}, {"from": "y:out", "to": "t:Y"},
+            {"from": "сотX:out", "to": "t:nX"},
+            {"from": "сотU:out", "to": "t:nU"},
+            {"from": "сотI:out", "to": "t:nI"},
+            {"from": "сотY:out", "to": "t:сколько"}],
+    }
+
+    def test_inclusion_exclusion_holds(self):
+        """|Y| = |X ∪ Y| − |X| + |X ∩ Y| — иначе задание нерешаемо."""
+        import re
+        for _ in range(25):
+            task = _run(self.GRAPH)
+            shown = task.statement[0].render_plain()
+            nx, nu, ni = [int(v) for v in re.findall(r"— (\d+)", shown)]
+            self.assertEqual(
+                int(float(task.answer_spec.accepted_examples()[0])),
+                nu - nx + ni, shown)
+
+    def test_the_intersection_is_not_bigger_than_the_parts(self):
+        import re
+        for _ in range(25):
+            shown = _run(self.GRAPH).statement[0].render_plain()
+            nx, nu, ni = [int(v) for v in re.findall(r"— (\d+)", shown)]
+            self.assertLessEqual(ni, nx, shown)
+            self.assertLessEqual(nx, nu, shown)

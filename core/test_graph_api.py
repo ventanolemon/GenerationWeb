@@ -47,8 +47,8 @@ def test_catalog():
     # кого-то остался со старой палитрой. Меняются они ВМЕСТЕ с составом
     # узлов — это не «падающий тест», а напоминание сверить список.
     cat = graph_api.build_catalog()
-    assert cat["catalog_version"] == "eb62442773d3aefd", cat["catalog_version"]
-    assert len(cat["nodes"]) == 138, len(cat["nodes"])
+    assert cat["catalog_version"] == "d7203ac3b6f74530", cat["catalog_version"]
+    assert len(cat["nodes"]) == 139, len(cat["nodes"])
     assert cat["port_types"] and cat["conversions"]
     rn = next(n for n in cat["nodes"] if n["type_id"] == "random_natural")
     assert rn["category"] == "source"
