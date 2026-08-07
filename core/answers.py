@@ -946,6 +946,119 @@ _EXPR_FUNCTIONS = frozenset({
     "pi", "E", "I", "oo", "factorial",
 })
 
+_EMPTY_PARENS = re.compile(r"\(\s*\)")
+"""
+Пустые скобки: `()`, `sin( )`.
+
+Ловится ДО `parse_expr`, а не после его отказа — потому что отказа может
+не быть. `parse_expr("()")` не бросает исключение, а тихо возвращает
+пустой кортеж, и это ломается только ниже по цепочке, на сравнении
+выражений, с сообщением про внутренности sympy. Дешёвая проверка строки
+дешевле такого падения.
+"""
+
+_OP_CHARS = "+-*/^"
+_OP_DISPLAY = {"-": "−"}
+"""Знак минуса в подсказке — типографский, не дефис: так его пишут в учебнике."""
+
+
+def _op_symbol(ch: str) -> str:
+    return _OP_DISPLAY.get(ch, ch)
+
+
+def _bracket_mismatch(source: str) -> Optional[str]:
+    """
+    Баланс круглых скобок — самая надёжная из эвристик: это подсчёт, а не
+    попытка понять грамматику. Отрицательный баланс в процессе (`)(`)
+    считается лишней закрывающей, положительный в конце — недостающими
+    закрывающими.
+    """
+    depth = 0
+    extra = 0
+    for ch in source:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            if depth == 0:
+                extra += 1
+            else:
+                depth -= 1
+    if extra == 1:
+        return "Лишняя закрывающая скобка."
+    if extra > 1:
+        return f"Лишних закрывающих скобок: {extra}."
+    if depth == 1:
+        return "Не хватает одной закрывающей скобки."
+    if depth > 1:
+        return f"Не хватает {depth} закрывающих скобок."
+    return None
+
+
+def _trailing_operator(source: str) -> Optional[str]:
+    """Выражение обрывается на знаке операции — оставленная на потом мысль."""
+    stripped = source.rstrip()
+    if stripped and stripped[-1] in _OP_CHARS:
+        return (f"Выражение обрывается на знаке «{_op_symbol(stripped[-1])}» "
+                "— после него нужен операнд.")
+    return None
+
+
+_OPERAND_MISSING_IN_PARENS = re.compile(r"([+\-*/^])\s*\)")
+
+
+def _operand_missing_before_paren(source: str) -> Optional[str]:
+    """
+    Знак операции стоит прямо перед закрывающей скобкой: `sqrt(-)`,
+    `(2+)`. Частый случай — недописанный аргумент функции.
+    """
+    match = _OPERAND_MISSING_IN_PARENS.search(source)
+    if match is None:
+        return None
+    return (f"Внутри скобок выражение обрывается на знаке "
+            f"«{_op_symbol(match.group(1))}» — после него нужен операнд.")
+
+
+def _adjacent_operator_pair(source: str) -> Optional[str]:
+    """
+    Два знака операции подряд — кроме двух сочетаний, которые sympy
+    понимает: второй знак «+»/«-» как унарный при первом («2*-3» —
+    «2 умножить на минус 3») и пара «**» как возведение в степень.
+    Остальные сочетания всегда синтаксическая ошибка, потому и хватает
+    посимвольного перебора без разбора грамматики.
+    """
+    for i in range(len(source) - 1):
+        a, b = source[i], source[i + 1]
+        if a not in _OP_CHARS or b not in _OP_CHARS:
+            continue
+        if b in "+-":
+            continue
+        if a == "*" and b == "*":
+            continue
+        return f"Два знака подряд: «{_op_symbol(a)}{_op_symbol(b)}»."
+    return None
+
+
+def _diagnose_syntax(source: str) -> Optional[str]:
+    """
+    Назвать причину отказа `parse_expr` на языке школьной математики —
+    без токенов, позиций в строке и имён функций разбора.
+
+    Вызывается ТОЛЬКО из ветки `except` вокруг уже провалившегося
+    разбора (§10.2 плана): эвристики ниже — счётчик и поиск по строке,
+    дешёвые сами по себе, но гонять их на каждый верный ответ незачем,
+    раз для верного ответа результат заведомо `None`.
+
+    Порядок — от самой надёжной эвристики к самой общей: несовпадение
+    скобок распознаётся однозначным подсчётом, а «два знака подряд»
+    ловит любую оставшуюся пару, до которой не добрались более точные
+    проверки. `None` — эвристики не опознали причину, включается общее
+    сообщение.
+    """
+    return (_bracket_mismatch(source)
+            or _trailing_operator(source)
+            or _operand_missing_before_paren(source)
+            or _adjacent_operator_pair(source))
+
 
 #: Точки, в которых сравниваются выражения перед символьным упрощением.
 #: Иррациональные и не круглые нарочно: в 0, 1 и 2 слишком многое
@@ -1244,6 +1357,12 @@ class ExpressionSpec(AnswerSpec):
             raise ExpressionError("В выражении есть недопустимые символы.")
         if "__" in source:
             raise ExpressionError("В выражении есть недопустимые символы.")
+        if _EMPTY_PARENS.search(source):
+            # `parse_expr("()")` не бросает исключение — тихо возвращает
+            # пустой кортеж, который ломается только ниже по цепочке
+            # сравнения. Ловим здесь, а не ждём отказа, которого не будет.
+            raise ExpressionError(
+                "Внутри скобок ничего нет — там должен быть операнд.")
 
         allowed = self._allowed_names()
         for name in _IDENTIFIER.findall(source):
@@ -1255,7 +1374,11 @@ class ExpressionSpec(AnswerSpec):
             return parse_expr(source, transformations=_transformations(),
                               evaluate=True)
         except Exception as exc:
-            raise ExpressionError("Выражение не разобрано.") from exc
+            # Причина устанавливается ТОЛЬКО здесь, после того как обычный
+            # разбор уже провалился (§10.2 плана) — на пути верного ответа
+            # эти эвристики не запускаются ни разу.
+            raise ExpressionError(
+                _diagnose_syntax(source) or "Выражение не разобрано.") from exc
 
     def _payload(self) -> dict:
         out: dict = {"value": self.value}
