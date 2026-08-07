@@ -65,7 +65,7 @@ def _limit_memory(megabytes: int) -> None:
 
 def _handle(request: dict) -> dict:
     """Исполнить один граф. Любая ошибка — ответ, а не падение процесса."""
-    from .errors import GraphError, GraphValidationError
+    from .errors import GraphError, GraphValidationError, internal_error_text
     from .executor import GraphExecutor
     from .spec import GraphSpec
 
@@ -84,7 +84,7 @@ def _handle(request: dict) -> dict:
         return {"ok": False, "kind": "validation", "error": str(exc)}
     except Exception as exc:                       # noqa: BLE001
         return {"ok": False, "kind": "internal",
-                "error": f"{type(exc).__name__}: {exc}"}
+                "error": internal_error_text(exc)}
 
     try:
         task = executor.run()
@@ -94,7 +94,7 @@ def _handle(request: dict) -> dict:
         return {"ok": False, "kind": "runtime", "error": str(exc)}
     except Exception as exc:                       # noqa: BLE001
         return {"ok": False, "kind": "runtime",
-                "error": f"{type(exc).__name__}: {exc}"}
+                "error": internal_error_text(exc)}
 
     to_dict = getattr(task, "to_dict", None)
     if to_dict is None:
@@ -108,7 +108,7 @@ def _handle(request: dict) -> dict:
         return {"ok": True, "task": to_dict()}
     except Exception as exc:                       # noqa: BLE001
         return {"ok": False, "kind": "serialization",
-                "error": f"{type(exc).__name__}: {exc}"}
+                "error": internal_error_text(exc)}
 
 
 def _preview(request: dict) -> dict:
@@ -123,13 +123,14 @@ def _preview(request: dict) -> dict:
     изоляции. Двух реализаций предпросмотра быть не должно.
     """
     from .. import graph_probe
+    from .errors import internal_error_text
     try:
         return graph_probe.preview_runs(
             dict(request.get("spec") or {}),
             request.get("seeds"),
             int(request.get("max_seeds", 8)))
     except Exception as exc:                       # noqa: BLE001
-        return {"ok": False, "errors": [f"{type(exc).__name__}: {exc}"],
+        return {"ok": False, "errors": [internal_error_text(exc)],
                 "runs": []}
 
 
@@ -157,8 +158,9 @@ def main() -> int:
                 # Ни один запрос не имеет права убить процесс: иначе
                 # достаточно одного кривого поля, чтобы вызывающий получил
                 # «процесс завершился, не ответив» вместо внятной ошибки.
+                from .errors import internal_error_text
                 response = {"ok": False, "kind": "internal",
-                            "error": f"{type(exc).__name__}: {exc}"}
+                            "error": internal_error_text(exc)}
         sys.stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
         sys.stdout.flush()
     return 0

@@ -212,7 +212,7 @@ class ListGetNode(Node):
             idx = int(self.params.get("index", -1))
         if not items or not (-len(items) <= idx < len(items)):
             raise RetryGeneration(
-                f"list_get {self.node_id!r}: индекс {idx} вне диапазона (len={len(items)})."
+                f"{self.node_ref()}: индекс {idx} вне диапазона (len={len(items)})."
             )
         return {"out": items[idx]}
 
@@ -279,7 +279,7 @@ class RandomChoiceNode(Node):
     def validate_params(self) -> None:
         if self._count() != int(self.params.get("count", 1) or 1):
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: count должно быть целым ≥ 1."
+                f"{self.node_ref()}: count должно быть целым ≥ 1."
             )
         items = self.params.get("items") or []
         allow_dup = bool(self.params.get("allow_duplicates", False))
@@ -287,7 +287,7 @@ class RandomChoiceNode(Node):
         # из входа list известен только в рантайме (см. compute).
         if items and not allow_dup and self._count() > len(items):
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: count={self._count()} больше набора "
+                f"{self.node_ref()}: count={self._count()} больше набора "
                 f"({len(items)}) без повторов (allow_duplicates=false)."
             )
         weights = self.params.get("weights") or []
@@ -305,7 +305,7 @@ class RandomChoiceNode(Node):
             return _coerce_to_elem_type(value, self.params.get("elem_type", "string"))
         except RetryGeneration:
             raise RetryGeneration(
-                f"random_choice {self.node_id!r}: элемент {value!r} не число."
+                f"{self.node_ref()}: элемент {value!r} не число."
             )
 
     def _parse_weights(self, raw, expected: int) -> list[float]:
@@ -323,17 +323,17 @@ class RandomChoiceNode(Node):
                 values.append(float(str(item).replace(",", ".")))
             except (TypeError, ValueError):
                 raise GraphValidationError(
-                    f"Узел {self.node_id!r}: вес {item!r} — не число.")
+                    f"{self.node_ref()}: вес {item!r} — не число.")
         if len(values) != expected:
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: весов {len(values)}, "
+                f"{self.node_ref()}: весов {len(values)}, "
                 f"а вариантов {expected} — они сопоставляются по порядку.")
         if any(v < 0 for v in values):
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: отрицательный вес.")
+                f"{self.node_ref()}: отрицательный вес.")
         if sum(values) <= 0:
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: все веса нулевые — выбирать не из чего.")
+                f"{self.node_ref()}: все веса нулевые — выбирать не из чего.")
         return values
 
     def _weights_for(self, items, inputs) -> "list[float] | None":
@@ -348,7 +348,7 @@ class RandomChoiceNode(Node):
             items = list(self.params.get("items") or [])
         if not items:
             raise RetryGeneration(
-                f"random_choice {self.node_id!r}: пустой набор для выбора."
+                f"{self.node_ref()}: пустой набор для выбора."
             )
         count = self._count()
         allow_dup = bool(self.params.get("allow_duplicates", False))
@@ -359,7 +359,7 @@ class RandomChoiceNode(Node):
         else:
             if count > len(items):
                 raise RetryGeneration(
-                    f"random_choice {self.node_id!r}: count={count} больше "
+                    f"{self.node_ref()}: count={count} больше "
                     f"набора ({len(items)}) без повторов."
                 )
             if weights is None:

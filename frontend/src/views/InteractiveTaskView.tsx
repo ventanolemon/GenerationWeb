@@ -22,6 +22,7 @@ interface SessionState {
   widget?: string;
   fields?: InputField[];
   shape?: [number, number] | null;
+  options?: string[] | null;
   maxAttempts?: number;
 }
 
@@ -91,6 +92,7 @@ export default function InteractiveTaskView({ partition, userId }: Props) {
         widget: result.widget,
         fields: result.fields,
         shape: result.shape,
+        options: result.options,
         maxAttempts: typeof attempts === "number" ? attempts : undefined,
       });
     } catch (e) {
@@ -189,7 +191,7 @@ export default function InteractiveTaskView({ partition, userId }: Props) {
               <div className={styles.prompt}>
                 <BlockList blocks={session.prompt} />
               </div>
-              {session.fields ? (
+              {session.fields || session.options ? (
                 // Сессия со спецификацией ответа: поля рисуются по её
                 // виду. Старый тренажёр полей не присылает и остаётся на
                 // свободном поле ввода — менять его незачем, он работает.
@@ -197,6 +199,7 @@ export default function InteractiveTaskView({ partition, userId }: Props) {
                   widget={session.widget}
                   fields={session.fields}
                   shape={session.shape}
+                  options={session.options}
                   disabled={loading}
                   resetKey={session.history.length}
                   onAnswer={(values) => void submit(values)}

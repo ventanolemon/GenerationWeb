@@ -34,11 +34,11 @@ class VarDictNode(Node):
         names = self.params.get("names")
         if not isinstance(names, list) or not names:
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: 'names' должен быть непустым списком имён."
+                f"{self.node_ref()}: 'names' должен быть непустым списком имён."
             )
         if len(set(names)) != len(names):
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: имена переменных не уникальны."
+                f"{self.node_ref()}: имена переменных не уникальны."
             )
 
     def input_ports(self):
@@ -76,11 +76,11 @@ class FormulaNode(Node):
     def validate_params(self) -> None:
         expr = self.params.get("expr")
         if not expr:
-            raise GraphValidationError(f"Узел {self.node_id!r}: пустая формула.")
+            raise GraphValidationError(f"{self.node_ref()}: пустая формула.")
         try:
             parse_formula(expr)
         except FormulaError as e:
-            raise GraphValidationError(f"Узел {self.node_id!r}: ошибка формулы — {e}")
+            raise GraphValidationError(f"{self.node_ref()}: ошибка формулы — {e}")
 
     def required_names(self) -> set[str]:
         """Имена переменных, нужные формуле (для подсказок редактора/портов)."""
@@ -113,9 +113,9 @@ class FormulaNode(Node):
             value = evaluate_formula(self.params["expr"], variables)
         except (OverflowError, ValueError, ZeroDivisionError) as e:
             # Числовая ошибка — как `continue` в fisic_generater.generate_task.
-            raise RetryGeneration(f"Формула {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         if math.isinf(value) or math.isnan(value):
-            raise RetryGeneration(f"Формула {self.node_id!r}: результат inf/nan.")
+            raise RetryGeneration(f"{self.node_ref()}: результат inf/nan.")
         return {"out": float(value)}
 
 
@@ -137,7 +137,7 @@ class ConstraintNode(Node):
         try:
             self._constraint()
         except Exception as e:
-            raise GraphValidationError(f"Узел {self.node_id!r}: {e}")
+            raise GraphValidationError(f"{self.node_ref()}: {e}")
 
     def _constraint(self) -> ResultConstraint:
         return ResultConstraint.parse(self.params or None)
@@ -156,7 +156,7 @@ class ConstraintNode(Node):
         value = inputs["in"]
         if not rc.check(value):
             raise RetryGeneration(
-                f"Проверка {self.node_id!r}: {value} не прошло (kind={rc.kind})."
+                f"{self.node_ref()}: {value} не прошло (kind={rc.kind})."
             )
         return {"out": rc.normalize(value)}
 

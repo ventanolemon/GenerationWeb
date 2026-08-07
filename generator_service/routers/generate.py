@@ -140,6 +140,10 @@ def generate_task(body: GenerateRequest, request: Request) -> dict:
             # и таблица перестанет читаться как таблица.
             "shape": list(getattr(session.questions[0].spec, "shape", None)
                           or ()) or None,
+            # Варианты теста или пусто. Пусто — и когда вопрос не тест, и
+            # когда честный тест собрать не из чего: лучше поле ввода, чем
+            # тест, где верный ответ виден методом исключения.
+            "options": session.questions[0].options() or None,
             "scenario": scenario.to_dict(),
         }
 

@@ -15,6 +15,11 @@ interface Props {
    * ячеек, чем бы она ни была по смыслу.
    */
   shape?: [number, number] | null;
+  /**
+   * Варианты теста. Порядок приходит с сервера и устойчив между ходами —
+   * перетасовывать его здесь нельзя: студент запоминает позицию.
+   */
+  options?: string[] | null;
   disabled?: boolean;
   /**
    * Меняется после каждого хода — сигнал очистить форму. Своего
@@ -44,13 +49,16 @@ const SINGLE: InputField[] = [{ kind: "text" }];
  * именем; ядро headless и про React ничего не знает, связь идёт по
  * имени — ровно как блоки связаны с фронтом полем `type`.
  *
- * Чего здесь НЕТ: палитры формул (этап 7 плана), выбора из вариантов
- * (этап 6), редактора матриц. Незнакомое имя виджета не ломает экран —
+ * Три раскладки: варианты (тест), сетка (матрица и таблица) и поля.
+ * Первая подходящая выигрывает — они не комбинируются.
+ *
+ * Чего здесь НЕТ: палитры формул (этап 7 плана), выбора НЕСКОЛЬКИХ,
+ * перетаскивания карточек. Незнакомое имя виджета не ломает экран —
  * рисуем поля по их видам, потому что отказать студенту в вводе хуже,
  * чем показать не тот компонент.
  */
 export default function AnswerInput({
-  widget, fields, shape, disabled, resetKey, onAnswer,
+  widget, fields, shape, options, disabled, resetKey, onAnswer,
 }: Props) {
   const list = fields && fields.length > 0 ? fields : SINGLE;
   const [values, setValues] = useState<Record<string, string>>({});
@@ -89,6 +97,39 @@ export default function AnswerInput({
     onAnswer(payload);
     setValues({});
     firstRef.current?.focus();
+  }
+
+  if (options && options.length > 0) {
+    // Тест — режим ПОКАЗА ответа, а не отдельный вид вопроса: ответом
+    // уезжает текст выбранного варианта, и проверяет его та же
+    // спецификация, что проверяла бы набранное руками.
+    const key = list[0]?.name ?? "";
+    const picked = values[key] ?? "";
+    return (
+      <form
+        className={styles.choiceForm}
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (picked) onAnswer({ [key]: picked });
+        }}
+      >
+        {options.map((option) => (
+          <label key={option} className={styles.choiceOption}>
+            <input
+              type="radio"
+              name={`answer-${resetKey ?? 0}`}
+              checked={picked === option}
+              onChange={() => set(key, option)}
+              disabled={disabled}
+            />
+            <span>{option}</span>
+          </label>
+        ))}
+        <button type="submit" disabled={disabled || !picked}>
+          Ответить
+        </button>
+      </form>
+    );
   }
 
   function cell(field: InputField, index: number) {

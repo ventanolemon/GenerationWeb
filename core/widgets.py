@@ -157,6 +157,14 @@ FORMULA_INPUT = Widget(
     hint="То же поле, плюс палитра конструкций: дробь, корень, степень.",
 )
 
+CHOICE_ONE = Widget(
+    name="choice_one",
+    title="Выбор одного варианта",
+    kinds=frozenset({"number", "text", "expression"}),
+    hint="Тест: верный ответ среди правдоподобных неверных. Варианты "
+         "порождает сама спецификация — та же типизация, что даёт проверку.",
+)
+
 SLOT_FIELDS = Widget(
     name="slot_fields",
     title="Отдельные поля",
@@ -181,8 +189,8 @@ SLOT_INLINE = Widget(
 
 
 def _register_builtin(registry: "WidgetRegistry") -> "WidgetRegistry":
-    for widget in (TEXT_INPUT, FORMULA_INPUT, SLOT_FIELDS, GRID_FIELDS,
-                   SLOT_INLINE):
+    for widget in (TEXT_INPUT, FORMULA_INPUT, CHOICE_ONE, SLOT_FIELDS,
+                   GRID_FIELDS, SLOT_INLINE):
         registry.register(widget)
     return registry
 
@@ -203,6 +211,6 @@ def resolve_widget(spec: AnswerSpec, name: str = "") -> Optional[Widget]:
 
 __all__ = [
     "Widget", "WidgetRegistry", "registry", "widgets_for", "resolve_widget",
-    "TEXT_INPUT", "FORMULA_INPUT", "SLOT_FIELDS", "GRID_FIELDS",
+    "TEXT_INPUT", "FORMULA_INPUT", "CHOICE_ONE", "SLOT_FIELDS", "GRID_FIELDS",
     "SLOT_INLINE",
 ]

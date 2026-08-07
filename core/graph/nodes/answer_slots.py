@@ -67,7 +67,9 @@ _OPTIONS: Dict[str, Tuple[str, ...]] = {
     # она не является.
     "matrix": ("abs", "rel", "sig"),
 }
-_COMMON_OPTIONS = ("label", "mode")
+#: `choices=N` — показать ответ ТЕСТОМ из N вариантов. Общая опция, а
+#: не свойство вида: тестом задаётся и число, и выражение, и строка.
+_COMMON_OPTIONS = ("label", "mode", "choices")
 
 _PORT_TYPES = {
     "number": PortType.NUMBER,
@@ -90,6 +92,27 @@ class SlotDecl:
     @property
     def port_type(self) -> PortType:
         return _PORT_TYPES[self.kind]
+
+    @property
+    def choices(self) -> int:
+        """
+        Сколько вариантов показать. 0 — обычное поле ввода.
+
+        Меньше двух вариантов теста не бывает, и «choices=1» почти
+        наверняка описка, а не намерение.
+        """
+        raw = self.options.get("choices")
+        if raw is None:
+            return 0
+        try:
+            count = int(str(raw).strip())
+        except ValueError:
+            raise GraphValidationError(
+                f"Слот {self.name!r}: choices={raw!r} — ожидалось целое.")
+        if count < 2:
+            raise GraphValidationError(
+                f"Слот {self.name!r}: вариантов должно быть хотя бы два.")
+        return count
 
     @property
     def label(self) -> str:

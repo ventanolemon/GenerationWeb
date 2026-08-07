@@ -295,3 +295,18 @@
   text-align: center;
   padding: 0.4em 0.3em;
 }
+
+/* Тест: варианты столбиком. Порядок приходит с сервера и устойчив —
+   на клиенте он не трогается. */
+.choiceForm {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+.choiceOption {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}

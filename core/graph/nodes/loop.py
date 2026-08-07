@@ -100,7 +100,7 @@ class InputVarNode(Node):
         t = self.params.get("type", "number")
         if t not in _IMPORT_TYPES:
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: неизвестный тип {t!r}. "
+                f"{self.node_ref()}: неизвестный тип {t!r}. "
                 f"Допустимы: {list(_IMPORT_TYPES)}"
             )
 
@@ -119,7 +119,7 @@ class InputVarNode(Node):
         key = IMPORT_PREFIX + name
         if key not in ctx.extra:
             raise RetryGeneration(
-                f"input_var {self.node_id!r}: внешняя переменная {name!r} "
+                f"{self.node_ref()}: внешняя переменная {name!r} "
                 f"не передана (нет туннеля с таким именем)."
             )
         return {"out": ctx.extra[key]}
@@ -207,22 +207,22 @@ def _tunnel_nodes(body: dict) -> dict[str, tuple[str, str]]:
     return out
 
 
-def _check_tunnels(node_id: str, params: dict, body: dict, where: str) -> None:
+def _check_tunnels(node: Node, body: dict, where: str) -> None:
     """
     Объявленные туннели вывода должны иметь в теле узел output_var с тем же
     именем и типом. Вызывается из validate_structure (а не validate_params),
     чтобы редактор оставался терпим к недособранному графу при отрисовке.
     """
     available = _tunnel_nodes(body)
-    for name, t, _mode in parse_outputs(params):
+    for name, t, _mode in parse_outputs(node.params):
         if name not in available:
             raise GraphValidationError(
-                f"Узел {node_id!r}: туннель вывода {name!r} объявлен, но {where} "
+                f"{node.node_ref()}: туннель вывода {name!r} объявлен, но {where} "
                 f"нет узла «Выход цикла (туннель)» (output_var) с именем {name!r}."
             )
         if _IMPORT_TYPES.get(available[name][1]) is not t:
             raise GraphValidationError(
-                f"Узел {node_id!r}: туннель {name!r} объявлен с типом {t.value!r}, "
+                f"{node.node_ref()}: туннель {name!r} объявлен с типом {t.value!r}, "
                 f"а узел output_var {where} имеет тип {available[name][1]!r}."
             )
 
@@ -268,7 +268,7 @@ class OutputVarNode(Node):
         t = self.params.get("type", "number")
         if t not in _IMPORT_TYPES:
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: неизвестный тип {t!r}. "
+                f"{self.node_ref()}: неизвестный тип {t!r}. "
                 f"Допустимы: {list(_IMPORT_TYPES)}"
             )
 
@@ -355,7 +355,7 @@ class ShiftGetNode(Node):
         t = self.params.get("type", "number")
         if t not in _IMPORT_TYPES:
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: неизвестный тип {t!r}."
+                f"{self.node_ref()}: неизвестный тип {t!r}."
             )
 
     def output_ports(self):
@@ -370,7 +370,7 @@ class ShiftGetNode(Node):
         key = REGISTER_PREFIX + name
         if key not in ctx.extra:
             raise RetryGeneration(
-                f"shift_get {self.node_id!r}: регистр {name!r} не объявлен в repeat."
+                f"{self.node_ref()}: регистр {name!r} не объявлен в repeat."
             )
         return {"out": ctx.extra[key]}
 
@@ -395,7 +395,7 @@ class ShiftSetNode(Node):
         t = self.params.get("type", "number")
         if t not in _IMPORT_TYPES:
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: неизвестный тип {t!r}."
+                f"{self.node_ref()}: неизвестный тип {t!r}."
             )
 
     def _t(self) -> PortType:
@@ -458,7 +458,7 @@ class RepeatNode(Node):
         body = self.params.get("body")
         if body is not None and not isinstance(body, dict):
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: 'body' должен быть вложенным графом (объектом)."
+                f"{self.node_ref()}: 'body' должен быть вложенным графом (объектом)."
             )
         parse_imports(self.params)    # формат объявлений внешних переменных
         # Имя туннеля не должно совпадать с портом регистра reg_<имя>.
@@ -467,7 +467,7 @@ class RepeatNode(Node):
         for name, _t, _m in parse_outputs(self.params):
             if name in reg_ports:
                 raise GraphValidationError(
-                    f"Узел {self.node_id!r}: туннель вывода {name!r} совпадает "
+                    f"{self.node_ref()}: туннель вывода {name!r} совпадает "
                     f"с выходом регистра — переименуйте туннель или регистр."
                 )
 
@@ -477,8 +477,7 @@ class RepeatNode(Node):
         return f"× {self.params.get('count', 3)} · тело: {nodes} узл."
 
     def validate_structure(self) -> None:
-        _check_tunnels(self.node_id, self.params,
-                       self.params.get("body") or {}, "в теле")
+        _check_tunnels(self, self.params.get("body") or {}, "в теле")
 
     def input_ports(self):
         # count + по одному (необязательному) входу на каждую внешнюю переменную.
@@ -503,7 +502,7 @@ class RepeatNode(Node):
         try:
             n = int(round(float(raw)))
         except (TypeError, ValueError):
-            raise RetryGeneration(f"repeat {self.node_id!r}: count не число ({raw!r}).")
+            raise RetryGeneration(f"{self.node_ref()}: count не число ({raw!r}).")
         try:
             cap = int(self.params.get("max_iterations", 1000))
         except (TypeError, ValueError):
@@ -598,7 +597,7 @@ class MapItemNode(Node):
         t = self.params.get("type", "string")
         if t not in _ITEM_TYPES:
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: неизвестный тип элемента {t!r}. "
+                f"{self.node_ref()}: неизвестный тип элемента {t!r}. "
                 f"Допустимы: {list(_ITEM_TYPES)}"
             )
 
@@ -617,7 +616,7 @@ class MapItemNode(Node):
                 return {"out": float(v)}
             except (TypeError, ValueError):
                 raise RetryGeneration(
-                    f"map_item {self.node_id!r}: элемент {v!r} не число."
+                    f"{self.node_ref()}: элемент {v!r} не число."
                 )
         if t == "string":
             return {"out": "" if v is None else str(v)}
@@ -651,14 +650,13 @@ class MapNode(Node):
         body = self.params.get("body")
         if body is not None and not isinstance(body, dict):
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: 'body' должен быть вложенным графом (объектом)."
+                f"{self.node_ref()}: 'body' должен быть вложенным графом (объектом)."
             )
         parse_imports(self.params)
         parse_outputs(self.params)
 
     def validate_structure(self) -> None:
-        _check_tunnels(self.node_id, self.params,
-                       self.params.get("body") or {}, "в теле")
+        _check_tunnels(self, self.params.get("body") or {}, "в теле")
 
     def input_ports(self):
         ports = [Port("items", PortType.LIST)]
@@ -682,7 +680,7 @@ class MapNode(Node):
         items = inputs.get("items") or []
         if not isinstance(items, (list, tuple)):
             raise RetryGeneration(
-                f"map {self.node_id!r}: на вход items пришёл не список ({type(items).__name__})."
+                f"{self.node_ref()}: на вход items пришёл не список ({type(items).__name__})."
             )
 
         from . import DEFAULT_REGISTRY
@@ -772,7 +770,7 @@ class CaseNode(Node):
             body = self.params.get(key)
             if body is not None and not isinstance(body, dict):
                 raise GraphValidationError(
-                    f"Узел {self.node_id!r}: ветвь {key!r} должна быть "
+                    f"{self.node_ref()}: ветвь {key!r} должна быть "
                     f"вложенным графом (объектом)."
                 )
 
@@ -783,11 +781,10 @@ class CaseNode(Node):
         if not parse_outputs(self.params):
             return
         for key in self.branch_keys():
-            _check_tunnels(self.node_id, self.params,
-                           self.params.get(key) or {}, f"в ветви {key!r}")
+            _check_tunnels(self, self.params.get(key) or {}, f"в ветви {key!r}")
         default = self.params.get("default") or {}
         if default.get("nodes"):
-            _check_tunnels(self.node_id, self.params, default, "в ветви 'default'")
+            _check_tunnels(self, default, "в ветви 'default'")
 
     def _case_count(self) -> int:
         try:
@@ -820,7 +817,7 @@ class CaseNode(Node):
             sel = int(round(float(inputs.get("selector", 0))))
         except (TypeError, ValueError):
             raise RetryGeneration(
-                f"case {self.node_id!r}: selector не число ({inputs.get('selector')!r})."
+                f"{self.node_ref()}: selector не число ({inputs.get('selector')!r})."
             )
 
         key = f"case_{sel}" if 0 <= sel < n else "default"
@@ -835,7 +832,7 @@ class CaseNode(Node):
             entry = available.get(name)
             if entry is None or entry[0] not in outputs:
                 raise GraphValidationError(
-                    f"case {self.node_id!r}: исполнена ветвь {key!r}, но в ней "
+                    f"{self.node_ref()}: исполнена ветвь {key!r}, но в ней "
                     f"нет туннеля вывода {name!r} (узла output_var)."
                 )
             tunnels[name] = outputs[entry[0]].get("out")

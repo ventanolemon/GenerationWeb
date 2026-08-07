@@ -79,7 +79,7 @@ class WordsFileNode(Node):
         file = str(self.params.get("file", "")).strip()
         if not inline and not file:
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: укажите файл со словами или встроенный список."
+                f"{self.node_ref()}: укажите файл со словами или встроенный список."
             )
 
     def compute(self, inputs, ctx: ExecContext):
@@ -90,7 +90,7 @@ class WordsFileNode(Node):
             words = _load_words_file(str(self.params.get("file", "")).strip())
         if not words:
             raise RetryGeneration(
-                f"words_file {self.node_id!r}: словарь пуст."
+                f"{self.node_ref()}: словарь пуст."
             )
         return {"out": words}
 
@@ -119,7 +119,7 @@ class WordsTrainerNode(Node):
         words = inputs.get("words") or {}
         if not isinstance(words, dict) or not words:
             raise RetryGeneration(
-                f"words_trainer {self.node_id!r}: на вход не пришёл непустой словарь."
+                f"{self.node_ref()}: на вход не пришёл непустой словарь."
             )
         tolerant = str(self.params.get("tolerant", "no")) == "yes"
         return {"out": WordsSession(dict(words), tolerant=tolerant)}
@@ -145,13 +145,13 @@ class SentencesFileNode(Node):
     def validate_params(self) -> None:
         if not str(self.params.get("file", "")).strip():
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: укажите файл с предложениями."
+                f"{self.node_ref()}: укажите файл с предложениями."
             )
 
     def compute(self, inputs, ctx: ExecContext):
         items = _load_sentences_file(str(self.params.get("file", "")).strip())
         if not items:
-            raise RetryGeneration(f"sentences_file {self.node_id!r}: файл пуст.")
+            raise RetryGeneration(f"{self.node_ref()}: файл пуст.")
         return {"out": items}
 
 
@@ -179,7 +179,7 @@ class SentenceFillNode(Node):
         items = inputs.get("in") or []
         if not isinstance(items, (list, tuple)) or not items:
             raise RetryGeneration(
-                f"sentence_fill {self.node_id!r}: на вход не пришёл непустой список."
+                f"{self.node_ref()}: на вход не пришёл непустой список."
             )
         item = ctx.rng.choice(list(items))
         try:
@@ -187,7 +187,7 @@ class SentenceFillNode(Node):
             answers = [str(a) for a in item["answers"]]
         except (KeyError, TypeError):
             raise RetryGeneration(
-                f"sentence_fill {self.node_id!r}: у предложения нет template/answers."
+                f"{self.node_ref()}: у предложения нет template/answers."
             )
         translation = str(item.get("translation", "")) if isinstance(item, dict) else ""
 

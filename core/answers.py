@@ -33,7 +33,10 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
+import random
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -391,6 +394,85 @@ class AnswerSpec(ABC):
                 out.append(candidate)
         return out
 
+    def distractors(self, count: int = 3, *,
+                    mode: Optional[CheckMode] = None) -> List[str]:
+        """
+        Правдоподобные НЕВЕРНЫЕ варианты — материал теста.
+
+        Ключевое решение плана (§2): тест это не третий тип задания, а
+        режим показа ответа, и порождает варианты **та же типизация,
+        которая даёт проверку**. Число можно возмутить, у выражения
+        сменить знак, из размерности сделать характерную ошибку — и всё
+        это знает сама спецификация, потому что она знает, что за
+        величина перед ней.
+
+        Инвариант зеркальный к `accepted_examples`: каждый кандидат
+        прогоняется через собственный `check`, и что ПРОШЛО —
+        отбрасывается. Дистрактор, который принимается как верный
+        ответ, — это не «мягкая проверка», а тест с двумя правильными
+        ответами, и заметит его студент, а не автор.
+
+        Возвращается не больше `count`. Меньше — законно: лучше тест из
+        трёх вариантов, чем из четырёх, где четвёртый тоже верен.
+        """
+        active = self.effective_mode(mode)
+        correct = {normalize(text)
+                   for text in self.accepted_examples(mode=active)}
+        seen, out = set(), []
+        for candidate in self._candidate_distractors(active):
+            text = (candidate or "").strip()
+            key = normalize(text)
+            if not text or key in seen or key in correct:
+                continue
+            seen.add(key)
+            if self.check(text, mode=active).accepted:
+                continue
+            out.append(text)
+            if len(out) >= count:
+                break
+        return out
+
+    def options(self, count: int = 4, *,
+                mode: Optional[CheckMode] = None) -> List[str]:
+        """
+        Варианты для теста: верный ответ вперемешку с дистракторами.
+
+        Пусто, если собрать честный тест не из чего — нет принимаемого
+        примера или не нашлось ни одного дистрактора. Тест из одного
+        варианта не тест, и показать его хуже, чем не показать.
+
+        Порядок детерминирован СОДЕРЖИМЫМ спецификации, а не случаен.
+        Причина рабочая: сессия переживает перезапуск сервиса и переезд
+        между процессами (`state()`/`restore()`), и варианты собираются
+        заново на той стороне. Случайная перетасовка означала бы, что
+        студент между ходами видит другой порядок — а он уже запомнил
+        «второй сверху».
+        """
+        active = self.effective_mode(mode)
+        accepted = self.accepted_examples(mode=active)
+        if not accepted:
+            return []
+        wrong = self.distractors(max(0, count - 1), mode=active)
+        if not wrong:
+            return []
+
+        items = [accepted[0]] + wrong
+        digest = hashlib.sha256(
+            json.dumps(self.to_dict(), sort_keys=True,
+                       ensure_ascii=False).encode("utf-8")).hexdigest()
+        random.Random(int(digest[:12], 16)).shuffle(items)
+        return items
+
+    def _candidate_distractors(self, mode: CheckMode) -> List[str]:
+        """
+        Кандидаты в неверные варианты. Отсев делает `distractors`.
+
+        База не умеет ничего: у спецификации, не знающей, что за величина
+        перед ней, правдоподобной ошибки не построить, а неправдоподобная
+        хуже отсутствия — она выдаёт верный ответ методом исключения.
+        """
+        return []
+
     @property
     def preferred_widget(self) -> str:
         """
@@ -587,6 +669,38 @@ class NumberSpec(AnswerSpec):
             return self.value + abs(self.tolerance.amount * self.value)
         return None
 
+    def _candidate_distractors(self, mode: CheckMode) -> List[str]:
+        """
+        Характерные ошибки числового ответа, а не случайные числа.
+
+        Дистрактор обязан быть правдоподобным: вариант «яблоко» среди
+        чисел выдаёт верный ответ методом исключения, то есть превращает
+        тест в подарок. Поэтому берутся ошибки, которые студент
+        действительно делает: потерянный знак, порядок величины,
+        перепутанные множитель и делитель, ответ без размерности.
+        """
+        value = self.value
+        # Возмущение округляется до той же значимости, что и показанный
+        # ответ: «0.9800000000000001» выдаёт машинное происхождение
+        # варианта, и студент отбрасывает его не думая.
+        digits = significant_digits(self.written or _fmt(value))
+        def shifted(factor: float) -> str:
+            return self._written(round_significant(value * factor, digits))
+
+        out: List[str] = []
+        if value:
+            out.append(self._written(-value))          # потерянный знак
+            out.append(shifted(10))                    # порядок величины
+            out.append(shifted(0.1))
+            out.append(shifted(2))                     # забытая двойка
+            out.append(shifted(0.5))
+        if self.unit:
+            # Ответ без размерности — самая частая ошибка там, где
+            # размерность объявлена, и самый полезный дистрактор: он учит
+            # тому, ради чего размерность и объявлена.
+            out.append(_fmt(value))
+        return out
+
     def _payload(self) -> dict:
         out: dict = {"value": self.value, "tolerance": self.tolerance.to_dict()}
         if self.unit:
@@ -617,6 +731,14 @@ def _split_number_and_unit(text: str) -> Tuple[Optional[str], str]:
     if match is None:
         return None, ""
     return match.group(0), compact[match.end():]
+
+
+def round_significant(value: float, digits: int) -> float:
+    """Округлить до заданного числа значащих цифр."""
+    if value == 0.0:
+        return 0.0
+    digits = max(1, int(digits))
+    return round(value, -int(math.floor(math.log10(abs(value)))) + (digits - 1))
 
 
 def significant_digits(text: str) -> int:
@@ -723,6 +845,17 @@ class TextSpec(AnswerSpec):
             if typo is not None:
                 out.append(typo)
         return out
+
+    def _candidate_distractors(self, mode: CheckMode) -> List[str]:
+        """
+        Для строки правдоподобной ошибки из самой строки не построить.
+
+        Опечатка не годится: мягкий режим её принимает, а строгий делает
+        вариант, который никто не выберет. Осмысленные неверные варианты
+        для «Найдите столицу» — это другие города, и знает их только
+        автор задания. Поэтому берём их из настройки, а не выдумываем.
+        """
+        return [str(item) for item in (self.tuning or {}).get("distractors", ())]
 
     def _payload(self) -> dict:
         out: dict = {"value": self.value}
@@ -1015,6 +1148,44 @@ class ExpressionSpec(AnswerSpec):
         return out
 
     # ---------- разбор ----------
+
+    def _candidate_distractors(self, mode: CheckMode) -> List[str]:
+        """
+        Ошибки преобразования: знак, степень, потерянное слагаемое.
+
+        Всё это строится из РАЗОБРАННОГО выражения, а не из строки:
+        подменить «x**2» на «x**3» текстом можно, но тогда «2*x**2 + 1»
+        превратится в бессмыслицу. Дерево выражения знает, где степень.
+        """
+        try:
+            expr = self._parse(self.value)
+        except Exception:                              # noqa: BLE001
+            return []
+
+        out: List[str] = []
+        try:
+            out.append(str(-expr))                     # сменённый знак
+        except Exception:                              # noqa: BLE001
+            pass
+
+        symbols = sorted(expr.free_symbols, key=str)
+        if symbols:
+            variable = symbols[0]
+            for shift in (1, -1):
+                try:
+                    # Степень мимо на единицу — ошибка дифференцирования
+                    # и интегрирования одновременно.
+                    out.append(str(expr.replace(
+                        lambda node: node.is_Pow and node.base == variable,
+                        lambda node: variable ** (node.exp + shift))))
+                except Exception:                      # noqa: BLE001
+                    continue
+
+        if expr.is_Add and len(expr.args) > 1:
+            # Потерянное слагаемое — самая частая ошибка в длинном ответе.
+            out.append(str(expr - expr.args[-1]))
+            out.append(str(expr.args[-1]))
+        return out
 
     def _allowed_names(self) -> frozenset:
         if self.symbols:

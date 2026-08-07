@@ -58,7 +58,7 @@ class GuardNode(Node):
         want = self.params.get("mode", "require_true") == "require_true"
         if cond != want:
             raise RetryGeneration(
-                f"guard {self.node_id!r}: условие не выполнено (cond={cond})."
+                f"{self.node_ref()}: условие не выполнено (cond={cond})."
             )
         return {"out": inputs.get("value")}
 
@@ -95,7 +95,7 @@ class CompareNode(Node):
         op = self.params.get("op", "==")
         if op not in _COMPARE_OPS:
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: неизвестный оператор {op!r}. "
+                f"{self.node_ref()}: неизвестный оператор {op!r}. "
                 f"Допустимы: {list(_COMPARE_OPS)}"
             )
 
@@ -139,7 +139,7 @@ class NumberCheckNode(Node):
         check = self.params.get("check", "even")
         if check not in _CHECKS:
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: неизвестная проверка {check!r}. "
+                f"{self.node_ref()}: неизвестная проверка {check!r}. "
                 f"Допустимы: {list(_CHECKS)}"
             )
 
@@ -189,7 +189,7 @@ class SelectNode(Node):
         vt = self.params.get("value_type", "number")
         if vt not in _SELECT_TYPES:
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: неизвестный тип ветвей {vt!r}. "
+                f"{self.node_ref()}: неизвестный тип ветвей {vt!r}. "
                 f"Допустимы: {list(_SELECT_TYPES)}"
             )
 
@@ -241,7 +241,7 @@ class PickNode(Node):
         vt = self.params.get("value_type", "block")
         if vt not in _SELECT_TYPES:
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: неизвестный тип каналов {vt!r}. "
+                f"{self.node_ref()}: неизвестный тип каналов {vt!r}. "
                 f"Допустимы: {list(_SELECT_TYPES)}"
             )
         try:
@@ -249,7 +249,7 @@ class PickNode(Node):
                 raise ValueError
         except (TypeError, ValueError):
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: count должен быть целым ≥ 2."
+                f"{self.node_ref()}: count должен быть целым ≥ 2."
             )
 
     def _count(self) -> int:
@@ -279,16 +279,16 @@ class PickNode(Node):
             i = int(round(float(inputs.get("index", 0))))
         except (TypeError, ValueError):
             raise RetryGeneration(
-                f"pick {self.node_id!r}: индекс не число ({inputs.get('index')!r})."
+                f"{self.node_ref()}: индекс не число ({inputs.get('index')!r})."
             )
         if not 0 <= i < self._count():
             raise RetryGeneration(
-                f"pick {self.node_id!r}: индекс {i} вне диапазона "
+                f"{self.node_ref()}: индекс {i} вне диапазона "
                 f"[0; {self._count()})."
             )
         value = inputs.get(f"in{i}")
         if value is None:
             raise RetryGeneration(
-                f"pick {self.node_id!r}: выбранный вход in{i} не подключён."
+                f"{self.node_ref()}: выбранный вход in{i} не подключён."
             )
         return {"out": value}

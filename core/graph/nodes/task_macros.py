@@ -96,9 +96,9 @@ class SimpleTaskNode(Node):
             try:
                 result = evaluate_formula(formula, values)
             except (OverflowError, ValueError, ZeroDivisionError) as e:
-                raise RetryGeneration(f"simple_task {self.node_id!r}: {e}")
+                raise RetryGeneration(f"{self.node_ref()}: {e}")
             if math.isinf(result) or math.isnan(result):
-                raise RetryGeneration(f"simple_task {self.node_id!r}: результат inf/nan.")
+                raise RetryGeneration(f"{self.node_ref()}: результат inf/nan.")
             values["result"] = result
 
         fake_inputs = {"vars": values}

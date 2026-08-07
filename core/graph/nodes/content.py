@@ -80,7 +80,7 @@ class ToBlockNode(Node):
         value = inputs.get("in")
         if value is None:
             raise RetryGeneration(
-                f"to_block {self.node_id!r}: на вход не пришло значение."
+                f"{self.node_ref()}: на вход не пришло значение."
             )
         self._dyn_prefix = inputs.get("prefix")   # динамический префикс из графа
         style = str(self.params.get("style", "auto"))

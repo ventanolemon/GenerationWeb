@@ -40,7 +40,7 @@ class LogicCircuitNode(Node):
             elements = make_function()
         except RuntimeError as e:
             # Не удалось собрать валидную схему — попросить пере-генерацию графа.
-            raise RetryGeneration(f"logic_circuit {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         image = render_circuit(elements)
         formula = elements[-1].get_logic_str()
         return {"image": image, "formula": str(formula)}
@@ -66,7 +66,7 @@ class ImageFileNode(Node):
     def validate_params(self) -> None:
         if not str(self.params.get("file", "")).strip():
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: укажите файл изображения."
+                f"{self.node_ref()}: укажите файл изображения."
             )
 
     def compute(self, inputs, ctx: ExecContext):
@@ -80,7 +80,7 @@ class ImageFileNode(Node):
             img = Image.open(p)
             img.load()                      # прочитать сразу (файл может закрыться)
         except Exception as e:
-            raise RetryGeneration(f"image_file {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         return {"out": img}
 
 
@@ -100,7 +100,7 @@ class ImageBlockNode(Node):
         image = inputs.get("in")
         if image is None:
             raise RetryGeneration(
-                f"image_block {self.node_id!r}: на вход не пришло изображение."
+                f"{self.node_ref()}: на вход не пришло изображение."
             )
         caption = str(self.params.get("caption", ""))
         return {"out": ImageBlock(image, caption=caption)}

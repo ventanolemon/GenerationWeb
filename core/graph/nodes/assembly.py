@@ -42,7 +42,7 @@ class BlockListNode(Node):
             return max(1, int(self.params.get("count", 1)))
         except (TypeError, ValueError):
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: 'count' должен быть целым ≥ 1."
+                f"{self.node_ref()}: 'count' должен быть целым ≥ 1."
             )
 
     def validate_params(self) -> None:
@@ -131,7 +131,7 @@ class TaskNode(Node):
         layout = str(self.params.get("layout", "lines") or "lines")
         if layout not in ("lines", "inline", "template"):
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: раскладка {layout!r} неизвестна; "
+                f"{self.node_ref()}: раскладка {layout!r} неизвестна; "
                 f"допустимы lines, inline, template.")
         return layout
 
@@ -146,7 +146,7 @@ class TaskNode(Node):
             return CheckMode(raw)
         except ValueError:
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: check_mode={raw!r} — допустимы "
+                f"{self.node_ref()}: check_mode={raw!r} — допустимы "
                 f"{', '.join(m.value for m in CheckMode)}.")
 
     def validate_params(self) -> None:
@@ -162,7 +162,7 @@ class TaskNode(Node):
             # ответ печатается в самом условии. Молча соединить их в один
             # порт было бы «умно» и неверно: задание показывало бы ответ.
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: {', '.join(sorted(clash))} — "
+                f"{self.node_ref()}: {', '.join(sorted(clash))} — "
                 f"одновременно слот ответа и маркер условия. Ответ попал бы "
                 f"в текст условия; переименуйте одно из двух.")
 
@@ -226,10 +226,19 @@ class TaskNode(Node):
         else:
             answer_spec = None
 
+        meta = {"source": "graph"}
+        # Тест — режим ПОКАЗА ответа (§2), поэтому намерение автора
+        # живёт в meta задания, а не в спецификации: та же проверка
+        # обслуживает и поле ввода, и выбор из вариантов.
+        choices = {d.name: d.choices for d in decls if d.choices}
+        if choices:
+            meta["choices"] = (list(choices.values())[0] if len(built) == 1
+                               else choices)
+
         return {"out": StaticTask(
             statement=statement,
             answer=self._render_answer(built, inputs),
-            meta={"source": "graph"},
+            meta=meta,
             answer_spec=answer_spec,
         )}
 

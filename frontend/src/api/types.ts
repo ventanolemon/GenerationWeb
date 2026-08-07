@@ -130,6 +130,10 @@ export interface InteractiveStartResponse {
   fields?: InputField[];
   // [строк, столбцов] — если ответ сетка. Поля идут построчно.
   shape?: [number, number] | null;
+  // Варианты теста. Верный ответ среди них; порядок задан сервером и
+  // устойчив — перетасовывать его на клиенте нельзя, студент запоминает
+  // позицию между ходами.
+  options?: string[] | null;
   scenario?: Scenario;
 }
 

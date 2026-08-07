@@ -27,7 +27,7 @@ class ConstantNumberNode(Node):
             float(self.params.get("value", 0))
         except (TypeError, ValueError):
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: 'value' должен быть числом."
+                f"{self.node_ref()}: 'value' должен быть числом."
             )
 
     def summary(self) -> str:
@@ -91,7 +91,7 @@ class _RandomVarNode(Node):
             self._spec()
         except Exception as e:                       # ValueError из VariableSpec
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: некорректные параметры — {e}"
+                f"{self.node_ref()}: некорректные параметры — {e}"
             )
 
     def compute(self, inputs, ctx: ExecContext):

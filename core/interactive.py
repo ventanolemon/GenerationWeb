@@ -55,9 +55,48 @@ class Question:
     spec: AnswerSpec
     widget: str = ""
 
+    options_count: int = 0
+    """
+    Сколько вариантов показать, если вопрос задаётся тестом. 0 — не тест.
+
+    Число вариантов — свойство ПОКАЗА, а не ответа, поэтому живёт здесь,
+    рядом с `widget`, а не в спецификации: один и тот же ответ бывает и
+    полем ввода, и выбором из четырёх, и это решает тот, кто выдаёт
+    задание, а не тот, кто его придумал.
+    """
+
     def widget_name(self) -> str:
+        """
+        Чем рисовать ввод.
+
+        Явно названный виджет главнее всего. Иначе: вопрос с вариантами —
+        это выбор, и выводить это из `options_count` надо здесь, а не в
+        каждом вызывающем, иначе одни начнут показывать варианты полем
+        ввода, а другие полем ввода варианты.
+
+        Если выбор со спецификацией несовместим (набор слотов тестом не
+        задаётся), падать незачем — остаётся обычное умолчание реестра.
+        """
+        if not self.widget and self.options_count:
+            from .widgets import registry
+            choice = registry.get("choice_one")
+            if choice is not None and choice.serves(self.spec):
+                return choice.name
         chosen = resolve_widget(self.spec, self.widget)
         return chosen.name if chosen is not None else ""
+
+    def options(self) -> List[str]:
+        """
+        Варианты теста или пусто.
+
+        Пусто бывает и когда вопрос не тест, и когда честный тест собрать
+        не из чего — дистракторов не нашлось. Второе не ошибка: лучше
+        поле ввода, чем тест, в котором верный ответ виден методом
+        исключения.
+        """
+        if not self.options_count:
+            return []
+        return self.spec.options(self.options_count)
 
     def to_dict(self) -> dict:
         out = {
@@ -66,6 +105,8 @@ class Question:
         }
         if self.widget:
             out["widget"] = self.widget
+        if self.options_count:
+            out["options_count"] = self.options_count
         return out
 
     @classmethod
@@ -74,6 +115,7 @@ class Question:
             statement=blocks_from_dicts(data.get("statement")),
             spec=AnswerSpec.from_dict(data["spec"]),
             widget=data.get("widget", ""),
+            options_count=int(data.get("options_count", 0) or 0),
         )
 
 
@@ -345,8 +387,16 @@ def question_from_task(task, *, widget: str = "") -> Optional[Question]:
     spec = getattr(task, "answer_spec", None)
     if spec is None:
         return None
+    # Число вариантов теста берётся из meta задания: генератор объявил
+    # намерение показать ответ выбором, а не полем ввода. Ключ `choices`
+    # кладёт финальный узел графа; словарём он бывает, когда слотов
+    # несколько — тогда тестом задаётся не отдельный слот, а вопрос
+    # целиком, и брать первое попавшееся число нельзя.
+    raw_choices = task.meta.get("choices")
+    options_count = int(raw_choices) if isinstance(raw_choices, int) else 0
     return Question(statement=list(task.statement), spec=spec,
-                    widget=widget or str(task.meta.get("widget", "")))
+                    widget=widget or str(task.meta.get("widget", "")),
+                    options_count=options_count)
 
 
 def session_from_tasks(tasks: Sequence, **kwargs) -> Optional[SpecSession]:
