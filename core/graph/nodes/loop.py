@@ -470,6 +470,15 @@ class RepeatNode(Node):
                     f"{self.node_ref()}: туннель вывода {name!r} совпадает "
                     f"с выходом регистра — переименуйте туннель или регистр."
                 )
+        # Та же беда со стороны ВХОДОВ: внешняя переменная с именем
+        # `reg_<имя>` перекрыла бы порт начального значения регистра, и
+        # провод молча уехал бы не туда.
+        for name, _t in parse_imports(self.params):
+            if name in reg_ports:
+                raise GraphValidationError(
+                    f"{self.node_ref()}: внешняя переменная {name!r} "
+                    f"совпадает с входом регистра — переименуйте одно из двух."
+                )
 
     def summary(self) -> str:
         body = self.params.get("body") or {}
@@ -484,6 +493,15 @@ class RepeatNode(Node):
         ports = [Port("count", PortType.NUMBER, required=False)]
         for name, t in parse_imports(self.params):
             ports.append(Port(name, t, required=False))
+        # reg_<имя> — НАЧАЛЬНОЕ значение регистра, симметрично выходу с
+        # тем же именем, который отдаёт финальное. Раньше начальное
+        # писалось литералом в самом объявлении (`акк:number:0`), и
+        # случайный старт приходилось обходить импортом плюс
+        # `loop_index == 0` плюс мультиплексор — четыре узла и
+        # неочевидная конструкция там, где просилось ребро.
+        # Поймано на старом задании «исполнитель» по информатике.
+        for name, t, _init in parse_registers(self.params):
+            ports.append(Port(f"reg_{name}", t, required=False))
         return ports
 
     def output_ports(self):
@@ -523,9 +541,15 @@ class RepeatNode(Node):
         # Регистры сдвига: начальные значения для итерации 0. Каждое объявление
         # registers[name] переносит результат прошлой итерации в следующую.
         registers = parse_registers(self.params)
-        reg_state: dict[str, object] = {
-            name: _register_initial(t, init) for name, t, init in registers
-        }
+        # Провод главнее литерала: если начальное значение пришло по
+        # `reg_<имя>`, объявление в параметре остаётся запасным. Иначе
+        # автору пришлось бы стирать литерал, чтобы провод заработал, —
+        # а это ровно та молчаливая ловушка, которой быть не должно.
+        reg_state: dict[str, object] = {}
+        for name, t, init in registers:
+            wired = inputs.get(f"reg_{name}")
+            reg_state[name] = (wired if wired is not None
+                               else _register_initial(t, init))
         # Соответствие name -> id узла shift_set в теле (откуда забирать новое
         # значение регистра после итерации).
         setters = {
