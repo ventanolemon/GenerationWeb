@@ -15,7 +15,7 @@ from .control import (
     CompareNode, GuardNode, NumberCheckNode, PickNode, SelectNode,
 )
 from .english import (
-    SentenceFillNode, SentencePickNode, SentencesFileNode,
+    SentencePickNode, SentencesFileNode,
     WordsFileNode, WordsPickNode,
     WordsTrainerNode,
 )
@@ -108,7 +108,7 @@ _ALL_NODES = [
     OdeConstNode, OdeSolveNode, OdeClassifyNode, OdeCheckNode,
     # english (английский язык)
     WordsFileNode, WordsPickNode, WordsTrainerNode, SentencesFileNode,
-    SentencePickNode, SentenceFillNode,
+    SentencePickNode,
     # image (изображения / ОПВС)
     LogicCircuitNode, ImageFileNode, ImageBlockNode,
     # plot (графика на комплексной плоскости)

@@ -310,52 +310,37 @@ def _sentences_file() -> str:
     return path
 
 
-class SentenceFillIsNotCheckedTests(unittest.TestCase):
+class SentenceFillIsGoneTests(unittest.TestCase):
     """
-    Замер, ради которого сосед и проверялся.
+    Узла «предложение с пропусками» больше нет.
 
-    `sentence_fill` стоит ПОСРЕДИ графа и потому выглядит составным, но
-    отдаёт наружу только собранные блоки. Составить с ними ничего
-    нельзя: блок не проверишь, не превратишь в тест и не подставишь в
-    чужой текст. Тест закрепляет цену этого — и заодно не даёт принять
-    её за случайность, если узел когда-нибудь начнут править.
+    Он собирал условие и ответ блоками и отдавал их наружу. Стоял
+    посреди графа и потому выглядел составным, но составить с ним было
+    нечего: блок не проверишь, не превратишь в тест и не подставишь в
+    чужой текст. Замерялось это так: задание получалось с
+    `is_checkable == False` — то есть не проверялось вовсе и не попадало
+    в статистику, — а правильные ответы уезжали в браузер прямо в
+    условии, потому что сверять их было больше негде.
+
+    Ввод ПО МЕСТУ, единственное, ради чего узел стоило бы держать, — это
+    не отдельный узел, а способ показа: `sentence_pick` + слот `много` +
+    виджет `slot_inline`.
     """
 
-    def setUp(self):
-        import os
-        self.path = _sentences_file()
-        self.addCleanup(lambda: os.unlink(self.path))
+    def test_the_node_is_not_registered(self):
+        from core.graph.nodes import DEFAULT_REGISTRY
+        self.assertNotIn("sentence_fill", DEFAULT_REGISTRY.type_ids())
 
-    def _task(self):
-        return GraphExecutor(GraphSpec.parse({
-            "nodes": [
-                {"id": "s", "type": "sentences_file",
-                 "params": {"file": self.path}},
-                {"id": "f", "type": "sentence_fill", "params": {}},
-                {"id": "t", "type": "static_task", "params": {}},
-            ],
-            "edges": [{"from": "s:out", "to": "f:in"},
-                      {"from": "f:statement", "to": "t:statement"},
-                      {"from": "f:answer", "to": "t:answer"}],
-        })).run()
-
-    def test_the_task_cannot_be_checked_at_all(self):
-        task = self._task()
-        self.assertFalse(task.is_checkable)
-        self.assertIsNone(task.answer_spec)
-        self.assertIsNone(session_from_task(task))
-
-    def test_the_answers_travel_to_the_client(self):
+    def test_nothing_converts_sentences_to_blocks_any_more(self):
         """
-        Сверять ввод больше негде, поэтому правильные ответы уезжают в
-        условии — их видно в devtools. Это не регрессия и не новость:
-        так узел устроен с самого начала, и ровно поэтому у него
-        появилась проверяемая замена.
+        Автоподстановка конвертера вела в тот же тупик, только молча:
+        соединив предложения с блоками, редактор вставлял бы узел,
+        делающий задание непроверяемым.
         """
-        payload = [b.to_dict() for b in self._task().statement]
-        blanks = [b for b in payload if b["type"] == "fill_in_blank"]
-        self.assertTrue(blanks)
-        self.assertTrue(any(b.get("answers") for b in blanks))
+        from core.graph.conversions import find_converter
+        from core.graph.port_types import PortType
+        self.assertIsNone(
+            find_converter(PortType.SENTENCES, PortType.BLOCK_LIST))
 
 
 class SentencePickTests(unittest.TestCase):
@@ -464,9 +449,9 @@ class SentencePickTests(unittest.TestCase):
 
 class WordsTrainerReachesItsDecisionsTests(unittest.TestCase):
     """
-    Терминальность тренажёра законная, в отличие от `sentence_fill`:
-    сессия помнит, какие слова этому ученику давались тяжело, между
-    запусками — из частей такого не собрать. Болезнь была мягче:
+    Терминальность тренажёра законная: сессия помнит, какие слова этому
+    ученику давались тяжело, между запусками, — из частей такого не
+    собрать. Болезнь была мягче:
     направление перевода лежало внутри, и автор графа до него не
     дотягивался.
     """
@@ -492,3 +477,96 @@ class WordsTrainerReachesItsDecisionsTests(unittest.TestCase):
     def test_the_reversed_trainer_still_checks(self):
         session = self._session(direction="term_to_translation")
         self.assertFalse(session.submit("ерунда").correct)
+
+
+class InlineInputIsADisplayModeTests(unittest.TestCase):
+    """
+    Ввод ПО МЕСТУ — режим показа, а не вид задания.
+
+    То же решение, что и с тестом (§2): проверка та же, ответ тот же,
+    отличается только рисование. Поэтому здесь нет ни узла, ни вида
+    спецификации — только имя виджета в `meta`, а рисует его платформа.
+    """
+
+    def setUp(self):
+        import os
+        self.path = _sentences_file()
+        self.addCleanup(lambda: os.unlink(self.path))
+
+    def _task(self, widget="slot_inline", slots=None):
+        return GraphExecutor(GraphSpec.parse({
+            "nodes": [
+                {"id": "s", "type": "sentences_file",
+                 "params": {"file": self.path}},
+                {"id": "p", "type": "sentence_pick", "params": {}},
+                {"id": "t", "type": "task", "params": {
+                    "statement": "Вставьте пропущенные слова:\n#предложение#",
+                    "slots": slots or ["пропуск:text:много:typos=0"],
+                    "widget": widget}},
+            ],
+            "edges": [{"from": "s:out", "to": "p:in"},
+                      {"from": "p:template", "to": "t:предложение"},
+                      {"from": "p:answers", "to": "t:пропуск"}],
+        })).run()
+
+    def test_the_widget_reaches_the_session(self):
+        task = self._task()
+        self.assertEqual(task.meta["widget"], "slot_inline")
+        self.assertEqual(
+            session_from_task(task).questions[0].widget_name(), "slot_inline")
+
+    def test_without_the_parameter_nothing_changes(self):
+        task = self._task(widget="")
+        self.assertNotIn("widget", task.meta)
+        self.assertEqual(
+            session_from_task(task).questions[0].widget_name(), "slot_fields")
+
+    def test_blanks_match_the_fields(self):
+        """
+        Клиент ставит поля на места `___`, и счёт обязан сойтись —
+        иначе поле окажется не в том пропуске и предложение сменит
+        смысл.
+        """
+        for _ in range(20):
+            task = self._task()
+            text = " ".join(b.render_plain() for b in task.statement)
+            self.assertEqual(text.count("___"),
+                             len(task.answer_spec.input_fields()))
+
+    def test_checking_is_the_same_as_without_it(self):
+        """Режим показа не трогает проверку — в этом весь смысл слова."""
+        for _ in range(10):
+            inline = self._task()
+            values = {f.name: "нет" for f in inline.answer_spec.input_fields()}
+            self.assertFalse(
+                session_from_task(inline).submit_values(values).correct)
+
+    def test_an_unknown_widget_is_refused_when_saving(self):
+        from core.graph.errors import GraphValidationError
+        with self.assertRaises(GraphValidationError) as caught:
+            self._task(widget="нет_такого")
+        self.assertIn("не зарегистрирован", str(caught.exception))
+
+    def test_an_incompatible_widget_is_refused_when_saving(self):
+        """
+        Ловить это надо при сохранении графа: подменив виджет молча, мы
+        показали бы студенту не тот способ ввода, а причину спрятали.
+        """
+        from core.graph.errors import GraphValidationError
+        with self.assertRaises(GraphValidationError) as caught:
+            self._task(widget="choice_one")
+        self.assertIn("не обслуживает", str(caught.exception))
+
+    def test_a_formula_slot_can_ask_for_the_palette(self):
+        """Тот же параметр обслуживает этап 7 — палитру формул."""
+        task = GraphExecutor(GraphSpec.parse({
+            "nodes": [
+                {"id": "c", "type": "constant_number", "params": {"value": 4}},
+                {"id": "t", "type": "task", "params": {
+                    "statement": "?", "slots": ["y:expr"],
+                    "widget": "formula_input"}},
+            ],
+            "edges": [{"from": "c:out", "to": "t:y"}],
+        })).run()
+        self.assertEqual(
+            session_from_task(task).questions[0].widget_name(), "formula_input")

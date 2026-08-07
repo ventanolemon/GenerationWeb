@@ -25,7 +25,6 @@ CONVERTERS: dict[tuple[PortType, PortType], str] = {
     (PortType.LIST, PortType.NUMBER): "list_length",
     (PortType.LIST, PortType.STRING): "list_join",
     (PortType.WORDS, PortType.TASK): "words_trainer",
-    (PortType.SENTENCES, PortType.BLOCK_LIST): "sentence_fill",
 }
 
 # Типы, которые to_block умеет отрендерить в BLOCK (его вход ANY принимает

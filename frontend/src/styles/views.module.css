@@ -310,3 +310,29 @@
   gap: 0.5rem;
   cursor: pointer;
 }
+
+/* Пропуски в тексте (виджет slot_inline).
+   Условие и форма ввода здесь одно и то же: поля стоят на месте `___`
+   внутри предложения, а не столбиком под ним. */
+.inlineForm {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+.inlinePrompt {
+  line-height: 2.1;
+}
+.inlineParagraph {
+  margin: 0 0 0.5rem;
+}
+/* Поле по месту не должно ломать строку: ширина растёт по содержимому,
+   а вертикальный ритм держит line-height у абзаца. */
+.inlineForm .blankInput {
+  display: inline-block;
+  width: auto;
+  margin: 0 0.2em;
+  padding: 0.1em 0.4em;
+  font: inherit;
+  vertical-align: baseline;
+}

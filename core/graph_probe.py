@@ -54,7 +54,8 @@ B5_MAX_RELATIVE_SPREAD = 0.05    # …а выжившие ответы в пол
 # distinct=1 — это норма, а не провал).
 RANDOM_TYPES = {
     "random_natural", "random_real", "random_choice", "random_matrix",
-    "random_polynomial", "logic_circuit", "sentence_fill", "words_trainer",
+    "random_polynomial", "logic_circuit", "sentence_pick", "words_pick",
+    "words_trainer",
     "number_range",
 }
 

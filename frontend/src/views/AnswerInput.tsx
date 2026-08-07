@@ -1,12 +1,64 @@
 import { useEffect, useRef, useState } from "react";
-import type { InputField } from "../api/types";
+import type { Block, InputField, TextBlock } from "../api/types";
+import BlockRenderer from "../blocks/BlockRenderer";
 import styles from "../styles/views.module.css";
+
+/** Чем ядро помечает пропуск в тексте условия. */
+const BLANK = "___";
+
+/**
+ * Текстовый блок — с проверкой поля, а не только метки типа.
+ *
+ * Одного `type === "text"` мало: в `Block` есть ветка-заглушка под
+ * блоки, которых фронт ещё не знает, и по метке она неотличима от
+ * настоящего текста. Заглушка нужна, чтобы фронт не падал на блоках,
+ * добавленных в ядро после деплоя, — но и содержимого у неё может не
+ * оказаться.
+ */
+function asText(block: Block): TextBlock | null {
+  return block.type === "text" &&
+    typeof (block as TextBlock).content === "string"
+    ? (block as TextBlock)
+    : null;
+}
+
+/**
+ * Возьмёт ли `slot_inline` условие на себя.
+ *
+ * Спрашивают об этом двое — сам компонент и тот, кто показывает условие
+ * выше формы, — и ответить они обязаны одинаково. Разойдясь, они либо
+ * покажут условие дважды, либо не покажут вовсе; второе хуже, потому
+ * что задание становится нечитаемым.
+ *
+ * Число пропусков обязано сойтись с числом полей: поле не на своём
+ * месте меняет смысл предложения, и лучше столбик полей под условием,
+ * чем «She [goes] to school and [___] home» с полями вразнобой.
+ */
+export function inlineFitsPrompt(
+  widget: string | undefined,
+  fields: InputField[] | undefined,
+  prompt: Block[] | undefined,
+): boolean {
+  if (widget !== "slot_inline" || !prompt || prompt.length === 0) return false;
+  if (!fields || fields.length === 0) return false;
+  const blanks = prompt.reduce((sum, block) => {
+    const text = asText(block);
+    return sum + (text ? text.content.split(BLANK).length - 1 : 0);
+  }, 0);
+  return blanks === fields.length;
+}
 
 interface Props {
   /** Имя виджета из реестра ядра (core/widgets.py). Пусто — одно поле. */
   widget?: string;
   /** Описания полей. Ответа не содержат — только подписи и подсказки. */
   fields?: InputField[];
+  /**
+   * Блоки условия — только для виджета `slot_inline`, который рисует
+   * поля ВНУТРИ текста. Остальным раскладкам условие не нужно: его
+   * показывает вызывающий, выше формы.
+   */
+  prompt?: Block[];
   /**
    * [строк, столбцов] — если ответ сетка. Поля идут построчно.
    *
@@ -49,8 +101,9 @@ const SINGLE: InputField[] = [{ kind: "text" }];
  * именем; ядро headless и про React ничего не знает, связь идёт по
  * имени — ровно как блоки связаны с фронтом полем `type`.
  *
- * Три раскладки: варианты (тест), сетка (матрица и таблица) и поля.
- * Первая подходящая выигрывает — они не комбинируются.
+ * Четыре раскладки: варианты (тест), пропуски в тексте, сетка (матрица
+ * и таблица) и поля. Первая подходящая выигрывает — они не
+ * комбинируются.
  *
  * Чего здесь НЕТ: палитры формул (этап 7 плана), выбора НЕСКОЛЬКИХ,
  * перетаскивания карточек. Незнакомое имя виджета не ломает экран —
@@ -58,7 +111,7 @@ const SINGLE: InputField[] = [{ kind: "text" }];
  * чем показать не тот компонент.
  */
 export default function AnswerInput({
-  widget, fields, shape, options, disabled, resetKey, onAnswer,
+  widget, fields, shape, options, prompt, disabled, resetKey, onAnswer,
 }: Props) {
   const list = fields && fields.length > 0 ? fields : SINGLE;
   const [values, setValues] = useState<Record<string, string>>({});
@@ -126,6 +179,67 @@ export default function AnswerInput({
           </label>
         ))}
         <button type="submit" disabled={disabled || !picked}>
+          Ответить
+        </button>
+      </form>
+    );
+  }
+
+  function inlineField(field: InputField, index: number) {
+    const key = field.name ?? "";
+    return (
+      <input
+        key={`f${key || index}`}
+        ref={index === 0 ? firstRef : undefined}
+        className={`${styles.answerInput} ${styles.blankInput}`}
+        inputMode={field.kind === "number" ? "decimal" : "text"}
+        value={values[key] ?? ""}
+        onChange={(e) => set(key, e.target.value)}
+        disabled={disabled}
+        aria-label={`пропуск ${index + 1}`}
+        size={Math.max(8, (values[key] ?? "").length + 2)}
+        autoFocus={index === 0}
+      />
+    );
+  }
+
+  // Пропуски в тексте. Поля стоят на месте `___` прямо в условии —
+  // единственная раскладка, которой само условие и нужно.
+  //
+  // Проверка при этом обычная, серверная: уезжают те же значения по
+  // именам слотов, что и у полей столбиком. Ушедший вместе с
+  // `sentence_fill` блок сверял ввод сам, у себя, и ради этого возил
+  // правильные ответы в браузер — здесь ответов у клиента нет вовсе.
+  if (inlineFitsPrompt(widget, fields, prompt)) {
+    let taken = 0;
+    return (
+      <form
+        className={styles.inlineForm}
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit();
+        }}
+      >
+        <div className={styles.inlinePrompt}>
+          {prompt!.map((block, bi) => {
+            const text = asText(block);
+            if (!text || !text.content.includes(BLANK)) {
+              return <BlockRenderer key={`b${bi}`} block={block} />;
+            }
+            const parts: string[] = text.content.split(BLANK);
+            return (
+              <p key={`b${bi}`} className={styles.inlineParagraph}>
+                {parts.map((segment, si) => (
+                  <span key={`s${si}`}>
+                    {segment}
+                    {si < parts.length - 1 && inlineField(list[taken], taken++)}
+                  </span>
+                ))}
+              </p>
+            );
+          })}
+        </div>
+        <button type="submit" disabled={disabled || !filled}>
           Ответить
         </button>
       </form>

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Block, InputField, Partition } from "../api/types";
 import { api, ApiError } from "../api/client";
 import { BlockList } from "../blocks/BlockRenderer";
-import AnswerInput from "./AnswerInput";
+import AnswerInput, { inlineFitsPrompt } from "./AnswerInput";
 import styles from "../styles/views.module.css";
 
 interface Props {
@@ -188,9 +188,18 @@ export default function InteractiveTaskView({ partition, userId }: Props) {
 
           {!session.finished ? (
             <>
-              <div className={styles.prompt}>
-                <BlockList blocks={session.prompt} />
-              </div>
+              {/* Пропуски в тексте — единственная раскладка, где условие
+                  и форма ввода это одно и то же: поля стоят внутри
+                  предложения. Спрашиваем ту же функцию, что и сам
+                  компонент: разойдясь, мы бы либо показали условие
+                  дважды, либо не показали вовсе. */}
+              {!inlineFitsPrompt(
+                session.widget, session.fields, session.prompt,
+              ) && (
+                <div className={styles.prompt}>
+                  <BlockList blocks={session.prompt} />
+                </div>
+              )}
               {session.fields || session.options ? (
                 // Сессия со спецификацией ответа: поля рисуются по её
                 // виду. Старый тренажёр полей не присылает и остаётся на
@@ -200,6 +209,7 @@ export default function InteractiveTaskView({ partition, userId }: Props) {
                   fields={session.fields}
                   shape={session.shape}
                   options={session.options}
+                  prompt={session.prompt}
                   disabled={loading}
                   resetKey={session.history.length}
                   onAnswer={(values) => void submit(values)}
