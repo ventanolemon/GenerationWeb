@@ -106,7 +106,10 @@ def me(request: Request,
 
 
 @router.post("/register", status_code=201)
-def register(body: RegisterRequest, request: Request) -> dict:
+def register(body: RegisterRequest, request: Request,
+             user_agent: Optional[str] = Header(default=None)) -> dict:
+    """Регистрация сразу выдаёт сессию: иначе только что заведённый
+    пользователь оказывался неопознанным до отдельного входа."""
     repo = request.app.state.repo
     ok = repo.create_user(
         login=body.login,
@@ -121,7 +124,11 @@ def register(body: RegisterRequest, request: Request) -> dict:
             detail=f"Пользователь с логином «{body.login}» уже существует"
         )
     profile = repo.get_user_profile(body.login)
-    return profile.to_dict()
+    session = auth_sessions.issue(repo, profile.login,
+                                  user_agent=user_agent or "")
+    return {**profile.to_dict(),
+            "token": session["token"],
+            "expires_at": session["expires_at"]}
 
 
 @router.get("/profile/{login}")

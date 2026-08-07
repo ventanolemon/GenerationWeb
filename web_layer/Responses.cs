@@ -94,7 +94,14 @@ public record UserDto(
     string Email = "",
     string About = "",
     [property: JsonPropertyName("avatar_color")] string AvatarColor = "",
-    [property: JsonPropertyName("created_at")] double CreatedAt = 0
+    [property: JsonPropertyName("created_at")] double CreatedAt = 0,
+    // Токен сессии. Приходит ТОЛЬКО с ответа на вход и регистрацию; у
+    // остальных ответов с профилем его нет (null). Без этого поля токен
+    // молча терялся бы здесь, на границе C#: FastAPI его отдаёт, а DTO,
+    // не знающий о нём, выбрасывает — и браузер продолжал бы заявлять
+    // роль заголовком, как будто ничего не поменялось.
+    [property: JsonPropertyName("token")] string? Token = null,
+    [property: JsonPropertyName("expires_at")] double ExpiresAt = 0
 );
 
 /// <summary>

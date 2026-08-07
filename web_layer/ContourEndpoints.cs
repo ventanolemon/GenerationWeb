@@ -4,9 +4,15 @@ namespace WebLayer.Endpoints;
 
 /// <summary>
 /// Прокси к LLM-контуру (contour_service, отдельный микросервис). Web-слой
-/// тонкий: пробрасывает identity (X-User-Id / X-User-Role) и релеит сырое
-/// тело. Вся логика — очередь, петля S0–S6, владение джобами, создание
-/// партиции из approve — в contour_service; RBAC (кто вообще ходит) — здесь.
+/// тонкий: пробрасывает identity (Authorization + X-User-Id / X-User-Role) и
+/// релеит сырое тело. Вся логика — очередь, петля S0–S6, владение джобами,
+/// создание партиции из approve — в contour_service.
+///
+/// RBAC здесь НЕ живёт, вопреки тому, что говорилось в этом комментарии
+/// раньше: во всём web_layer нет ни одного сравнения роли — проверку роли
+/// делает тот сервис, в который запрос уезжает. Инвентарь проверок
+/// (organizations_readiness.md §3.4) нашёл это расхождение описания с
+/// кодом; ошибочным было описание.
 ///
 /// Форму job/probe/critic знает только фронт (как со /stats и dashboard-
 /// прокси). Ошибки contour_service ({"detail": ...}) переводятся в контракт
@@ -45,17 +51,17 @@ public static class ContourEndpoints
     private static async Task<IResult> Get(
         ContourClient client, string path, HttpRequest req, CancellationToken ct)
     {
-        var (uid, role) = ProxyRelay.Identity(req);
-        var (status, body) = await client.ProxyAsync(HttpMethod.Get, path, uid, role, null, ct);
+        var (uid, role, auth) = ProxyRelay.Identity(req);
+        var (status, body) = await client.ProxyAsync(HttpMethod.Get, path, uid, role, null, ct, auth);
         return ProxyRelay.Relay(status, body);
     }
 
     private static async Task<IResult> Send(
         HttpMethod method, ContourClient client, string path, HttpRequest req, CancellationToken ct)
     {
-        var (uid, role) = ProxyRelay.Identity(req);
+        var (uid, role, auth) = ProxyRelay.Identity(req);
         var jsonBody = await ProxyRelay.ReadBodyAsync(req);
-        var (status, body) = await client.ProxyAsync(method, path, uid, role, jsonBody, ct);
+        var (status, body) = await client.ProxyAsync(method, path, uid, role, jsonBody, ct, auth);
         return ProxyRelay.Relay(status, body);
     }
 }

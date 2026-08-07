@@ -88,17 +88,17 @@ public static class DashboardEndpoints
     private static async Task<IResult> Get(
         GeneratorClient client, string path, HttpRequest req, CancellationToken ct)
     {
-        var (uid, role) = ProxyRelay.Identity(req);
-        var (status, body) = await client.ProxyAsync(HttpMethod.Get, path, uid, role, null, ct);
+        var (uid, role, auth) = ProxyRelay.Identity(req);
+        var (status, body) = await client.ProxyAsync(HttpMethod.Get, path, uid, role, null, ct, auth);
         return ProxyRelay.Relay(status, body);
     }
 
     private static async Task<IResult> Send(
         HttpMethod method, GeneratorClient client, string path, HttpRequest req, CancellationToken ct)
     {
-        var (uid, role) = ProxyRelay.Identity(req);
+        var (uid, role, auth) = ProxyRelay.Identity(req);
         var jsonBody = await ProxyRelay.ReadBodyAsync(req);
-        var (status, body) = await client.ProxyAsync(method, path, uid, role, jsonBody, ct);
+        var (status, body) = await client.ProxyAsync(method, path, uid, role, jsonBody, ct, auth);
         return ProxyRelay.Relay(status, body);
     }
 }

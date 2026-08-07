@@ -44,10 +44,10 @@ public static class PartitionEndpoints
             GeneratorClient client,
             CancellationToken ct) =>
         {
-            var (uid, role) = ProxyRelay.Identity(req);
+            var (uid, role, auth) = ProxyRelay.Identity(req);
             var (status, body) = await client.ProxyAsync(
                 HttpMethod.Get, $"/partitions/candidates/{subjectId}",
-                uid, role, null, ct);
+                uid, role, null, ct, auth);
             return ProxyRelay.Relay(status, body);
         })
         .WithTags("partitions");
@@ -59,9 +59,9 @@ public static class PartitionEndpoints
             GeneratorClient client,
             CancellationToken ct) =>
         {
-            var (uid, role) = ProxyRelay.Identity(req);
+            var (uid, role, auth) = ProxyRelay.Identity(req);
             var (status, body) = await client.ProxyAsync(
-                HttpMethod.Get, $"/partitions/{id}", uid, role, null, ct);
+                HttpMethod.Get, $"/partitions/{id}", uid, role, null, ct, auth);
             return ProxyRelay.Relay(status, body);
         })
         .WithTags("partitions");
@@ -87,9 +87,9 @@ public static class PartitionEndpoints
                 generation_params = body.GenerationParams ?? (object)new { },
             });
 
-            var (uid, role) = ProxyRelay.Identity(req);
+            var (uid, role, auth) = ProxyRelay.Identity(req);
             var (status, respBody) = await client.ProxyAsync(
-                HttpMethod.Post, "/partitions", uid, role, payload, ct);
+                HttpMethod.Post, "/partitions", uid, role, payload, ct, auth);
 
             // Кеш сбрасываем ТОЛЬКО после успеха: на 403 ничего не менялось,
             // а лишний сброс заставил бы всех перечитывать разделы из-за
@@ -109,9 +109,9 @@ public static class PartitionEndpoints
             IMemoryCache cache,
             CancellationToken ct) =>
         {
-            var (uid, role) = ProxyRelay.Identity(req);
+            var (uid, role, auth) = ProxyRelay.Identity(req);
             var (status, respBody) = await client.ProxyAsync(
-                HttpMethod.Delete, $"/partitions/{id}", uid, role, null, ct);
+                HttpMethod.Delete, $"/partitions/{id}", uid, role, null, ct, auth);
 
             // Инвалидируем кеш предмета — subjectId передаётся query-параметром
             if (status is >= 200 and < 300)

@@ -75,6 +75,18 @@ class IssueAndResolveTests(AuthSessionBase):
         self.assertEqual(body["login"], "alla")
         self.assertEqual(body["role"], "teacher")
 
+    def test_registration_issues_a_session_too(self):
+        # Иначе только что заведённый пользователь неопознан до отдельного
+        # входа, и первый же его запрос упирается в 401.
+        body = self.client.post("/auth/register",
+                                json={"login": "nova", "password": "parol",
+                                      "fio": "Новенький"}).json()
+        self.assertTrue(body["token"].startswith("gws_"))
+        me = self.client.get("/auth/me",
+                             headers=self._bearer(body["token"])).json()
+        self.assertEqual(me["login"], "nova")
+        self.assertTrue(me["verified"])
+
     def test_wrong_password_issues_nothing(self):
         r = self.client.post("/auth/login",
                              json={"login": "alla", "password": "не тот"})

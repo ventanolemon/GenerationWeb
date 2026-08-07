@@ -253,18 +253,9 @@ public sealed class GeneratorClient
         return await response.Content.ReadFromJsonAsync<UserDto>(JsonOptions, ct);
     }
 
-    public async Task<UserDto?> UpdateProfileAsync(
-        string login, UpdateProfileRequest req, CancellationToken ct)
-    {
-        var response = await _http.PatchAsJsonAsync(
-            $"/auth/profile/{Uri.EscapeDataString(login)}",
-            new { fio = req.Fio, group = req.Group, email = req.Email,
-                  about = req.About, avatar_color = req.AvatarColor },
-            ct);
-        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<UserDto>(JsonOptions, ct);
-    }
+    // UpdateProfileAsync убран: правка профиля теперь требует identity и
+    // может законно ответить 403, а этот путь звал EnsureSuccessStatusCode
+    // и превращал отказ в 500. Эндпоинт ходит через ProxyAsync.
 
     public async Task<(bool Ok, string? Error)> ChangePasswordAsync(
         ChangePasswordRequest req, CancellationToken ct)
@@ -337,13 +328,18 @@ public sealed class GeneratorClient
     /// </summary>
     public async Task<(int Status, string Body)> ProxyAsync(
         HttpMethod method, string path, string? userId, string? role,
-        string? jsonBody, CancellationToken ct)
+        string? jsonBody, CancellationToken ct, string? auth = null)
     {
         using var req = new HttpRequestMessage(method, path);
         if (!string.IsNullOrWhiteSpace(userId))
             req.Headers.TryAddWithoutValidation("X-User-Id", userId);
         if (!string.IsNullOrWhiteSpace(role))
             req.Headers.TryAddWithoutValidation("X-User-Role", role);
+        // Заверенная личность. Идёт вместе с X-*, а не вместо них:
+        // сервер сам решает, чему верить, и при предъявленном токене
+        // заголовки роли игнорирует.
+        if (!string.IsNullOrWhiteSpace(auth))
+            req.Headers.TryAddWithoutValidation("Authorization", auth);
         if (jsonBody is not null)
             req.Content = new StringContent(
                 jsonBody, System.Text.Encoding.UTF8, "application/json");

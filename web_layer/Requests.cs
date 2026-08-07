@@ -74,6 +74,11 @@ public record RegisterRequest(
 
 /// <summary>
 /// Тело PATCH /api/auth/profile/{login}.
+///
+/// Описание формы, а не её проверка: с переходом правки профиля на
+/// ProxyAsync (эндпоинту нужна identity, а отказ 403 законен) тело едет в
+/// FastAPI как есть, и валидирует его pydantic. Одна точка проверки лучше
+/// двух расходящихся.
 /// </summary>
 public record UpdateProfileRequest(
     string Fio,

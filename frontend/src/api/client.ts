@@ -34,15 +34,24 @@ import type {
 } from "./types";
 
 // Идентичность для RBAC-эндпоинтов (/analytics, /admin, /assignments,
-// /groups). FastAPI читает X-User-Id (обязателен) и X-User-Role; web_layer
-// их пробрасывает. Гость (login отсутствует) в эти витрины не ходит.
+// /groups). Заверяет её ТОКЕН: сервер по нему сам смотрит, кто это и какая
+// у него роль. X-User-Id / X-User-Role остаются на время перехода (их ещё
+// шлёт десктоп) и перестанут что-либо значить, когда на сервере снимут
+// GEN_TRUST_IDENTITY_HEADERS. Слать роль как заявление — ровно то, из-за
+// чего преподаватель мог назначить себя админом.
 export interface Identity {
   login: string;
   role?: Role;
+  token?: string;
 }
 
 function idHeaders(id: Identity): Record<string, string> {
-  return { "X-User-Id": id.login, "X-User-Role": id.role ?? "student" };
+  const headers: Record<string, string> = {
+    "X-User-Id": id.login,
+    "X-User-Role": id.role ?? "student",
+  };
+  if (id.token) headers["Authorization"] = `Bearer ${id.token}`;
+  return headers;
 }
 
 // Базовая обёртка вокруг fetch с двумя задачами: распарсить JSON и
@@ -160,6 +169,20 @@ export const api = {
     });
   },
 
+  // Выход гасит сессию на сервере, а не только забывает её в браузере.
+  // Ошибку глотаем: пользователь всё равно выходит локально, и держать его
+  // в приложении из-за недоступной сети было бы хуже.
+  async logout(id: Identity): Promise<void> {
+    try {
+      await request<void>("/api/auth/logout", {
+        method: "POST",
+        headers: idHeaders(id),
+      });
+    } catch {
+      /* сессия истечёт сама по expires_at */
+    }
+  },
+
   register(body: RegisterRequest): Promise<UserInfo> {
     return request<UserInfo>("/api/auth/register", {
       method: "POST",
@@ -171,9 +194,16 @@ export const api = {
     return request<UserInfo>(`/api/auth/profile/${encodeURIComponent(login)}`);
   },
 
-  updateProfile(login: string, body: UpdateProfileRequest): Promise<UserInfo> {
+  // Требует identity: сервер пускает владельца профиля и админа. Раньше
+  // проверки не было вовсе — чужой профиль правился без единого заголовка.
+  updateProfile(
+    id: Identity,
+    login: string,
+    body: UpdateProfileRequest,
+  ): Promise<UserInfo> {
     return request<UserInfo>(`/api/auth/profile/${encodeURIComponent(login)}`, {
       method: "PATCH",
+      headers: idHeaders(id),
       body: JSON.stringify(body),
     });
   },
