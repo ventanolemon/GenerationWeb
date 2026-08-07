@@ -166,4 +166,118 @@ class BaseNameNode(Node):
         return {"out": _BASE_NAMES.get(base, f"{base}-ичной")}
 
 
-__all__ = ["NumberBaseNode", "BaseNameNode", "to_base", "from_base"]
+def prefix_code(count: int, rng, *, alphabet: str = "01",
+                max_length: int = 5) -> list[str]:
+    """
+    `count` кодовых слов, ни одно из которых не начало другого.
+
+    Строится ДЕРЕВОМ, а не перебором с отбраковкой. Префиксный код — это
+    ровно множество листьев дерева: начинаем с одного листа (пустого
+    слова) и `count - 1` раз заменяем какой-нибудь лист его потомками.
+    Условие Фано при таком построении выполняется само и всегда: у листа
+    нет потомков среди листьев, а предок листом быть перестал.
+
+    Старый генератор шёл иначе: брал все слова длины 1..4, вычёркивал
+    несовместимые с уже выбранными и подбирал длину эвристикой со
+    счётчиком «потерь». Работает, но проверять его приходится прогоном —
+    у отбраковочных схем всегда есть вход, на котором они не сходятся, и
+    в том коде на этот случай стоял сторож `if stroky > 4: stroky = 1`.
+    Здесь отбраковки нет, поэтому и сторожить нечего.
+
+    Побочная выгода: длины получаются разными сами собой — какой лист
+    выпал, тот и удлинился. Ради этого задание и существует, а
+    равномерные коды сделали бы его тривиальным.
+    """
+    if count < 1:
+        raise ValueError("кодовых слов должно быть хотя бы одно")
+    base = len(alphabet)
+    if base < 2:
+        raise ValueError("алфавит кода — минимум два символа")
+    if count > base ** max_length:
+        raise ValueError(
+            f"{count} слов длины до {max_length} в алфавите из {base} "
+            f"символов не разместить")
+
+    leaves = [""]
+    while len(leaves) < count:
+        # Делим только те листья, которым есть куда расти. Список не
+        # пуст: иначе count превысил бы вместимость, а это проверено.
+        splittable = [i for i, code in enumerate(leaves)
+                      if len(code) < max_length]
+        index = rng.choice(splittable)
+        parent = leaves.pop(index)
+        leaves.extend(parent + ch for ch in alphabet)
+    # Листьев могло стать больше нужного: деление даёт `base` потомков
+    # сразу, а не одного.
+    return rng.sample(leaves, count)
+
+
+class PrefixCodeNode(Node):
+    """
+    Набор кодовых слов, удовлетворяющих условию Фано.
+
+    Тот случай, где узел оправдан: смысл — одна фраза («дай семь кодов,
+    ни один не начало другого»), а реализация — построение дерева с
+    состоянием. Через существующие узлы это выразимо `repeat`'ом с
+    проверками, но граф вышел бы в несколько десятков элементов и читать
+    его было бы нельзя.
+    """
+    type_id = "prefix_code"
+    category = "informatics"
+    display_name = "Префиксный код (Фано)"
+    description = ("Кодовые слова, ни одно из которых не начало другого. "
+                   "Источник. Выход: LIST.")
+    OUTPUTS = [Port("out", PortType.LIST)]
+    PARAMS_SCHEMA = {
+        "count": {"type": "int", "default": 6},
+        "alphabet": {"type": "string", "default": "01", "optional": True},
+        "max_length": {"type": "int", "default": 5, "optional": True},
+    }
+
+    def _int(self, key: str, default: int) -> int:
+        try:
+            return int(self.params.get(key, default))
+        except (TypeError, ValueError):
+            raise GraphValidationError(
+                f"{self.node_ref()}: {key} должно быть целым.")
+
+    def _alphabet(self) -> str:
+        text = str(self.params.get("alphabet", "01") or "01")
+        seen: list[str] = []
+        for ch in text:
+            if ch not in seen:
+                seen.append(ch)
+        return "".join(seen)
+
+    def validate_params(self) -> None:
+        count = self._int("count", 6)
+        length = self._int("max_length", 5)
+        alphabet = self._alphabet()
+        # Вместимость считается ЗДЕСЬ, при сохранении графа: невозможный
+        # набор иначе всплыл бы отказом генерации у студента.
+        if count < 1:
+            raise GraphValidationError(
+                f"{self.node_ref()}: кодовых слов должно быть хотя бы одно.")
+        if len(alphabet) < 2:
+            raise GraphValidationError(
+                f"{self.node_ref()}: алфавит кода — минимум два символа.")
+        if length < 1:
+            raise GraphValidationError(
+                f"{self.node_ref()}: длина кода не может быть меньше единицы.")
+        if count > len(alphabet) ** length:
+            raise GraphValidationError(
+                f"{self.node_ref()}: {count} слов длины до {length} в "
+                f"алфавите из {len(alphabet)} символов не разместить — "
+                f"их всего {len(alphabet) ** length}.")
+
+    def summary(self) -> str:
+        return f"{self._int('count', 6)} слов"
+
+    def compute(self, inputs, ctx: ExecContext):
+        return {"out": prefix_code(self._int("count", 6), ctx.rng,
+                                   alphabet=self._alphabet(),
+                                   max_length=self._int("max_length", 5))}
+
+
+__all__ = ["NumberBaseNode", "BaseNameNode", "PrefixCodeNode",
+           "to_base", "from_base", "prefix_code"]

@@ -20,7 +20,7 @@ from .english import (
     WordsTrainerNode,
 )
 from .image import ImageBlockNode, ImageFileNode, LogicCircuitNode
-from .informatics import BaseNameNode, NumberBaseNode
+from .informatics import BaseNameNode, NumberBaseNode, PrefixCodeNode
 from .pools import PoolNode, PoolPickNode
 from .strings import LetterKeysNode, RandomWordNode, TextLengthNode
 from .plot import (
@@ -116,7 +116,7 @@ _ALL_NODES = [
     PoolNode, PoolPickNode, RandomWordNode, LetterKeysNode,
     TextLengthNode,
     # informatics (информатика)
-    NumberBaseNode, BaseNameNode,
+    NumberBaseNode, BaseNameNode, PrefixCodeNode,
     # image (изображения / ОПВС)
     LogicCircuitNode, ImageFileNode, ImageBlockNode,
     # plot (графика на комплексной плоскости)

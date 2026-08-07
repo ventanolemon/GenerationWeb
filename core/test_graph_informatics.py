@@ -231,3 +231,197 @@ class MaxIsAllowedInFormulasTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class PrefixCodeTests(unittest.TestCase):
+    """
+    Условие Фано: ни одно кодовое слово не является началом другого.
+
+    Строится дерево, а не перебор с отбраковкой. Старый генератор брал
+    все слова длины 1..4, вычёркивал несовместимые с уже выбранными и
+    подбирал длину эвристикой со счётчиком «потерь» — работало, но на
+    случай несхождения там стоял сторож `if stroky > 4: stroky = 1`. У
+    отбраковочных схем всегда есть вход, на котором они буксуют; у
+    построения дерева такого входа нет по устройству.
+    """
+
+    def _codes(self, count, seed=0, **kwargs):
+        import random
+        from core.graph.nodes.informatics import prefix_code
+        return prefix_code(count, random.Random(seed), **kwargs)
+
+    @staticmethod
+    def _prefix_free(codes) -> bool:
+        return all(not (a.startswith(b) or b.startswith(a))
+                   for i, a in enumerate(codes) for b in codes[i + 1:])
+
+    def test_the_fano_condition_holds_always(self):
+        """
+        Инвариант проверяется прогоном, а не доверием к построению:
+        тысяча наборов разного размера.
+        """
+        import random
+        rng = random.Random(11)
+        for _ in range(1000):
+            count = rng.randint(2, 16)
+            with self.subTest(count=count):
+                codes = self._codes(count, seed=rng.randint(0, 10 ** 6),
+                                    max_length=5)
+                self.assertEqual(len(codes), count)
+                self.assertEqual(len(set(codes)), count, codes)
+                self.assertTrue(self._prefix_free(codes), codes)
+
+    def test_lengths_vary(self):
+        """
+        Ради этого задание и существует: равномерные коды делают его
+        тривиальным. Разные длины выходят сами — какой лист выпал, тот и
+        удлинился.
+        """
+        seen = set()
+        for seed in range(20):
+            seen.update(len(c) for c in self._codes(7, seed, max_length=4))
+        self.assertGreater(len(seen), 1, seen)
+
+    def test_capacity_is_respected(self):
+        self.assertEqual(len(self._codes(32, max_length=5)), 32)
+        with self.assertRaises(ValueError):
+            self._codes(33, max_length=5)
+
+    def test_max_length_is_honoured(self):
+        for code in self._codes(8, max_length=4):
+            self.assertLessEqual(len(code), 4, code)
+
+    def test_a_larger_alphabet_works(self):
+        codes = self._codes(9, alphabet="012", max_length=3)
+        self.assertTrue(self._prefix_free(codes), codes)
+        self.assertTrue(set("".join(codes)) <= set("012"))
+
+    def test_impossible_setup_is_refused_when_saving(self):
+        for params in ({"count": 0}, {"count": 40, "max_length": 5},
+                       {"count": 4, "alphabet": "0"},
+                       {"count": 4, "max_length": 0}):
+            with self.subTest(params=params):
+                with self.assertRaises(GraphValidationError):
+                    DEFAULT_REGISTRY.create("prefix_code", "p", params)
+
+
+class Generator2Tests(unittest.TestCase):
+    """
+    Старое задание «расшифруйте слово» целиком: девять узлов.
+
+    Главный инвариант не в том, что коды префиксные, а в том, что
+    зашифрованная строка расшифровывается ОДНОЗНАЧНО — иначе у задания
+    несколько верных ответов, и студент прав в любом случае.
+    """
+
+    GRAPH = {
+        "nodes": [
+            {"id": "коды", "type": "prefix_code",
+             "params": {"count": 6, "max_length": 4}},
+            {"id": "кл", "type": "letter_keys", "params": {}},
+            {"id": "диап", "type": "number_range",
+             "params": {"start": 0, "stop": 5, "step": 1}},
+            {"id": "инд", "type": "random_choice", "params": {
+                "elem_type": "number", "count": 4, "allow_duplicates": True}},
+            {"id": "м", "type": "map", "params": {
+                "imports": ["коды:list", "ключи:list"],
+                "outputs": ["код:string:list", "ключ:string:list"],
+                "body": {"nodes": [
+                    {"id": "i", "type": "map_item", "params": {"type": "number"}},
+                    {"id": "c_", "type": "input_var",
+                     "params": {"name": "коды", "type": "list"}},
+                    {"id": "k_", "type": "input_var",
+                     "params": {"name": "ключи", "type": "list"}},
+                    {"id": "c", "type": "list_get",
+                     "params": {"elem_type": "string"}},
+                    {"id": "k", "type": "list_get",
+                     "params": {"elem_type": "string"}},
+                    {"id": "oc", "type": "output_var",
+                     "params": {"name": "код", "type": "string"}},
+                    {"id": "ok", "type": "output_var",
+                     "params": {"name": "ключ", "type": "string"}},
+                    {"id": "tb", "type": "to_block", "params": {}}],
+                    "edges": [
+                        {"from": "i:out", "to": "c:index"},
+                        {"from": "c_:out", "to": "c:list"},
+                        {"from": "i:out", "to": "k:index"},
+                        {"from": "k_:out", "to": "k:list"},
+                        {"from": "c:out", "to": "oc:value"},
+                        {"from": "k:out", "to": "ok:value"},
+                        {"from": "c:out", "to": "tb:in"}], "meta": {}}}},
+            {"id": "шифр", "type": "list_join", "params": {"sep": ""}},
+            {"id": "отв", "type": "list_join", "params": {"sep": ""}},
+            {"id": "табл", "type": "list_join", "params": {"sep": "\n"}},
+            {"id": "t", "type": "task", "params": {
+                "statement": "Расшифруйте слово #шифр#, если:\n#табл#",
+                "slots": ["слово:text"]}},
+        ],
+        "edges": [
+            {"from": "коды:out", "to": "кл:in"},
+            {"from": "диап:out", "to": "инд:list"},
+            {"from": "инд:out", "to": "м:items"},
+            {"from": "коды:out", "to": "м:коды"},
+            {"from": "кл:keys", "to": "м:ключи"},
+            {"from": "м:код", "to": "шифр:in"},
+            {"from": "м:ключ", "to": "отв:in"},
+            {"from": "кл:labelled", "to": "табл:in"},
+            {"from": "шифр:out", "to": "t:шифр"},
+            {"from": "табл:out", "to": "t:табл"},
+            {"from": "отв:out", "to": "t:слово"},
+        ],
+    }
+
+    def _parts(self, task):
+        """Шифровка и таблица «ключ → код» из текста условия."""
+        lines = task.statement[0].render_plain().split("\n")
+        encoded = lines[0].split("слово ")[1].split(",")[0]
+        table = {}
+        for line in lines[1:]:
+            key, code = line.split(") ", 1)
+            table[key] = code
+        return encoded, table
+
+    @staticmethod
+    def _decode_all(encoded, table):
+        """Все возможные расшифровки — их должно быть ровно одна."""
+        results = []
+
+        def walk(rest, acc):
+            if not rest:
+                results.append("".join(acc))
+                return
+            for key, code in table.items():
+                if rest.startswith(code):
+                    walk(rest[len(code):], acc + [key])
+        walk(encoded, [])
+        return results
+
+    def test_decoding_is_unique(self):
+        for _ in range(30):
+            task = GraphExecutor(GraphSpec.parse(self.GRAPH)).run()
+            encoded, table = self._parts(task)
+            answers = self._decode_all(encoded, table)
+            self.assertEqual(len(answers), 1,
+                             f"{encoded} → {answers} при {table}")
+
+    def test_the_answer_is_that_decoding(self):
+        for _ in range(30):
+            task = GraphExecutor(GraphSpec.parse(self.GRAPH)).run()
+            encoded, table = self._parts(task)
+            self.assertEqual(task.answer_spec.accepted_examples()[0],
+                             self._decode_all(encoded, table)[0])
+
+    def test_the_table_is_prefix_free(self):
+        for _ in range(20):
+            _, table = self._parts(
+                GraphExecutor(GraphSpec.parse(self.GRAPH)).run())
+            codes = list(table.values())
+            self.assertTrue(PrefixCodeTests._prefix_free(codes), codes)
+
+    def test_the_task_is_checkable(self):
+        from core.interactive import session_from_task
+        task = GraphExecutor(GraphSpec.parse(self.GRAPH)).run()
+        self.assertTrue(task.is_checkable)
+        session = session_from_task(task)
+        self.assertTrue(
+            session.submit(task.answer_spec.accepted_examples()[0]).correct)
