@@ -3,6 +3,9 @@ import { createRoot } from "react-dom/client";
 import { HashRouter } from "react-router-dom";
 import App from "./App";
 import ErrorBoundary from "./components/ErrorBoundary";
+// Шрифты KaTeX подтягиваются этим css относительными путями;
+// Vite забирает их в сборку как обычные ассеты.
+import "katex/dist/katex.min.css";
 import "./styles/global.css";
 
 const root = document.getElementById("root");

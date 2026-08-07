@@ -218,7 +218,9 @@ def test_generate_static():
     assert len(data["statement"]) == 2
     assert data["statement"][0]["type"] == "text"
     assert data["statement"][1]["type"] == "formula"
-    assert "image_b64" in data["statement"][1]
+    # Формула едет исходником: картинку рисует клиент.
+    assert "image_b64" not in data["statement"][1]
+    assert data["statement"][1]["latex"]
     assert data["answer"][0]["content"] == "4"
     print(f"✓ POST /generate (static) — JSON {len(r.text)} байт")
 

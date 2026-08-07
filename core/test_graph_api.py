@@ -42,9 +42,13 @@ _BROKEN = {
 
 
 def test_catalog():
+    # Версия каталога и число узлов прибиты нарочно: клиенты кэшируют
+    # каталог по версии, и её незамеченный сдвиг означает, что редактор у
+    # кого-то остался со старой палитрой. Меняются они ВМЕСТЕ с составом
+    # узлов — это не «падающий тест», а напоминание сверить список.
     cat = graph_api.build_catalog()
-    assert cat["catalog_version"] == "165616006ce6e373", cat["catalog_version"]
-    assert len(cat["nodes"]) == 117, len(cat["nodes"])
+    assert cat["catalog_version"] == "cd0aa6ca3d9fdf76", cat["catalog_version"]
+    assert len(cat["nodes"]) == 130, len(cat["nodes"])
     assert cat["port_types"] and cat["conversions"]
     rn = next(n for n in cat["nodes"] if n["type_id"] == "random_natural")
     assert rn["category"] == "source"

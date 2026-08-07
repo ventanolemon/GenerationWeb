@@ -87,11 +87,18 @@ def get_parametric_task(max_attempts=20):
             x_latex = clean_latex_for_word(sp.latex(x))
             y_latex = clean_latex_for_word(sp.latex(y))
 
-            system_latex = (r"\left\{\matrix{ "  +
+            # `\begin{cases}`, а не `\left\{\matrix{…}`: последнего не
+            # понимает НИ ОДИН из трёх рендереров. Формула молча
+            # вырождалась в исходник — и в вебе, и в Qt, и в Word, —
+            # потому что в mathtext окружений нет вовсе, а `\matrix` это
+            # plain-TeX, которого нет и в KaTeX. `cases` же понимают оба:
+            # у matplotlib для него свой разбор (`parse_cases_latex`), у
+            # KaTeX он родной.
+            system_latex = (r"\begin{cases} " +
                             "x(t) = " + x_latex +
-                            r"\\" +
+                            r" \\ " +
                             "y(t) = " + y_latex +
-                            r"\\}\right.")
+                            r" \end{cases}")
 
             # Очистка для Word
             answer_latex = clean_latex_for_word(sp.latex(result))

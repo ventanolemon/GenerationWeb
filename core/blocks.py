@@ -85,21 +85,28 @@ class FormulaBlock(Block):
         latex_to_docx_image(doc, self.latex)
 
     def to_dict(self) -> dict:
-        """Отдаём LaTeX-исходник и base64-PNG. При неудаче рендера —
-        только LaTeX, фронт покажет фолбэк."""
-        image_b64: str | None = None
-        try:
-            from .rendering import latex_to_png_bytes
-            image_b64 = _b64(latex_to_png_bytes(self.latex))
-        except Exception:
-            # Импорт внутри try сознательно: обещание докстроки — «при
-            # неудаче только LaTeX». Импорт снаружи это обещание нарушал,
-            # и любое задание с формулой падало вместо фолбэка.
-            image_b64 = None
+        """
+        Отдаём LaTeX-исходник. Картинку не отдаём — её рисует клиент.
+
+        Раньше здесь готовился base64-PNG от matplotlib, и веб показывал
+        его как `<img>`. Этап 7 плана (§10.2) называет это
+        самостоятельным дефектом, и замеры это подтвердили: у типового
+        задания матана PNG составлял **94 % ответа** (5432 байта из
+        5760) и стоил около 40 мс на КАЖДУЮ формулу — в синхронном
+        запросе, пока студент ждёт. Картинка при этом не выделяется, не
+        копируется, не ищется по странице и не масштабируется вместе с
+        текстом.
+
+        Веб рисует формулы KaTeX по этому самому исходнику. Остальные
+        два рендерера картинку берут не отсюда и не через этот метод:
+        Qt — из `render_qt`, DOCX — из `render_docx`, каждый своим
+        путём. То есть `image_b64` кормил ровно одного потребителя,
+        который в нём больше не нуждается, и оставлять поле «на всякий
+        случай» значило бы платить те же 94 % ни за что.
+        """
         return {
             "type": "formula",
             "latex": self.latex,
-            "image_b64": image_b64,
         }
 
 
@@ -141,13 +148,40 @@ class ImageBlock(Block):
             doc.add_paragraph(f"[не удалось вставить изображение: {self.caption}]")
 
     def to_dict(self) -> dict:
-        from .rendering import image_to_png_bytes
-        png = image_to_png_bytes(self.image)
+        """
+        PNG в base64 — здесь растр по делу, в отличие от формулы: у
+        картинки исходника, из которого её можно нарисовать заново, нет.
+
+        Три вида источника — те же, что у `render_docx`: путь, готовые
+        байты, объект PIL. Раньше здесь вызывался `image_to_png_bytes`
+        из `rendering`, которого в `rendering` нет — то есть ЛЮБОЕ
+        задание с картинкой падало при сериализации с `ImportError`, а
+        значит и в вебе не показывалось вовсе. Заметить это было негде:
+        единственный тест на `ImageBlock.to_dict` лежит в файле-скрипте,
+        который `unittest discover` не собирает.
+
+        Не удалось — `None`, как обещает контракт `Block.to_dict`: без
+        картинки задание всё ещё читается, а исключение отсюда уронило
+        бы весь ответ.
+        """
+        png = self._png_bytes()
         return {
             "type": "image",
             "image_b64": _b64(png) if png is not None else None,
             "caption": self.caption,
         }
+
+    def _png_bytes(self) -> bytes | None:
+        try:
+            if isinstance(self.image, (bytes, bytearray)):
+                return bytes(self.image)
+            if isinstance(self.image, (str, Path)):
+                return Path(self.image).read_bytes()
+            buf = io.BytesIO()
+            self.image.save(buf, format="PNG")
+            return buf.getvalue()
+        except Exception:                                  # noqa: BLE001
+            return None
 
 
 class CodeBlock(Block):
