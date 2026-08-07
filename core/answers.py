@@ -791,6 +791,28 @@ class TextSpec(AnswerSpec):
 
     value: str = ""
     alternatives: Tuple[str, ...] = ()
+    """Синонимы, которые тоже засчитываются."""
+
+    wrong_options: Tuple[str, ...] = ()
+    """
+    Правдоподобные НЕВЕРНЫЕ варианты — материал теста.
+
+    Названо не `distractors`, потому что так называется МЕТОД базового
+    класса, общий для всех видов ответа: поле с тем же именем затенило бы
+    его, и «строка вдруг не умеет порождать варианты» выяснилось бы в
+    рантайме. Пара по смыслу — `alternatives`: там принимаемые синонимы,
+    здесь отвергаемые двойники.
+
+    Отдельное поле, а не `tuning`: `tuning` это пустой слот под тонкую
+    настройку ПРОВЕРКИ (§5.1), а неверные варианты — данные об ответе, и
+    лежать они должны там же, где синонимы.
+
+    Их нельзя вывести из самой строки. Опечатка не годится: мягкий режим
+    её примет, строгий даст вариант, который никто не выберет.
+    Осмысленные неверные варианты для «Найдите столицу» — другие города,
+    и знает их только автор задания.
+    """
+
     case_sensitive: bool = False
     max_edits: int = 1
     mode: CheckMode = DEFAULT_MODE
@@ -848,17 +870,17 @@ class TextSpec(AnswerSpec):
 
     def _candidate_distractors(self, mode: CheckMode) -> List[str]:
         """
-        Для строки правдоподобной ошибки из самой строки не построить.
-
-        Опечатка не годится: мягкий режим её принимает, а строгий делает
-        вариант, который никто не выберет. Осмысленные неверные варианты
-        для «Найдите столицу» — это другие города, и знает их только
-        автор задания. Поэтому берём их из настройки, а не выдумываем.
+        Только объявленные автором. Выдумать их из строки нельзя: опечатка
+        не годится — мягкий режим её примет, строгий даст вариант, который
+        никто не выберет. Осмысленные неверные варианты для «Найдите
+        столицу» это другие города, и знает их только автор задания.
         """
-        return [str(item) for item in (self.tuning or {}).get("distractors", ())]
+        return [str(item) for item in self.wrong_options]
 
     def _payload(self) -> dict:
         out: dict = {"value": self.value}
+        if self.wrong_options:
+            out["wrong_options"] = list(self.wrong_options)
         if self.alternatives:
             out["alternatives"] = list(self.alternatives)
         if self.case_sensitive:
@@ -1535,6 +1557,7 @@ def _build_text(data: dict) -> TextSpec:
     return TextSpec(
         value=str(data.get("value", "")),
         alternatives=tuple(data.get("alternatives") or ()),
+        wrong_options=tuple(data.get("wrong_options") or ()),
         case_sensitive=bool(data.get("case_sensitive", False)),
         max_edits=int(data.get("max_edits", 1)),
         **_common(data))

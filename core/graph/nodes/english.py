@@ -95,6 +95,82 @@ class WordsFileNode(Node):
         return {"out": words}
 
 
+class WordsPickNode(Node):
+    """
+    Взять из словаря одно слово: вопрос, ответ и чужие переводы.
+
+    Появился, когда понадобилось собрать в Июле СТАТИЧЕСКОЕ задание по
+    английскому, и выяснилось, что тип WORDS тупиковый: его умел принять
+    только `words_trainer`, который сразу отдаёт готовую сессию. Достать
+    из словаря одну пару было нечем — то есть словарь годился ровно для
+    одного сценария, заложенного заранее.
+
+    Три выхода вместо одного «пары» — потому что дальше они идут в разные
+    места: вопрос в текст условия, ответ в слот проверки, чужие переводы
+    в неверные варианты теста. Собирать их в структуру, чтобы тут же
+    разобрать, значило бы завести тип ради одного узла.
+
+    `direction` меняет вопрос и ответ местами: «переведите на русский» и
+    «переведите на английский» — это одно задание с двух сторон, а не два
+    разных, и разводить их по узлам было бы удвоением.
+    """
+    type_id = "words_pick"
+    category = "english"
+    display_name = "Слово из словаря"
+    description = ("Случайное слово: вопрос, ответ и чужие переводы для "
+                   "теста. Вход: WORDS. Выход: STRING, STRING, LIST.")
+    INPUTS = [Port("words", PortType.WORDS)]
+    OUTPUTS = [Port("question", PortType.STRING),
+               Port("answer", PortType.STRING),
+               Port("others", PortType.LIST)]
+    PARAMS_SCHEMA = {
+        "direction": {"type": "enum",
+                      "values": ["term_to_translation", "translation_to_term"],
+                      "default": "term_to_translation"},
+        "others": {"type": "int", "default": 3, "optional": True},
+    }
+
+    def _others_count(self) -> int:
+        try:
+            count = int(self.params.get("others", 3))
+        except (TypeError, ValueError):
+            raise GraphValidationError(
+                f"{self.node_ref()}: 'others' должно быть целым ≥ 0.")
+        if count < 0:
+            raise GraphValidationError(
+                f"{self.node_ref()}: 'others' не может быть отрицательным.")
+        return count
+
+    def validate_params(self) -> None:
+        self._others_count()
+
+    def summary(self) -> str:
+        return ("англ→рус" if self.params.get(
+            "direction", "term_to_translation") == "term_to_translation"
+            else "рус→англ")
+
+    def compute(self, inputs, ctx: ExecContext):
+        words = inputs.get("words") or {}
+        if not words:
+            raise RetryGeneration(f"{self.node_ref()}: словарь пуст.")
+
+        pairs = list(words.items())
+        term, translation = ctx.rng.choice(pairs)
+        forward = self.params.get(
+            "direction", "term_to_translation") == "term_to_translation"
+        question, answer = (term, translation) if forward else (translation, term)
+
+        # Чужие переводы С ТОЙ ЖЕ стороны, что и ответ: иначе среди
+        # русских вариантов оказалось бы английское слово, и верный ответ
+        # был бы виден не глядя.
+        pool = [(t if forward else k) for k, t in pairs
+                if (t if forward else k) != answer]
+        count = min(self._others_count(), len(pool))
+        others = ctx.rng.sample(pool, count) if count else []
+
+        return {"question": question, "answer": answer, "others": others}
+
+
 class WordsTrainerNode(Node):
     """
     Интерактивный тренажёр слов из словаря WORDS → TASK.

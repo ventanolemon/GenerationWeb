@@ -27,7 +27,7 @@
 
 Опции числа      : unit=, abs=, rel=, sig=
 Опции выражения  : vars=, reject=
-Опции строки     : alt=, case, typos=
+Опции строки     : alt=, wrong=, case, typos=
 Общие            : label=, mode=
 
 Примеры::
@@ -35,6 +35,7 @@
     v:number:unit=м/с:sig=3
     y:expr:vars=x:reject=(x-1)*(x+1)
     city:text:alt=Москва|Moscow:typos=1
+    city:text:wrong=Казань|Тверь|Самара:choices=4
 
 Разбор строгий: неизвестный вид, неизвестная опция, два взаимоисключающих
 допуска — это `GraphValidationError`, а не молчаливое умолчание. Ошибка в
@@ -60,7 +61,10 @@ KINDS = ("number", "expr", "text", "matrix")
 _OPTIONS: Dict[str, Tuple[str, ...]] = {
     "number": ("unit", "abs", "rel", "sig"),
     "expr": ("vars", "reject"),
-    "text": ("alt", "case", "typos"),
+    # `alt=` — синонимы, которые ЗАСЧИТЫВАЮТСЯ; `wrong=` — неверные
+    # варианты для теста. Две разные вещи, и путать их нельзя:
+    # синоним в списке неверных сделал бы тест с двумя верными.
+    "text": ("alt", "wrong", "case", "typos"),
     # Матрица — та же сетка ячеек, поэтому и опции у неё числовые: допуск
     # применяется к КАЖДОЙ ячейке. Своего словаря настроек у матрицы нет,
     # и заводить его значило бы объявить её отдельной сущностью, каковой
@@ -119,7 +123,21 @@ class SlotDecl:
         """Подпись для показа. По умолчанию — имя слота."""
         return self.options.get("label") or self.name
 
-    def build(self, value: Any, mode) -> "Any":
+    @property
+    def wants_wrong_port(self) -> bool:
+        """
+        Нужен ли слоту вход для неверных вариантов.
+
+        Только у строкового теста: у числа и выражения варианты
+        порождаются из самого ответа, а у строки их выдумать нельзя — и
+        приходят они, как выяснилось на английском, ДАННЫМИ (чужие
+        переводы из того же словаря), а не литералами в объявлении.
+        Литеральный `wrong=` остаётся как статический запасной вариант —
+        тот же приём, что у весов случайного выбора.
+        """
+        return self.kind == "text" and bool(self.options.get("choices"))
+
+    def build(self, value: Any, mode, wrong=None) -> "Any":
         """
         Собрать спецификацию ответа по объявлению и значению с порта.
 
@@ -146,7 +164,7 @@ class SlotDecl:
             return self._expression(value, active)
         if self.kind == "matrix":
             return self._matrix(value, active)
-        return self._text(value, active)
+        return self._text(value, active, wrong)
 
     # ---------- сборка по видам ----------
 
@@ -230,13 +248,19 @@ class SlotDecl:
             return Tolerance(ToleranceKind.SIGNIFICANT, self._int("sig"))
         return None
 
-    def _text(self, value: Any, mode):
+    def _text(self, value: Any, mode, wrong=None):
         from core.answers import TextSpec
 
         return TextSpec(
             value="" if value is None else str(value),
             alternatives=tuple(
                 _split_list(self.options.get("alt", ""), sep="|")),
+            # Провод перекрывает литералы: словарь знает чужие переводы,
+            # а объявление — нет.
+            wrong_options=(tuple(str(w) for w in wrong if str(w).strip())
+                           if wrong else
+                           tuple(_split_list(self.options.get("wrong", ""),
+                                             sep="|"))),
             case_sensitive="case" in self.options,
             max_edits=self._int("typos") if "typos" in self.options else 1,
             mode=mode,

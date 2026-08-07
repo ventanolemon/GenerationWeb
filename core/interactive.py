@@ -76,8 +76,15 @@ class Question:
 
         Если выбор со спецификацией несовместим (набор слотов тестом не
         задаётся), падать незачем — остаётся обычное умолчание реестра.
+
+        Пустой список вариантов — тоже «не выбор». Спрашивают об этом
+        сами варианты, а не `options_count`: намерение автора и
+        возможность его выполнить — разные вещи. Автор пишет `choices=4`
+        на строковом слоте и забывает неверные варианты; при проверке по
+        одному лишь намерению студент получил бы переключатель, в
+        котором нечего переключать.
         """
-        if not self.widget and self.options_count:
+        if not self.widget and self.options():
             from .widgets import registry
             choice = registry.get("choice_one")
             if choice is not None and choice.serves(self.spec):
@@ -93,10 +100,21 @@ class Question:
         не из чего — дистракторов не нашлось. Второе не ошибка: лучше
         поле ввода, чем тест, в котором верный ответ виден методом
         исключения.
+
+        Результат запоминается: `options` вызывают и показ, и выбор
+        виджета, и печатная форма, а у выражения он стоит сотни
+        миллисекунд — перебор принимаемых форм не бесплатен. Пересчёт
+        дал бы то же самое (порядок выводится из содержимого
+        спецификации), так что кэш ничего не фиксирует сверх того, что и
+        так неизменно.
         """
         if not self.options_count:
             return []
-        return self.spec.options(self.options_count)
+        cached = getattr(self, "_options_cache", None)
+        if cached is None:
+            cached = self.spec.options(self.options_count)
+            object.__setattr__(self, "_options_cache", cached)
+        return cached
 
     def to_dict(self) -> dict:
         out = {
@@ -377,6 +395,50 @@ class SpecSession(InteractiveTask):
 #  Сборка сессии из готовых заданий
 # ======================================================================
 
+def option_blocks(spec: AnswerSpec, count: int) -> List[Block]:
+    """
+    Варианты теста как блоки условия — ПЕЧАТНАЯ форма выбора ответа.
+
+    На экране варианты рисует виджет, и в условии их быть не должно. На
+    бумаге рисовать некому: без этих блоков автор пишет `choices=4` и
+    получает тест в браузере и открытый вопрос в .docx — то есть одно
+    задание в двух разных смыслах. Поэтому блоки кладутся в условие
+    (его читают все — экспорт, предпросмотр, десктоп), а сессия,
+    единственная, кто рисует варианты сам, их оттуда убирает.
+    Умолчание при этом верное, а забыть о вариантах может только тот,
+    кто и так занимается ими вплотную.
+
+    Порядок здесь тот же, что увидит студент в сессии: источник один —
+    детерминированный по содержимому спецификации `spec.options`. Пусто,
+    если честный тест не собирается; тогда и сессия показывает поле
+    ввода, так что разойтись эти две формы не могут.
+    """
+    options = spec.options(count) if count > 1 else []
+    if not options:
+        return []
+    return [TextBlock("Варианты ответа:")] + [
+        TextBlock(f"{i}) {text}") for i, text in enumerate(options, 1)]
+
+
+def _statement_without_options(statement: Sequence[Block], spec: AnswerSpec,
+                               count: int) -> List[Block]:
+    """
+    Условие без напечатанных вариантов — их покажет виджет.
+
+    Сравнение идёт по содержимому: блоки собираются заново из той же
+    спецификации, и совпасть случайно хвост условия с ними не может.
+    Признак «это служебный блок» внутри Block ради одного случая не
+    заводится — блоки остаются тем, чем были, обычным содержимым.
+    """
+    printed = option_blocks(spec, count)
+    if not printed or len(statement) < len(printed):
+        return list(statement)
+    tail = [b.to_dict() for b in statement[-len(printed):]]
+    if tail != [b.to_dict() for b in printed]:
+        return list(statement)
+    return list(statement[:-len(printed)])
+
+
 def question_from_task(task, *, widget: str = "") -> Optional[Question]:
     """
     Сделать вопрос из статического задания, если у него есть спецификация.
@@ -394,7 +456,9 @@ def question_from_task(task, *, widget: str = "") -> Optional[Question]:
     # целиком, и брать первое попавшееся число нельзя.
     raw_choices = task.meta.get("choices")
     options_count = int(raw_choices) if isinstance(raw_choices, int) else 0
-    return Question(statement=list(task.statement), spec=spec,
+    statement = (_statement_without_options(task.statement, spec, options_count)
+                 if options_count else list(task.statement))
+    return Question(statement=statement, spec=spec,
                     widget=widget or str(task.meta.get("widget", "")),
                     options_count=options_count)
 

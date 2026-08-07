@@ -114,10 +114,20 @@ class DistractorsArePlausibleTests(unittest.TestCase):
         """
         self.assertEqual(TextSpec(value="Москва").distractors(3), [])
 
-    def test_text_takes_distractors_from_tuning(self):
+    def test_text_takes_declared_wrong_options(self):
         spec = TextSpec(value="Москва",
-                        tuning={"distractors": ["Казань", "Тверь"]})
+                        wrong_options=("Казань", "Тверь"))
         self.assertEqual(spec.distractors(3), ["Казань", "Тверь"])
+
+    def test_a_synonym_never_becomes_a_distractor(self):
+        """
+        Синоним засчитывается, значит вариантом «неверного» быть не может.
+        Автор способен перепутать `alt=` и `wrong=`; отсев по собственной
+        проверке ловит это до студента.
+        """
+        spec = TextSpec(value="Москва", alternatives=("Moscow",),
+                        wrong_options=("Moscow", "Казань"))
+        self.assertEqual(spec.distractors(3), ["Казань"])
 
     def test_count_is_an_upper_bound(self):
         self.assertLessEqual(len(NUMBER.distractors(2)), 2)

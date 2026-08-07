@@ -191,6 +191,10 @@ class TaskNode(Node):
                 markers.append(name)
         ports += [Port(n, PortType.ANY, required=False)
                   for n in markers if n not in names]
+        # Неверные варианты строкового теста приходят списком: у числа и
+        # выражения их порождает сама спецификация, у строки — нет.
+        ports += [Port(f"{d.name}_wrong", PortType.LIST, required=False)
+                  for d in decls if d.wants_wrong_port]
         ports.append(Port("vars", PortType.NUMBER_DICT, required=False))
         # Готовые блоки условия: картинка, график, таблица. Необязателен —
         # ради него слой обёрток в графе не появляется.
@@ -206,7 +210,9 @@ class TaskNode(Node):
 
         decls = self._slots()
         mode = self._mode()
-        built = [(d, d.build(inputs.get(d.name), mode)) for d in decls]
+        built = [(d, d.build(inputs.get(d.name), mode,
+                             inputs.get(f"{d.name}_wrong")))
+                 for d in decls]
 
         statement: list = []
         text = _fill_template(self._statement(), inputs)
@@ -234,6 +240,14 @@ class TaskNode(Node):
         if choices:
             meta["choices"] = (list(choices.values())[0] if len(built) == 1
                                else choices)
+
+        # Варианты печатаются в условии — иначе `choices=4` даёт тест на
+        # экране и открытый вопрос в .docx. Сессия их оттуда уберёт: там
+        # варианты рисует виджет. Порядок один и тот же, он выводится из
+        # содержимого спецификации.
+        if isinstance(meta.get("choices"), int) and answer_spec is not None:
+            from core.interactive import option_blocks
+            statement.extend(option_blocks(answer_spec, meta["choices"]))
 
         return {"out": StaticTask(
             statement=statement,
