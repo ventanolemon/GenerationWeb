@@ -23,10 +23,12 @@ from __future__ import annotations
 import os
 from typing import Any, Optional
 
-from fastapi import APIRouter, Header, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from core import node_packages, signing
+
+from ..identity import AdminUser
 
 router = APIRouter(tags=["packages"])
 
@@ -57,15 +59,6 @@ class InstallRequest(BaseModel):
                                    description="по умолчанию последняя")
 
 
-def _require_admin(x_user_id: Optional[str], x_user_role: Optional[str]) -> str:
-    uid = (x_user_id or "").strip()
-    if not uid:
-        raise HTTPException(status_code=401, detail="Нет заголовка X-User-Id.")
-    if (x_user_role or "").strip().lower() != "admin":
-        raise HTTPException(status_code=403,
-                            detail="Доступно только администратору.")
-    return uid
-
 
 def _run(fn, *args, **kwargs) -> Any:
     try:
@@ -95,17 +88,15 @@ def get_manifest(
 def post_publish(
     body: PublishPackageRequest,
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: AdminUser,
 ) -> dict[str, Any]:
-    actor = _require_admin(x_user_id, x_user_role)
     return _run(node_packages.publish, request.app.state.repo,
                 name=body.name, version=body.version, sequence=body.sequence,
                 url=body.url, size_bytes=body.size_bytes, sha256=body.sha256,
                 signature=body.signature, node_types=body.node_types,
                 public_key=_public_key(), api_version=body.api_version,
                 signing_key_id=body.signing_key_id, summary=body.summary,
-                actor_login=actor)
+                actor_login=who.login)
 
 
 @router.post("/admin/packages/{name}/install")
@@ -113,25 +104,21 @@ def post_install(
     name: str,
     body: InstallRequest,
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: AdminUser,
 ) -> dict[str, Any]:
     """Разрешить пакет на сервере. Это решение администратора о том, какой
     код здесь исполняется, — потому графы с неустановленными пакетами и
     отвергаются на push'е, а не тихо принимаются."""
-    actor = _require_admin(x_user_id, x_user_role)
     return _run(node_packages.install, request.app.state.repo, name=name,
-                version=body.version, actor_login=actor)
+                version=body.version, actor_login=who.login)
 
 
 @router.delete("/admin/packages/{name}/install")
 def delete_install(
     name: str,
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: AdminUser,
 ) -> dict[str, Any]:
-    _require_admin(x_user_id, x_user_role)
     return _run(node_packages.uninstall, request.app.state.repo, name=name)
 
 
@@ -139,11 +126,9 @@ def delete_install(
 def post_yank(
     name: str,
     request: Request,
+    who: AdminUser,
     version: str = Query(...),
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
 ) -> dict[str, Any]:
-    _require_admin(x_user_id, x_user_role)
     return _run(node_packages.yank, request.app.state.repo, name=name,
                 version=version)
 
@@ -151,10 +136,8 @@ def post_yank(
 @router.get("/admin/packages/requests")
 def get_requests(
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: AdminUser,
 ) -> dict[str, Any]:
     """Очередь «людям не хватает пакета X»: без неё отказ на push'е
     превращается в переписку в чате."""
-    _require_admin(x_user_id, x_user_role)
     return node_packages.pending_requests(request.app.state.repo)

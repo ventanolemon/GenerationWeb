@@ -267,6 +267,79 @@ class TransitionalHeaderTrustTests(AuthSessionBase):
         self.assertEqual(r.status_code, 401)
 
 
+# ---------- Общий гейт на настоящих роутерах ----------
+
+class SharedGateOnRealRoutersTests(AuthSessionBase):
+    """
+    Гейт теперь один на сервис, и роутеры ходят через него.
+
+    Раньше `_require_admin` был объявлен в семи файлах, `_identity` — в
+    шести, плюс копия внутри analytics: четырнадцать мест, которые §8.2
+    пришлось бы править синхронно. Здесь проверяется, что admin-ручка
+    разных роутеров одинаково реагирует на токен, на чужую роль и на
+    отсутствие личности.
+    """
+
+    def setUp(self):
+        super().setUp()
+        from generator_service.routers import admin as admin_router
+        from generator_service.routers import groups as groups_router
+        self.app.include_router(admin_router.router)
+        self.app.include_router(groups_router.router)
+
+    def test_token_opens_admin_routes_without_any_x_headers(self):
+        token = self._login("root", "rootpass")
+        for path in ("/admin/users", "/admin/groups"):
+            r = self.client.get(path, headers=self._bearer(token))
+            self.assertEqual(r.status_code, 200, f"{path}: {r.text}")
+
+    def test_non_admin_token_is_refused_the_same_way_everywhere(self):
+        token = self._login("alla", "allapass")
+        for path in ("/admin/users", "/admin/groups"):
+            r = self.client.get(path, headers=self._bearer(token))
+            self.assertEqual(r.status_code, 403, path)
+
+    def test_no_identity_is_401_everywhere(self):
+        os.environ["GEN_TRUST_IDENTITY_HEADERS"] = "0"
+        for path in ("/admin/users", "/admin/groups"):
+            self.assertEqual(self.client.get(path).status_code, 401, path)
+
+    def test_demoted_admin_loses_access_on_the_same_token(self):
+        """
+        Та самая эскалация, из-за которой всё затевалось, — с обратной
+        стороны: понижение действует немедленно, без ожидания сессии.
+        """
+        token = self._login("root", "rootpass")
+        self.assertEqual(
+            self.client.get("/admin/users",
+                            headers=self._bearer(token)).status_code, 200)
+        self.repo.set_user_role("root", "teacher")
+        self.assertEqual(
+            self.client.get("/admin/users",
+                            headers=self._bearer(token)).status_code, 403)
+
+    def test_teacher_cannot_promote_anyone_by_claiming_a_role(self):
+        """
+        Прогон эскалации из organizations_readiness.md §4 при выключенном
+        доверии заголовкам: заявить роль больше нечем.
+        """
+        os.environ["GEN_TRUST_IDENTITY_HEADERS"] = "0"
+        r = self.client.post("/admin/users/stud/role", json={"role": "admin"},
+                             headers={"X-User-Id": "alla",
+                                      "X-User-Role": "admin"})
+        self.assertEqual(r.status_code, 401)
+        self.assertEqual(self.repo.get_user_profile("stud").role, "student")
+
+    def test_teacher_with_a_real_session_still_cannot_promote(self):
+        os.environ["GEN_TRUST_IDENTITY_HEADERS"] = "0"
+        token = self._login("alla", "allapass")
+        r = self.client.post("/admin/users/stud/role", json={"role": "admin"},
+                             headers={**self._bearer(token),
+                                      "X-User-Role": "admin"})
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(self.repo.get_user_profile("stud").role, "student")
+
+
 # ---------- Разбор заголовка ----------
 
 class BearerParsingTests(unittest.TestCase):

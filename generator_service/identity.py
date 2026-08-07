@@ -27,9 +27,9 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Optional
+from typing import Annotated, Optional
 
-from fastapi import HTTPException, Request
+from fastapi import Depends, Header, HTTPException, Request
 
 from core import auth_sessions
 from core.auth_sessions import Identity
@@ -122,4 +122,53 @@ def require_admin(request: Request, authorization: Optional[str] = None,
     return who
 
 
-__all__ = ["Identity", "resolve", "require", "require_admin", "trust_headers"]
+# ---------- Зависимости FastAPI ----------
+# Роутеру не нужно объявлять три заголовка в каждой ручке: чем реже
+# личность собирается вручную, тем меньше мест, где она соберётся иначе.
+# Ровно на этом разъехались тринадцать прежних копий.
+
+def _headers(
+    request: Request,
+    authorization: Optional[str] = Header(default=None),
+    x_user_id: Optional[str] = Header(default=None),
+    x_user_role: Optional[str] = Header(default=None),
+) -> Optional[Identity]:
+    return resolve(request, authorization, x_user_id, x_user_role)
+
+
+def _required(who: Optional[Identity] = Depends(_headers)) -> Identity:
+    if who is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Нужен вход: заголовок Authorization: Bearer <токен>.")
+    return who
+
+
+def _admin(who: Identity = Depends(_required)) -> Identity:
+    if who.role != "admin":
+        raise HTTPException(status_code=403,
+                            detail="Доступно только администратору.")
+    return who
+
+
+def actor(who: Optional[Identity]) -> tuple[Optional[str], str]:
+    """
+    Личность → `(логин или None, роль)` для ручек, открытых гостю.
+
+    У гостя роль — самая строгая, а не «удобная». Ровно на этом разъехались
+    прежние копии: `sync.py` подставлял `teacher`, и запись открывалась
+    тому, кто просто не прислал заголовок.
+    """
+    return (who.login, who.role) if who else (None, _STRICTEST_ROLE)
+
+
+#: Личность, если она есть; None у гостя. Для ручек, которые гостю открыты.
+MaybeUser = Annotated[Optional[Identity], Depends(_headers)]
+#: Личность обязательна — иначе 401.
+CurrentUser = Annotated[Identity, Depends(_required)]
+#: Личность обязательна и роль — admin, иначе 403.
+AdminUser = Annotated[Identity, Depends(_admin)]
+
+
+__all__ = ["Identity", "resolve", "require", "require_admin", "trust_headers",
+           "MaybeUser", "CurrentUser", "AdminUser"]
