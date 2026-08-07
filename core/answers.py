@@ -847,12 +847,31 @@ class TextSpec(AnswerSpec):
                     continue
                 if not self.case_sensitive:
                     target = target.casefold()
-                if _levenshtein(probe, target) <= self.max_edits:
+                budget = self._edit_budget(target)
+                if budget and _levenshtein(probe, target) <= budget:
                     return Verdict(True, active, Reason.TYPO, text,
                                    f"Принято как опечатка в «{candidate}».")
 
         return Verdict(False, active, Reason.MISMATCH, text,
                        "Ответ не совпадает.")
+
+    def _edit_budget(self, target: str) -> int:
+        """
+        Сколько правок считать опечаткой в ответе такой длины.
+
+        Не `max_edits` как есть — иначе короткий ответ принимает что
+        угодно. У ответа «е» расстояние до «и», «ы», «щ» и вообще любой
+        буквы равно единице, то есть задание «вставьте пропущенную
+        букву» засчитывало ЛЮБОЙ ввод. Поймано на генераторе по
+        русскому (при-/пре-), где ответ ровно одна буква.
+
+        Правило простое и объяснимое: одна правка на каждые четыре
+        символа. Короче четырёх — правок нет вовсе, потому что в слове
+        из трёх букв опечатка неотличима от другого слова. Объявленный
+        `max_edits` при этом остаётся верхней границей: он ослабляет
+        проверку, но не может её отменить.
+        """
+        return min(self.max_edits, len(target) // 4)
 
     def display_blocks(self) -> List[Block]:
         from .blocks import TextBlock
@@ -862,7 +881,7 @@ class TextSpec(AnswerSpec):
         out = [self.value, *self.alternatives]
         if not self.case_sensitive and self.value:
             out.append(self.value.upper())
-        if mode is CheckMode.SOFT and self.max_edits > 0:
+        if mode is CheckMode.SOFT and self._edit_budget(normalize(self.value)):
             typo = _make_typo(self.value)
             if typo is not None:
                 out.append(typo)
