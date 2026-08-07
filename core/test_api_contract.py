@@ -192,6 +192,63 @@ class ResponseShapeTests(ContractTestBase):
                                      "accepted", "conflicts"})
 
 
+# ---------- Умолчание роли ----------
+
+class MissingRoleHeaderTests(ContractTestBase):
+    """
+    Потерянный X-User-Role обязан ПОНИЖАТЬ права, а не повышать.
+
+    Здесь стояло умолчание "teacher" — зеркало SyncClient.user_role, — и
+    получалась дыра: teacher входит в WRITE_ROLES, поэтому студент,
+    которому запись запрещена, получал её, просто убрав заголовок. Найдено
+    инвентаризацией проверок роли (organizations_readiness.md §3.2).
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.repo.create_user("stud", "p", "Студент", "", role="student")
+
+    @staticmethod
+    def _subject_push(name):
+        return {"device_id": "d1", "attempts": [], "word_stats_deltas": [],
+                "changed_entities": [{"kind": "subject", "op": "upsert",
+                                      "client_uuid": "u-" + name,
+                                      "data": {"name": name}}]}
+
+    def test_student_cannot_write_by_dropping_the_role_header(self):
+        before = len(self.repo.subjects_with_owner())
+        body = self.client.post("/sync/push",
+                                json=self._subject_push("Через дыру"),
+                                headers={"X-User-Id": "stud"}).json()
+        self.assertEqual(body["accepted"], [],
+                         "запись прошла без заголовка роли")
+        self.assertTrue(body["conflicts"], "отказа не было вовсе")
+        self.assertTrue(body["conflicts"][0]["forbidden"])
+        self.assertEqual(len(self.repo.subjects_with_owner()), before,
+                         "предмет всё-таки завёлся в БД")
+
+    def test_dropping_the_header_matches_declaring_the_real_role(self):
+        # Убрать заголовок и назваться своей ролью — один и тот же ответ.
+        honest = self.client.post("/sync/push",
+                                  json=self._subject_push("Честно"),
+                                  headers=self._h("stud", "student")).json()
+        silent = self.client.post("/sync/push",
+                                  json=self._subject_push("Молча"),
+                                  headers={"X-User-Id": "stud"}).json()
+        self.assertEqual(honest["conflicts"][0]["forbidden"],
+                         silent["conflicts"][0]["forbidden"])
+        self.assertEqual(honest["accepted"], silent["accepted"])
+
+    def test_teacher_still_writes_when_the_header_is_present(self):
+        # Строгое умолчание не должно задеть обычный путь десктопа: он
+        # шлёт X-User-Id и X-User-Role вместе либо ни одного.
+        body = self.client.post("/sync/push",
+                                json=self._subject_push("Обычный путь"),
+                                headers=self._h("alla", "teacher")).json()
+        self.assertEqual(body["conflicts"], [])
+        self.assertEqual(len(body["accepted"]), 1)
+
+
 # ---------- OpenAPI ----------
 
 class OpenApiTests(ContractTestBase):

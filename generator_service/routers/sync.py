@@ -59,7 +59,14 @@ def _identity(x_user_id: Optional[str], x_user_role: Optional[str]):
     # роняло идентичность в None на логин-строке и «раскрывало» витрину
     # (scope=None → видно всё). Пустой заголовок → None (гость/аноним).
     uid = (x_user_id or "").strip() or None
-    role = (x_user_role or "teacher").strip().lower()
+    # Умолчание роли обязано быть САМЫМ СТРОГИМ, а не самым удобным (то же
+    # правило записано в partitions.py). Здесь стояло "teacher" — видимо,
+    # зеркало умолчания SyncClient.user_role, — и получалось, что
+    # потерянный заголовок ПОВЫШАЕТ права: teacher входит в WRITE_ROLES,
+    # так что студент, которому запись запрещена, получал её, просто убрав
+    # X-User-Role. Десктоп шлёт оба заголовка вместе либо ни одного
+    # (sync/client.py), так что строгое умолчание его не задевает.
+    role = (x_user_role or "").strip().lower() or "student"
     return uid, role
 
 
