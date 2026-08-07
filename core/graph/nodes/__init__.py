@@ -52,7 +52,7 @@ from .ode import (
 from .symbolic import (
     AbsNode, ApartNode, ArgNode, CancelNode, CollectNode, ConjugateNode,
     DiffNode, EvaluateNode, ExpandComplexNode, ExpandNode, ExprBinaryNode,
-    ExprBlockNode, ExprCallNode, ExprConstNode, ExprLambdaNode, ExprReduceNode,
+    ExprBlockNode, ExprCallNode, ExprConstNode, ExprLambdaNode, ExprLogNode, ExprReduceNode,
     FactorNode,
     FourierNode, ImNode,
     IntegrateNode, InverseFourierNode, InverseLaplaceNode, IsConvergentNode,
@@ -81,7 +81,7 @@ _ALL_NODES = [
     ExpandNode, FactorNode, SimplifyNode, TogetherNode, CancelNode, TrigsimpNode,
     CollectNode, ApartNode, ExprBinaryNode, ExprReduceNode, SubstituteNode,
     SubsExprNode,
-    ExprLambdaNode, ExprCallNode,
+    ExprLambdaNode, ExprCallNode, ExprLogNode,
     EvaluateNode,
     DiffNode, IntegrateNode, LimitNode, LimitDisplayNode, SeriesNode,
     SummationNode, SumDisplayNode, IsConvergentNode,

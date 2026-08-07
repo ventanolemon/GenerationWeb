@@ -408,6 +408,19 @@ export function derivePorts(
         outputs: staticOut,
       };
     }
+    case "expr_binop": {
+      // Сумма и произведение бывают многовходовыми (см. _VARIADIC_OPS в
+      // ядре); остальные операции зависят от порядка и остаются на двух.
+      const op = String(p.op ?? "add");
+      const raw = Number(p.count ?? 2) || 2;
+      const count = op === "add" || op === "mul" ? Math.max(2, raw) : 2;
+      return {
+        inputs: Array.from({ length: count }, (_, i) => ({
+          name: String.fromCharCode(97 + i), type: "expr", required: true,
+        })),
+        outputs: staticOut,
+      };
+    }
     case "var_dict": {
       const names = Array.isArray(p.names) ? p.names.map(String) : [];
       return {

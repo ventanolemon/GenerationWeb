@@ -304,8 +304,21 @@ _BINARY_OP_ALIASES = {
 _BINARY_OP_GLYPHS = {"add": "+", "sub": "−", "mul": "×", "div": "÷", "pow": "^"}
 
 
+#: Операции, у которых больше двух слагаемых осмысленны без порядка:
+#: сложение и умножение ассоциативны и коммутативны, поэтому «a+b+c» —
+#: одно действие, а не два, и рисовать его одним узлом честно.
+#:
+#: Вычитание, деление и степень сюда НЕ входят, и это решение, а не
+#: недоделка. Деление двух выражений — это дробь, самая читаемая форма
+#: записи; «дробь из трёх» превращается в многоэтажную, которая читается
+#: хуже двух обычных. Степень правоассоциативна, вычитание — лево-, и в
+#: обоих случаях порядок пришлось бы либо показывать на узле, либо
+#: выбрать за автора молча.
+_VARIADIC_OPS = ("add", "mul")
+
+
 class ExprBinaryNode(Node):
-    """Бинарная операция над двумя выражениями (+, −, ×, ÷, ^)."""
+    """Операция над выражениями (+, −, ×, ÷, ^); сумма и произведение — N входов."""
     type_id = "expr_binop"
     category = "symbolic"
     display_name = "Операция (выражения)"
@@ -313,11 +326,33 @@ class ExprBinaryNode(Node):
     OUTPUTS = [Port("out", PortType.EXPR)]
     PARAMS_SCHEMA = {
         "op": {"type": "enum", "values": list(_BINARY_OPS), "default": "add"},
+        "count": {"type": "int", "default": 2, "optional": True},
     }
 
     def _op(self) -> str:
         raw = str(self.params.get("op", "add")).strip()
         return _BINARY_OP_ALIASES.get(raw, raw)
+
+    def _count(self) -> int:
+        """
+        Сколько входов. Больше двух допускается только у ассоциативных
+        операций — см. `_VARIADIC_OPS`.
+        """
+        try:
+            count = int(self.params.get("count", 2))
+        except (TypeError, ValueError):
+            raise GraphValidationError(
+                f"Узел {self.node_id!r}: 'count' должен быть целым.")
+        if count < 2:
+            raise GraphValidationError(
+                f"Узел {self.node_id!r}: операции нужно минимум два входа.")
+        if count > 2 and self._op() not in _VARIADIC_OPS:
+            raise GraphValidationError(
+                f"Узел {self.node_id!r}: у операции "
+                f"{self._op()!r} входов ровно два. Больше двух бывает у "
+                f"{', '.join(_VARIADIC_OPS)} — остальные зависят от порядка, "
+                f"и деление двух выражений это дробь, а не звено цепочки.")
+        return count
 
     def validate_params(self) -> None:
         if self._op() not in _BINARY_OPS:
@@ -326,18 +361,74 @@ class ExprBinaryNode(Node):
                 f"{self.params.get('op')!r}. Допустимы: {list(_BINARY_OPS)} "
                 f"или символы {list(_BINARY_OP_ALIASES)}."
             )
+        self._count()
+
+    def input_ports(self):
+        # Имена a, b, c… — чтобы двухвходовые графы, сохранённые раньше,
+        # продолжали ссылаться на «a» и «b» теми же проводами.
+        return [Port(chr(ord("a") + i), PortType.EXPR)
+                for i in range(self._count())]
 
     def summary(self) -> str:
         # 1 символ → холст нарисует крупным глифом (как арифметика LabVIEW).
-        return _BINARY_OP_GLYPHS.get(self._op(), self._op())
+        glyph = _BINARY_OP_GLYPHS.get(self._op(), self._op())
+        count = self._count()
+        return glyph if count == 2 else f"{glyph} ×{count}"
 
     def compute(self, inputs, ctx: ExecContext):
-        a = as_expr(inputs["a"])
-        b = as_expr(inputs["b"])
+        operation = _BINARY_OPS[self._op()]
+        values = [as_expr(inputs[chr(ord("a") + i)])
+                  for i in range(self._count())]
         try:
-            result = _BINARY_OPS[self._op()](a, b)
+            result = values[0]
+            for value in values[1:]:
+                result = operation(result, value)
         except Exception as e:
             raise RetryGeneration(f"expr_binop {self.node_id!r}: {e}")
+        return {"out": guard_numeric(result)}
+
+
+class ExprLogNode(Node):
+    """
+    Логарифм с основанием: log_base(выражение).
+
+    Единственная функция, у которой второй аргумент — не «настройка», а
+    полноправное выражение: основание бывает и числом, и параметром
+    задания, и результатом другого узла. Записать его внутрь текста
+    (`expr_const` с «log(x, 3)») можно, но тогда основание перестаёт быть
+    точкой графа — его нельзя ни сгенерировать случайно, ни переиспользовать.
+
+    Основание берётся со входа `base`, а если провод не подключён — из
+    одноимённого параметра. Пусто и там и там — натуральный логарифм.
+    Тот же приём, что у `to_block.prefix`: динамический вход перекрывает
+    статический параметр.
+    """
+    type_id = "expr_log"
+    category = "symbolic"
+    display_name = "Логарифм"
+    description = ("Логарифм выражения по основанию. Вход: EXPR (аргумент), "
+                   "EXPR (основание, необязательно). Пустое основание — "
+                   "натуральный. Выход: EXPR.")
+    INPUTS = [Port("in", PortType.EXPR),
+              Port("base", PortType.EXPR, required=False)]
+    OUTPUTS = [Port("out", PortType.EXPR)]
+    PARAMS_SCHEMA = {"base": {"type": "string", "default": "", "optional": True}}
+
+    def summary(self) -> str:
+        base = str(self.params.get("base", "")).strip()
+        return f"log_{base}" if base else "ln"
+
+    def compute(self, inputs, ctx: ExecContext):
+        argument = as_expr(inputs["in"])
+        base = inputs.get("base")
+        if base is None:
+            raw = str(self.params.get("base", "")).strip()
+            base = parse_expr(raw) if raw else None
+        try:
+            result = (sympy().log(argument) if base is None
+                      else sympy().log(argument, as_expr(base)))
+        except Exception as e:
+            raise RetryGeneration(f"expr_log {self.node_id!r}: {e}")
         return {"out": guard_numeric(result)}
 
 
