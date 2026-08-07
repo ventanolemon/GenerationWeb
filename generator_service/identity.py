@@ -125,7 +125,11 @@ def require_admin(request: Request, authorization: Optional[str] = None,
 # ---------- Зависимости FastAPI ----------
 # Роутеру не нужно объявлять три заголовка в каждой ручке: чем реже
 # личность собирается вручную, тем меньше мест, где она соберётся иначе.
-# Ровно на этом разъехались тринадцать прежних копий.
+# Ровно на этом разъехались четырнадцать прежних копий.
+#
+# Это ТОНКИЕ адаптеры: решение принимают resolve/require/require_admin
+# выше. Заводить здесь вторую реализацию тех же правил значило бы начать
+# ту же историю заново.
 
 def _headers(
     request: Request,
@@ -136,19 +140,22 @@ def _headers(
     return resolve(request, authorization, x_user_id, x_user_role)
 
 
-def _required(who: Optional[Identity] = Depends(_headers)) -> Identity:
-    if who is None:
-        raise HTTPException(
-            status_code=401,
-            detail="Нужен вход: заголовок Authorization: Bearer <токен>.")
-    return who
+def _required(
+    request: Request,
+    authorization: Optional[str] = Header(default=None),
+    x_user_id: Optional[str] = Header(default=None),
+    x_user_role: Optional[str] = Header(default=None),
+) -> Identity:
+    return require(request, authorization, x_user_id, x_user_role)
 
 
-def _admin(who: Identity = Depends(_required)) -> Identity:
-    if who.role != "admin":
-        raise HTTPException(status_code=403,
-                            detail="Доступно только администратору.")
-    return who
+def _admin(
+    request: Request,
+    authorization: Optional[str] = Header(default=None),
+    x_user_id: Optional[str] = Header(default=None),
+    x_user_role: Optional[str] = Header(default=None),
+) -> Identity:
+    return require_admin(request, authorization, x_user_id, x_user_role)
 
 
 def actor(who: Optional[Identity]) -> tuple[Optional[str], str]:
