@@ -19,6 +19,8 @@ import type {
   ExportRequest,
   GenerateResponse,
   Group,
+  MyOrganization,
+  Organization,
   Partition,
   PartitionCandidates,
   PartitionEditData,
@@ -322,6 +324,97 @@ export const api = {
   adminListUsers(id: Identity): Promise<{ users: AdminUser[] }> {
     return request<{ users: AdminUser[] }>("/api/admin/users", {
       headers: idHeaders(id),
+    });
+  },
+
+  // ─── Организации (§8) ───────────────────────────────────────────────
+
+  myOrganization(id: Identity): Promise<MyOrganization> {
+    return request<MyOrganization>("/api/organizations/mine", {
+      headers: idHeaders(id),
+    });
+  },
+
+  adminListOrganizations(
+    id: Identity,
+  ): Promise<{ organizations: Organization[] }> {
+    return request("/api/admin/organizations", { headers: idHeaders(id) });
+  },
+
+  adminGetOrganization(id: Identity, orgId: number): Promise<Organization> {
+    return request(`/api/admin/organizations/${orgId}`, {
+      headers: idHeaders(id),
+    });
+  },
+
+  adminCreateOrganization(
+    id: Identity,
+    name: string,
+    parentId: number | null = null,
+  ): Promise<Organization> {
+    return request("/api/admin/organizations", {
+      method: "POST",
+      headers: idHeaders(id),
+      body: JSON.stringify({ name, parent_id: parentId }),
+    });
+  },
+
+  adminRenameOrganization(
+    id: Identity,
+    orgId: number,
+    name: string,
+  ): Promise<Organization> {
+    return request(`/api/admin/organizations/${orgId}`, {
+      method: "PATCH",
+      headers: idHeaders(id),
+      body: JSON.stringify({ name }),
+    });
+  },
+
+  adminAddToOrganization(
+    id: Identity,
+    orgId: number,
+    login: string,
+  ): Promise<{ login: string; organization_id: number | null }> {
+    return request(`/api/admin/organizations/${orgId}/members`, {
+      method: "POST",
+      headers: idHeaders(id),
+      body: JSON.stringify({ login }),
+    });
+  },
+
+  adminRemoveFromOrganization(
+    id: Identity,
+    orgId: number,
+    login: string,
+  ): Promise<{ login: string; organization_id: number | null }> {
+    return request(
+      `/api/admin/organizations/${orgId}/members/${encodeURIComponent(login)}`,
+      { method: "DELETE", headers: idHeaders(id) },
+    );
+  },
+
+  adminTransferOwnership(
+    id: Identity,
+    orgId: number,
+    login: string,
+  ): Promise<Organization> {
+    return request(`/api/admin/organizations/${orgId}/owner`, {
+      method: "POST",
+      headers: idHeaders(id),
+      body: JSON.stringify({ login }),
+    });
+  },
+
+  adminSetSuperuser(
+    id: Identity,
+    login: string,
+    isSuperuser: boolean,
+  ): Promise<{ login: string; is_superuser: boolean }> {
+    return request(`/api/admin/superusers/${encodeURIComponent(login)}`, {
+      method: "POST",
+      headers: idHeaders(id),
+      body: JSON.stringify({ is_superuser: isSuperuser }),
     });
   },
 

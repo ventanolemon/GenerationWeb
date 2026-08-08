@@ -31,6 +31,47 @@ public static class DashboardEndpoints
             Send(HttpMethod.Post, c, $"/admin/users/{Uri.EscapeDataString(login)}/role", req, ct))
             .WithTags("admin");
 
+        // ─── Организации (§8) ────────────────────────────────────────────
+        // Кто что может, решает FastAPI: заводить организации и раздавать
+        // флаг администратора развёртывания — только is_superuser, принимать
+        // и исключать людей — админ своей организации. Здесь, как и везде в
+        // web_layer, проверок роли нет — только релей.
+        app.MapGet("/api/organizations/mine", (HttpRequest req, GeneratorClient c, CancellationToken ct) =>
+            Get(c, "/organizations/mine", req, ct))
+            .WithTags("organizations");
+
+        app.MapGet("/api/admin/organizations", (HttpRequest req, GeneratorClient c, CancellationToken ct) =>
+            Get(c, "/admin/organizations", req, ct))
+            .WithTags("organizations");
+
+        app.MapPost("/api/admin/organizations", (HttpRequest req, GeneratorClient c, CancellationToken ct) =>
+            Send(HttpMethod.Post, c, "/admin/organizations", req, ct))
+            .WithTags("organizations");
+
+        app.MapGet("/api/admin/organizations/{oid:int}", (int oid, HttpRequest req, GeneratorClient c, CancellationToken ct) =>
+            Get(c, $"/admin/organizations/{oid}", req, ct))
+            .WithTags("organizations");
+
+        app.MapPatch("/api/admin/organizations/{oid:int}", (int oid, HttpRequest req, GeneratorClient c, CancellationToken ct) =>
+            Send(HttpMethod.Patch, c, $"/admin/organizations/{oid}", req, ct))
+            .WithTags("organizations");
+
+        app.MapPost("/api/admin/organizations/{oid:int}/members", (int oid, HttpRequest req, GeneratorClient c, CancellationToken ct) =>
+            Send(HttpMethod.Post, c, $"/admin/organizations/{oid}/members", req, ct))
+            .WithTags("organizations");
+
+        app.MapDelete("/api/admin/organizations/{oid:int}/members/{login}", (int oid, string login, HttpRequest req, GeneratorClient c, CancellationToken ct) =>
+            Send(HttpMethod.Delete, c, $"/admin/organizations/{oid}/members/{Uri.EscapeDataString(login)}", req, ct))
+            .WithTags("organizations");
+
+        app.MapPost("/api/admin/organizations/{oid:int}/owner", (int oid, HttpRequest req, GeneratorClient c, CancellationToken ct) =>
+            Send(HttpMethod.Post, c, $"/admin/organizations/{oid}/owner", req, ct))
+            .WithTags("organizations");
+
+        app.MapPost("/api/admin/superusers/{login}", (string login, HttpRequest req, GeneratorClient c, CancellationToken ct) =>
+            Send(HttpMethod.Post, c, $"/admin/superusers/{Uri.EscapeDataString(login)}", req, ct))
+            .WithTags("organizations");
+
         // ─── Администрирование: группы ───────────────────────────────────
         app.MapGet("/api/admin/groups", (HttpRequest req, GeneratorClient c, CancellationToken ct) =>
             Get(c, "/admin/groups", req, ct))

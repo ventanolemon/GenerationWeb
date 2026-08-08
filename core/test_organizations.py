@@ -199,6 +199,41 @@ class BoundaryTests(OrgTestBase):
         self.assertEqual(self.repo.user_organization_id("clara"), self.chem)
 
 
+# ---------- Люди ----------
+
+class UserScopeTests(OrgTestBase):
+    def setUp(self):
+        super().setUp()
+        from generator_service.routers import admin as admin_router
+        self.client.app.include_router(admin_router.router)
+
+    def test_org_admin_sees_only_their_own_people(self):
+        body = self.client.get("/admin/users",
+                               headers=self._h("boris", "admin")).json()
+        self.assertEqual(sorted(u["login"] for u in body["users"]),
+                         ["boris", "clara"])
+
+    def test_superuser_sees_everyone(self):
+        body = self.client.get("/admin/users",
+                               headers=self._h("root", "admin")).json()
+        self.assertEqual(sorted(u["login"] for u in body["users"]),
+                         ["alla", "boris", "clara", "root"])
+
+    def test_listing_reports_both_axes(self):
+        body = self.client.get("/admin/users",
+                               headers=self._h("root", "admin")).json()
+        rows = {u["login"]: u for u in body["users"]}
+        self.assertTrue(rows["root"]["is_superuser"])
+        self.assertFalse(rows["boris"]["is_superuser"])
+        self.assertEqual(rows["boris"]["organization_id"], self.chem)
+
+    def test_org_admin_cannot_change_a_foreign_role(self):
+        r = self.client.post("/admin/users/alla/role", json={"role": "admin"},
+                             headers=self._h("boris", "admin"))
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(self.repo.get_user_profile("alla").role, "teacher")
+
+
 # ---------- Видимость контента ----------
 
 class ContentScopeTests(OrgTestBase):

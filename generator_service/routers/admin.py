@@ -27,7 +27,9 @@ class ChangeRoleRequest(BaseModel):
 
 @router.get("/users")
 def get_users(request: Request, who: AdminUser) -> dict[str, Any]:
-    return {"users": admin_api.list_users(request.app.state.repo)}
+    return {"users": admin_api.list_users(
+        request.app.state.repo,
+        organization_id=None if who.is_superuser else who.organization_id)}
 
 
 @router.post("/users/{login}/role")
@@ -41,6 +43,8 @@ def post_change_role(
         return admin_api.change_role(
             request.app.state.repo, actor_login=who.login,
             target_login=login, new_role=body.role,
+            actor_organization_id=(None if who.is_superuser
+                                   else who.organization_id),
         )
     except admin_api.AdminActionError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -380,10 +380,36 @@ export interface AnalyticsOverview {
 
 // ─── Администрирование (/admin/*) ──────────────────────────────────────────
 
+export interface Organization {
+  id: number;
+  name: string;
+  // §8.3: форма заложена, наследования нет — иерархия показывается, но
+  // никаких прав по ней не каскадирует.
+  parent_id: number | null;
+  owner_login: string | null;
+  default_subject_access: "all" | "none";
+  created_at: number;
+  member_count?: number;
+  members?: string[];
+}
+
+export interface MyOrganization {
+  login: string;
+  role: Role;
+  // Администратор РАЗВЁРТЫВАНИЯ: пакеты узлов, ключи, выпуски, публичный
+  // API. Другая ось, а не «роль на уровень выше» — см. §8.2.
+  is_superuser: boolean;
+  organization: Organization | null;
+  is_owner: boolean;
+}
+
 export interface AdminUser {
   id: number;
   login: string;
+  // Роль ВНУТРИ организации. Глобальные полномочия — is_superuser.
   role: Role;
+  organization_id?: number | null;
+  is_superuser?: boolean;
   fio: string;
   group: string;
   email: string;
