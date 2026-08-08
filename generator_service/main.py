@@ -32,7 +32,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from bootstrap import build_registry, sync_database
 from const import DB_PATH, WORDS_DIR
-from core import InteractiveTask, Repository, WordStatsStore
+from core import (InteractiveTask, Repository, WordStatsStore,
+                  session_from_task)
+from core import organizations_api
 
 from . import errors
 from .context import current_user_id as current_user_id_var
@@ -41,11 +43,13 @@ from .routers import admin_clients as admin_clients_router
 from .routers import admin_content as admin_content_router
 from .routers import assignments as assignments_router
 from .routers import analytics as analytics_router
+from .routers import answers as answers_router
 from .routers import auth as auth_router
 from .routers import groups as groups_router
 from .routers import export as export_router
 from .routers import generate as generate_router
 from .routers import grants as grants_router
+from .routers import organizations as organizations_router
 from .routers import graph as graph_router
 from .routers import interactive as interactive_router
 from .routers import meta as meta_router
@@ -68,6 +72,16 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing generator service…")
     repo = Repository(DB_PATH)
     sync_database(repo, WORDS_DIR)
+    # Организация по умолчанию и администратор развёртывания. Миграция 014
+    # помечает superuser'ами уже существующих админов, но на свежей
+    # установке их ещё нет — они появляются регистрацией, после миграций.
+    # Без этого вызова такое развёртывание осталось бы без администратора
+    # развёртывания, то есть без возможности ставить пакеты и выпускать
+    # релизы. Идемпотентно; форма та же, что у signing_keys.
+    booted = organizations_api.ensure_bootstrapped(repo)
+    if booted["superuser"]:
+        logger.info("Администратором развёртывания назначен %r",
+                    booted["superuser"])
     stats_store = WordStatsStore(repo)
     registry = build_registry(
         repo, WORDS_DIR,
@@ -95,7 +109,14 @@ async def lifespan(app: FastAPI):
         task = current_registry.get(
             partition_id, partition.generation_params if partition else {}
         ).generate()
-        return task if isinstance(task, InteractiveTask) else None
+        if isinstance(task, InteractiveTask):
+            return task
+        # Статическое задание со спецификацией ответа: сессию над ним ведёт
+        # общая машинка. Пересборка даёт ДРУГОЕ случайное задание — это
+        # нормально, потому что restore() тут же заместит его вопросы теми,
+        # что лежат в снимке. Оболочка нужна только чтобы было куда их
+        # положить.
+        return session_from_task(task)
 
     app.state.repo = repo
     app.state.registry = registry
@@ -107,6 +128,13 @@ async def lifespan(app: FastAPI):
         len(registry.all_ids()),
     )
     yield
+    # Рабочий процесс исполнения графов переживёт родителя, если его не
+    # снять: он ждёт на stdin, который никто больше не закроет.
+    try:
+        from core.graph.isolation import shutdown_shared
+        shutdown_shared()
+    except Exception:                              # noqa: BLE001
+        logger.exception("не удалось снять рабочий процесс графов")
     logger.info("Generator service shutting down.")
 
 
@@ -132,6 +160,8 @@ app = FastAPI(
         {"name": "generate", "description": "Генерация задания по разделу."},
         {"name": "interactive",
          "description": "Ходы интерактивной сессии (тренажёр)."},
+        {"name": "answers",
+         "description": "Предпросмотр «что примут» для преподавателя."},
         {"name": "partitions", "description": "CRUD разделов."},
         {"name": "graph", "description": "Каталог узлов, валидация, превью."},
         {"name": "sync", "description": "Offline-синхронизация десктопа."},
@@ -185,11 +215,13 @@ app.include_router(auth_router.router)
 # Выше subjects_router: /subjects/grants/mine — литеральный маршрут, и пусть
 # он объявляется раньше параметрических соседей по префиксу /subjects.
 app.include_router(grants_router.router)
+app.include_router(organizations_router.router)
 # Выше subjects_router по той же причине: /subjects/mine — литерал.
 app.include_router(admin_content_router.router)
 app.include_router(subjects_router.router)
 app.include_router(generate_router.router)
 app.include_router(interactive_router.router)
+app.include_router(answers_router.router)
 app.include_router(export_router.router)
 app.include_router(partitions_router.router)
 app.include_router(stats_router.router)

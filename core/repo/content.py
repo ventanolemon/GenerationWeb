@@ -302,27 +302,48 @@ class ContentMixin:
         with self._connect() as conn:
             rows = conn.execute(
                 "SELECT s.id, s.subject_name, s.pra_subject, s.owner_user_id, "
-                "       COUNT(p.id) "
+                "       COUNT(p.id), s.organization_id "
                 "FROM Subjects s "
                 "LEFT JOIN Partitions p "
                 "  ON p.subject_id = s.id AND p.deleted_at IS NULL "
                 "WHERE s.deleted_at IS NULL "
-                "GROUP BY s.id, s.subject_name, s.pra_subject, s.owner_user_id "
+                "GROUP BY s.id, s.subject_name, s.pra_subject, s.owner_user_id, "
+                "         s.organization_id "
                 "ORDER BY s.id"
             ).fetchall()
         return [{"id": r[0], "name": r[1], "parent_name": r[2],
-                 "owner": r[3], "partition_count": int(r[4] or 0)}
+                 "owner": r[3], "partition_count": int(r[4] or 0),
+                 "organization_id": r[5]}
                 for r in rows]
 
     def visible_subject_ids(self, user_id: Optional[str], role: str) -> List[int]:
         """
-        Какие предметы видит пользователь: admin — все; остальные — системные
-        (owner IS NULL) плюс свои. Удалённые (deleted_at) исключены.
+        Какие предметы видит пользователь: admin — все в СВОЕЙ организации
+        плюс встроенные; остальные — системные (owner IS NULL) плюс свои.
+        Удалённые (deleted_at) исключены.
+
+        Организация вошла сюда, а не в вызывающих, потому что это
+        единственное место, через которое область видимости считают все
+        трое: синк (`visible_scope`), аналитика и выдача домашних заданий.
+        Разложи проверку по ним — и она разойдётся, как разошлись
+        четырнадцать копий гейта роли.
+
+        Администратор РАЗВЁРТЫВАНИЯ (`is_superuser`) видит всё: обслуживать
+        развёртывание, не видя его, нельзя. Обычный `admin` — админ своей
+        организации, и чужая ему не видна вовсе (§8.1).
         """
         with self._connect() as conn:
-            if role == "admin":
+            if role == "admin" and self.is_superuser(user_id or ""):
                 rows = conn.execute(
                     "SELECT id FROM Subjects WHERE deleted_at IS NULL ORDER BY id"
+                ).fetchall()
+            elif role == "admin":
+                rows = conn.execute(
+                    "SELECT id FROM Subjects "
+                    "WHERE deleted_at IS NULL "
+                    "  AND (organization_id IS NULL OR organization_id = ?) "
+                    "ORDER BY id",
+                    (self.user_organization_id(user_id or ""),),
                 ).fetchall()
             else:
                 rows = conn.execute(

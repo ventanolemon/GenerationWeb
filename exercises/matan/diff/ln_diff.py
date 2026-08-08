@@ -85,7 +85,8 @@ def get_ln_diff(max_attempts=10):
         return (
             ("text", " 2.\tВычислить производную функции, используя логарифмическую производную\n"),
             ("formula", res_latex),
-            ("formula", ans_latex)
+            ("formula", ans_latex),
+            ("answer", answer),
         )
 
     # Если все попытки провалились — возвращаем "запасной" нетривиальный пример
@@ -98,7 +99,8 @@ def get_ln_diff(max_attempts=10):
     return (
         ("text", " 2.\tВычислить производную функции, используя логарифмическую производную\n"),
         ("formula", "y = " + res_latex),
-        ("formula", ans_latex)
+        ("formula", ans_latex),
+        ("answer", sp.simplify(answer)),
     )
 
 

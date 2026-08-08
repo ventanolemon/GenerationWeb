@@ -84,7 +84,7 @@ class RandomMatrixNode(Node):
                     raise ValueError
             except (TypeError, ValueError):
                 raise GraphValidationError(
-                    f"Узел {self.node_id!r}: {k} должно быть целым ≥ 1."
+                    f"{self.node_ref()}: {k} должно быть целым ≥ 1."
                 )
 
     def compute(self, inputs, ctx: ExecContext):
@@ -108,7 +108,7 @@ class RandomMatrixNode(Node):
             return {"out": draw()}
         if rows != cols:
             raise RetryGeneration(
-                f"random_matrix {self.node_id!r}: обратимая матрица должна быть квадратной."
+                f"{self.node_ref()}: обратимая матрица должна быть квадратной."
             )
         for _ in range(300):
             M = draw()
@@ -116,7 +116,7 @@ class RandomMatrixNode(Node):
             if d != 0 and abs(int(d)) <= cap:
                 return {"out": M}
         raise RetryGeneration(
-            f"random_matrix {self.node_id!r}: не удалось подобрать обратимую матрицу."
+            f"{self.node_ref()}: не удалось подобрать обратимую матрицу."
         )
 
 
@@ -134,7 +134,7 @@ class IdentityNode(Node):
                 raise ValueError
         except (TypeError, ValueError):
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: size должно быть целым ≥ 1."
+                f"{self.node_ref()}: size должно быть целым ≥ 1."
             )
 
     def compute(self, inputs, ctx: ExecContext):
@@ -182,7 +182,7 @@ class ListToMatrixNode(Node):
         items = inputs.get("items")
         if not isinstance(items, (list, tuple)):
             raise RetryGeneration(
-                f"list_to_matrix {self.node_id!r}: на входе items не список "
+                f"{self.node_ref()}: на входе items не список "
                 f"({type(items).__name__})."
             )
         vals = []
@@ -191,7 +191,7 @@ class ListToMatrixNode(Node):
                 f = float(v)
             except (TypeError, ValueError):
                 raise RetryGeneration(
-                    f"list_to_matrix {self.node_id!r}: элемент {v!r} не число."
+                    f"{self.node_ref()}: элемент {v!r} не число."
                 )
             vals.append(sp.Integer(round(f)) if abs(f - round(f)) < 1e-9
                         else sp.nsimplify(f, rational=True))
@@ -202,7 +202,7 @@ class ListToMatrixNode(Node):
             side = math.isqrt(n) if n else 0
             if n == 0 or side * side != n:
                 raise RetryGeneration(
-                    f"list_to_matrix {self.node_id!r}: {n} элементов не образуют "
+                    f"{self.node_ref()}: {n} элементов не образуют "
                     f"квадратную матрицу — задайте rows или cols."
                 )
             rows = cols = int(side)
@@ -212,7 +212,7 @@ class ListToMatrixNode(Node):
             cols = n // rows if rows and n % rows == 0 else 0
         if rows <= 0 or cols <= 0 or rows * cols != n:
             raise RetryGeneration(
-                f"list_to_matrix {self.node_id!r}: {n} элементов не укладываются "
+                f"{self.node_ref()}: {n} элементов не укладываются "
                 f"в форму {rows or '?'}×{cols or '?'}."
             )
         return {"out": sp.Matrix(rows, cols, vals)}
@@ -231,7 +231,7 @@ class DeterminantNode(Node):
     def compute(self, inputs, ctx: ExecContext):
         M = as_matrix(inputs["in"])
         if M.rows != M.cols:
-            raise RetryGeneration(f"matrix_det {self.node_id!r}: матрица не квадратная.")
+            raise RetryGeneration(f"{self.node_ref()}: матрица не квадратная.")
         return {"out": M.det()}
 
 
@@ -246,15 +246,15 @@ class InverseNode(Node):
     def compute(self, inputs, ctx: ExecContext):
         M = as_matrix(inputs["in"])
         if M.rows != M.cols:
-            raise RetryGeneration(f"matrix_inv {self.node_id!r}: матрица не квадратная.")
+            raise RetryGeneration(f"{self.node_ref()}: матрица не квадратная.")
         try:
             if M.det() == 0:
-                raise RetryGeneration(f"matrix_inv {self.node_id!r}: матрица вырождена.")
+                raise RetryGeneration(f"{self.node_ref()}: матрица вырождена.")
             return {"out": M.inv()}
         except RetryGeneration:
             raise
         except Exception as e:
-            raise RetryGeneration(f"matrix_inv {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
 
 
 class TransposeNode(Node):
@@ -292,7 +292,7 @@ class TraceNode(Node):
     def compute(self, inputs, ctx: ExecContext):
         M = as_matrix(inputs["in"])
         if M.rows != M.cols:
-            raise RetryGeneration(f"matrix_trace {self.node_id!r}: матрица не квадратная.")
+            raise RetryGeneration(f"{self.node_ref()}: матрица не квадратная.")
         return {"out": M.trace()}
 
 
@@ -323,12 +323,12 @@ class MatrixPowerNode(Node):
     def compute(self, inputs, ctx: ExecContext):
         M = as_matrix(inputs["in"])
         if M.rows != M.cols:
-            raise RetryGeneration(f"matrix_power {self.node_id!r}: матрица не квадратная.")
+            raise RetryGeneration(f"{self.node_ref()}: матрица не квадратная.")
         n = int(self.params.get("exponent", 2))
         try:
             return {"out": M ** n}
         except Exception as e:
-            raise RetryGeneration(f"matrix_power {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
 
 
 # ---------- Операции над двумя матрицами ----------
@@ -346,7 +346,7 @@ class MatrixMultiplyNode(Node):
         B = as_matrix(inputs["b"])
         if A.cols != B.rows:
             raise RetryGeneration(
-                f"matrix_mul {self.node_id!r}: несогласованные размеры "
+                f"{self.node_ref()}: несогласованные размеры "
                 f"{A.shape}·{B.shape}."
             )
         return {"out": A * B}
@@ -368,7 +368,7 @@ class MatrixAddNode(Node):
         B = as_matrix(inputs["b"])
         if A.shape != B.shape:
             raise RetryGeneration(
-                f"matrix_add {self.node_id!r}: разные размеры {A.shape} и {B.shape}."
+                f"{self.node_ref()}: разные размеры {A.shape} и {B.shape}."
             )
         return {"out": A - B if self.params.get("op") == "sub" else A + B}
 
@@ -404,12 +404,12 @@ class CharPolyNode(Node):
         from ..symbolic import as_expr
         M = as_matrix(inputs["in"])
         if M.rows != M.cols:
-            raise RetryGeneration(f"matrix_charpoly {self.node_id!r}: матрица не квадратная.")
+            raise RetryGeneration(f"{self.node_ref()}: матрица не квадратная.")
         var = as_expr(inputs["var"])
         try:
             return {"out": M.charpoly(var).as_expr()}
         except Exception as e:
-            raise RetryGeneration(f"matrix_charpoly {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
 
 
 class EigenvaluesNode(Node):
@@ -428,11 +428,11 @@ class EigenvaluesNode(Node):
         from core.blocks import FormulaBlock
         M = as_matrix(inputs["in"])
         if M.rows != M.cols:
-            raise RetryGeneration(f"matrix_eigenvalues {self.node_id!r}: матрица не квадратная.")
+            raise RetryGeneration(f"{self.node_ref()}: матрица не квадратная.")
         try:
             vals = M.eigenvals()
         except Exception as e:
-            raise RetryGeneration(f"matrix_eigenvalues {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         prefix = str(self.params.get("prefix", "")).strip()
         blocks = []
         # Детерминированный порядок: по строковому представлению.
@@ -462,11 +462,11 @@ class EigenvectorsNode(Node):
         sp = sympy()
         M = as_matrix(inputs["in"])
         if M.rows != M.cols:
-            raise RetryGeneration(f"matrix_eigenvectors {self.node_id!r}: матрица не квадратная.")
+            raise RetryGeneration(f"{self.node_ref()}: матрица не квадратная.")
         try:
             data = M.eigenvects()
         except Exception as e:
-            raise RetryGeneration(f"matrix_eigenvectors {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         blocks = []
         for val, _mult, vecs in sorted(data, key=lambda t: str(t[0])):
             for v in vecs:
@@ -520,13 +520,13 @@ class LinSolveNode(Node):
         # b должен быть вектором-столбцом высотой как число строк A.
         if b.cols != 1 or b.rows != A.rows:
             raise RetryGeneration(
-                f"matrix_linsolve {self.node_id!r}: правая часть b должна быть "
+                f"{self.node_ref()}: правая часть b должна быть "
                 f"столбцом {A.rows}×1 (получено {b.shape})."
             )
         try:
             sol = sp.linsolve((A, b))
         except Exception as e:
-            raise RetryGeneration(f"matrix_linsolve {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         prefix = str(self.params.get("prefix", "")).strip()
         blocks = []
         for tup in sol:  # FiniteSet кортежей
@@ -560,7 +560,7 @@ class DotProductNode(Node):
         a = _as_vector(as_matrix(inputs["a"]), sp)
         b = _as_vector(as_matrix(inputs["b"]), sp)
         if len(a) != len(b):
-            raise RetryGeneration(f"vec_dot {self.node_id!r}: разная размерность.")
+            raise RetryGeneration(f"{self.node_ref()}: разная размерность.")
         return {"out": sum((ai * bi for ai, bi in zip(a, b)), sp.Integer(0))}
 
 
@@ -577,7 +577,7 @@ class CrossProductNode(Node):
         a = _as_vector(as_matrix(inputs["a"]), sp)
         b = _as_vector(as_matrix(inputs["b"]), sp)
         if len(a) != 3 or len(b) != 3:
-            raise RetryGeneration(f"vec_cross {self.node_id!r}: нужны трёхмерные векторы.")
+            raise RetryGeneration(f"{self.node_ref()}: нужны трёхмерные векторы.")
         return {"out": sp.Matrix(a).cross(sp.Matrix(b))}
 
 
@@ -596,7 +596,7 @@ class TripleProductNode(Node):
         b = _as_vector(as_matrix(inputs["b"]), sp)
         c = _as_vector(as_matrix(inputs["c"]), sp)
         if not (len(a) == len(b) == len(c) == 3):
-            raise RetryGeneration(f"vec_triple {self.node_id!r}: нужны трёхмерные векторы.")
+            raise RetryGeneration(f"{self.node_ref()}: нужны трёхмерные векторы.")
         return {"out": sp.Matrix([a, b, c]).det()}
 
 
@@ -627,10 +627,10 @@ class VectorAngleNode(Node):
         a = sp.Matrix(_as_vector(as_matrix(inputs["a"]), sp))
         b = sp.Matrix(_as_vector(as_matrix(inputs["b"]), sp))
         if a.shape[0] != b.shape[0]:
-            raise RetryGeneration(f"vec_angle {self.node_id!r}: разная размерность.")
+            raise RetryGeneration(f"{self.node_ref()}: разная размерность.")
         na, nb = a.norm(), b.norm()
         if na == 0 or nb == 0:
-            raise RetryGeneration(f"vec_angle {self.node_id!r}: нулевой вектор.")
+            raise RetryGeneration(f"{self.node_ref()}: нулевой вектор.")
         return {"out": sp.acos(sp.simplify(a.dot(b) / (na * nb)))}
 
 
@@ -658,7 +658,7 @@ class PlaneFromPointNormalNode(Node):
         p = sp.Matrix(_as_vector(as_matrix(inputs["point"]), sp))
         n = sp.Matrix(_as_vector(as_matrix(inputs["normal"]), sp))
         if p.shape[0] != n.shape[0]:
-            raise RetryGeneration(f"plane_point_normal {self.node_id!r}: разная размерность.")
+            raise RetryGeneration(f"{self.node_ref()}: разная размерность.")
         r = sp.Matrix(_coord_symbols(sp, p.shape[0]))
         return {"out": sp.expand(n.dot(r - p))}
 
@@ -681,7 +681,7 @@ class PointPlaneDistanceNode(Node):
         p0 = sp.Matrix(_as_vector(as_matrix(inputs["p0"]), sp))
         n = sp.Matrix(_as_vector(as_matrix(inputs["normal"]), sp))
         if n.norm() == 0:
-            raise RetryGeneration(f"point_plane_distance {self.node_id!r}: нулевая нормаль.")
+            raise RetryGeneration(f"{self.node_ref()}: нулевая нормаль.")
         return {"out": sp.simplify(sp.Abs(n.dot(q - p0)) / n.norm())}
 
 
@@ -703,7 +703,7 @@ class LineCanonicalNode(Node):
         p = _as_vector(as_matrix(inputs["point"]), sp)
         v = _as_vector(as_matrix(inputs["direction"]), sp)
         if len(p) != len(v):
-            raise RetryGeneration(f"line_canonical {self.node_id!r}: разная размерность.")
+            raise RetryGeneration(f"{self.node_ref()}: разная размерность.")
         coords = _coord_symbols(sp, len(p))
         parts = []
         for i in range(len(p)):
@@ -747,7 +747,7 @@ class QuadFormToMatrixNode(Node):
         names = self.params.get("vars") or []
         if not names:
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: укажите переменные формы (vars)."
+                f"{self.node_ref()}: укажите переменные формы (vars)."
             )
 
     def compute(self, inputs, ctx: ExecContext):
@@ -757,7 +757,7 @@ class QuadFormToMatrixNode(Node):
         try:
             A = sp.hessian(Q, vs) / 2
         except Exception as e:
-            raise RetryGeneration(f"quadform_to_matrix {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         return {"out": sp.Matrix(A)}
 
 
@@ -779,7 +779,7 @@ class MatrixToQuadFormNode(Node):
         names = self.params.get("vars") or ["x", "y"]
         if len(names) != A.rows:
             raise RetryGeneration(
-                f"matrix_to_quadform {self.node_id!r}: число переменных ≠ размеру матрицы."
+                f"{self.node_ref()}: число переменных ≠ размеру матрицы."
             )
         v = sp.Matrix([build_symbols([str(n)])[str(n)] for n in names])
         return {"out": sp.expand((v.T * A * v)[0])}
@@ -800,11 +800,11 @@ class QuadFormCanonicalNode(Node):
         sp = sympy()
         A = as_matrix(inputs["in"])
         if A.rows != A.cols:
-            raise RetryGeneration(f"quadform_canonical {self.node_id!r}: матрица не квадратная.")
+            raise RetryGeneration(f"{self.node_ref()}: матрица не квадратная.")
         try:
             evs = A.eigenvals()
         except Exception as e:
-            raise RetryGeneration(f"quadform_canonical {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         lambdas = [e for e, m in sorted(evs.items(), key=lambda kv: str(kv[0]))
                    for _ in range(m)]
         terms = []
@@ -830,7 +830,7 @@ class QuadFormSignatureNode(Node):
         sp = sympy()
         A = as_matrix(inputs["in"])
         if A.rows != A.cols:
-            raise RetryGeneration(f"quadform_signature {self.node_id!r}: матрица не квадратная.")
+            raise RetryGeneration(f"{self.node_ref()}: матрица не квадратная.")
         npos, nneg, nzero = _signature(sp, A)
         if nzero == 0 and nneg == 0:
             kind = r"\text{положительно определена}"
@@ -861,15 +861,15 @@ class ChangeBasisOperatorNode(Node):
         A = as_matrix(inputs["a"])
         P = as_matrix(inputs["p"])
         if P.rows != P.cols:
-            raise RetryGeneration(f"change_basis_operator {self.node_id!r}: P не квадратная.")
+            raise RetryGeneration(f"{self.node_ref()}: P не квадратная.")
         try:
             if P.det() == 0:
-                raise RetryGeneration(f"change_basis_operator {self.node_id!r}: P вырождена.")
+                raise RetryGeneration(f"{self.node_ref()}: P вырождена.")
             return {"out": P.inv() * A * P}
         except RetryGeneration:
             raise
         except Exception as e:
-            raise RetryGeneration(f"change_basis_operator {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
 
 
 class CoordinatesInBasisNode(Node):
@@ -887,15 +887,15 @@ class CoordinatesInBasisNode(Node):
         v = as_matrix(inputs["vector"])
         P = as_matrix(inputs["basis"])
         if P.rows != P.cols:
-            raise RetryGeneration(f"coordinates_in_basis {self.node_id!r}: базис не квадратный.")
+            raise RetryGeneration(f"{self.node_ref()}: базис не квадратный.")
         try:
             if P.det() == 0:
-                raise RetryGeneration(f"coordinates_in_basis {self.node_id!r}: базис вырожден.")
+                raise RetryGeneration(f"{self.node_ref()}: базис вырожден.")
             return {"out": P.inv() * v}
         except RetryGeneration:
             raise
         except Exception as e:
-            raise RetryGeneration(f"coordinates_in_basis {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
 
 
 class GramSchmidtNode(Node):
@@ -922,7 +922,7 @@ class GramSchmidtNode(Node):
         try:
             ortho = sp.GramSchmidt(cols, normalize)
         except Exception as e:
-            raise RetryGeneration(f"gram_schmidt {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         return {"out": [FormulaBlock(sp.latex(v, mat_delim="", mat_str="pmatrix"))
                         for v in ortho]}
 

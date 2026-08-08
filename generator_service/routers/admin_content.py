@@ -16,12 +16,14 @@
 """
 
 from __future__ import annotations
-from typing import Any, Optional
+from typing import Any
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from core import content_api
+
+from ..identity import AdminUser, CurrentUser, SuperUser
 
 router = APIRouter(tags=["content"])
 
@@ -29,21 +31,6 @@ router = APIRouter(tags=["content"])
 class AssignRequest(BaseModel):
     login: str = Field(..., min_length=1,
                        description="Кому в личное хранилище")
-
-
-def _identity(x_user_id: Optional[str], x_user_role: Optional[str]):
-    uid = (x_user_id or "").strip()
-    if not uid:
-        raise HTTPException(status_code=401, detail="Нет заголовка X-User-Id.")
-    return uid, (x_user_role or "student").strip().lower()
-
-
-def _require_admin(x_user_id: Optional[str], x_user_role: Optional[str]) -> str:
-    uid, role = _identity(x_user_id, x_user_role)
-    if role != "admin":
-        raise HTTPException(status_code=403,
-                            detail="Переносить контент может только админ.")
-    return uid
 
 
 def _run(fn, *args, **kwargs) -> Any:
@@ -56,25 +43,28 @@ def _run(fn, *args, **kwargs) -> Any:
 @router.get("/admin/content")
 def get_overview(
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: AdminUser,
 ) -> dict[str, Any]:
-    _require_admin(x_user_id, x_user_role)
-    return content_api.overview(request.app.state.repo)
+    """Обзор сужен до своей организации; администратор развёртывания видит
+    всё. Раньше ручка смешивала личное и общее по всему развёртыванию —
+    после §8 это означало бы показывать чужие организации."""
+    return content_api.overview(
+        request.app.state.repo,
+        organization_id=None if who.is_superuser else who.organization_id)
 
 
 @router.post("/admin/content/{subject_id}/publish")
 def post_publish(
     subject_id: int,
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: SuperUser,
 ) -> dict[str, Any]:
-    """Личное → общее: предмет становится доступен всем и переходит под
-    администрирование продукта."""
-    actor = _require_admin(x_user_id, x_user_role)
+    """Личное → общее: предмет становится ВСТРОЕННЫМ — видимым всем
+    организациям сразу. По §8.1 это единственное, что пересекает границу
+    контейнера, поэтому решение принадлежит развёртыванию, а не
+    организации: иначе любой админ кафедры раздавал бы контент всему вузу."""
     return _run(content_api.publish, request.app.state.repo,
-                subject_id=subject_id, actor_login=actor)
+                subject_id=subject_id, actor_login=who.login)
 
 
 @router.post("/admin/content/{subject_id}/assign")
@@ -82,34 +72,30 @@ def post_assign(
     subject_id: int,
     body: AssignRequest,
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: AdminUser,
 ) -> dict[str, Any]:
     """Общее → личное указанного преподавателя (или передача между личными).
     Публичный доступ к предмету при этом снимается — см. content_api."""
-    actor = _require_admin(x_user_id, x_user_role)
     return _run(content_api.assign_to, request.app.state.repo,
-                subject_id=subject_id, login=body.login, actor_login=actor)
+                subject_id=subject_id, login=body.login, actor_login=who.login)
 
 
 @router.get("/admin/content/{subject_id}/public")
 def get_public_visibility(
     subject_id: int,
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: SuperUser,
 ) -> dict[str, Any]:
-    _require_admin(x_user_id, x_user_role)
+    """Кому предмет виден наружу. Следует за решением по API-клиентам: они
+    остаются на уровне развёртывания, значит и диагностика — тоже."""
     return content_api.public_visibility(request.app.state.repo, subject_id)
 
 
 @router.get("/subjects/mine")
 def get_mine(
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: CurrentUser,
 ) -> dict[str, Any]:
     """Своё личное хранилище. Доступно любой опознанной роли: у студента оно
     просто пустое, и отдельный запрет тут ничего не защищает."""
-    uid, _ = _identity(x_user_id, x_user_role)
-    return content_api.list_mine(request.app.state.repo, actor_login=uid)
+    return content_api.list_mine(request.app.state.repo, actor_login=who.login)

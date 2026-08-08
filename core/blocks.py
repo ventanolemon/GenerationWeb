@@ -85,19 +85,28 @@ class FormulaBlock(Block):
         latex_to_docx_image(doc, self.latex)
 
     def to_dict(self) -> dict:
-        """Отдаём LaTeX-исходник и base64-PNG. При неудаче рендера —
-        только LaTeX, фронт покажет фолбэк."""
-        from .rendering import latex_to_png_bytes
-        image_b64: str | None = None
-        try:
-            png = latex_to_png_bytes(self.latex)
-            image_b64 = _b64(png)
-        except Exception:
-            image_b64 = None
+        """
+        Отдаём LaTeX-исходник. Картинку не отдаём — её рисует клиент.
+
+        Раньше здесь готовился base64-PNG от matplotlib, и веб показывал
+        его как `<img>`. Этап 7 плана (§10.2) называет это
+        самостоятельным дефектом, и замеры это подтвердили: у типового
+        задания матана PNG составлял **94 % ответа** (5432 байта из
+        5760) и стоил около 40 мс на КАЖДУЮ формулу — в синхронном
+        запросе, пока студент ждёт. Картинка при этом не выделяется, не
+        копируется, не ищется по странице и не масштабируется вместе с
+        текстом.
+
+        Веб рисует формулы KaTeX по этому самому исходнику. Остальные
+        два рендерера картинку берут не отсюда и не через этот метод:
+        Qt — из `render_qt`, DOCX — из `render_docx`, каждый своим
+        путём. То есть `image_b64` кормил ровно одного потребителя,
+        который в нём больше не нуждается, и оставлять поле «на всякий
+        случай» значило бы платить те же 94 % ни за что.
+        """
         return {
             "type": "formula",
             "latex": self.latex,
-            "image_b64": image_b64,
         }
 
 
@@ -139,13 +148,40 @@ class ImageBlock(Block):
             doc.add_paragraph(f"[не удалось вставить изображение: {self.caption}]")
 
     def to_dict(self) -> dict:
-        from .rendering import image_to_png_bytes
-        png = image_to_png_bytes(self.image)
+        """
+        PNG в base64 — здесь растр по делу, в отличие от формулы: у
+        картинки исходника, из которого её можно нарисовать заново, нет.
+
+        Три вида источника — те же, что у `render_docx`: путь, готовые
+        байты, объект PIL. Раньше здесь вызывался `image_to_png_bytes`
+        из `rendering`, которого в `rendering` нет — то есть ЛЮБОЕ
+        задание с картинкой падало при сериализации с `ImportError`, а
+        значит и в вебе не показывалось вовсе. Заметить это было негде:
+        единственный тест на `ImageBlock.to_dict` лежит в файле-скрипте,
+        который `unittest discover` не собирает.
+
+        Не удалось — `None`, как обещает контракт `Block.to_dict`: без
+        картинки задание всё ещё читается, а исключение отсюда уронило
+        бы весь ответ.
+        """
+        png = self._png_bytes()
         return {
             "type": "image",
             "image_b64": _b64(png) if png is not None else None,
             "caption": self.caption,
         }
+
+    def _png_bytes(self) -> bytes | None:
+        try:
+            if isinstance(self.image, (bytes, bytearray)):
+                return bytes(self.image)
+            if isinstance(self.image, (str, Path)):
+                return Path(self.image).read_bytes()
+            buf = io.BytesIO()
+            self.image.save(buf, format="PNG")
+            return buf.getvalue()
+        except Exception:                                  # noqa: BLE001
+            return None
 
 
 class CodeBlock(Block):
@@ -236,3 +272,52 @@ class TableBlock(Block):
             "rows": [[str(c) for c in row] for row in self.rows],
             "header": list(self.header) if self.header else None,
         }
+
+
+# ---------- Обратный разбор ----------
+#
+# to_dict() у блоков был односторонним: веб-сериализация отдаёт словарь,
+# и обратно его никто не собирал — фронту хватало «type» для выбора
+# компонента. Общей интерактивной сессии этого мало: её снимок состояния
+# содержит условие вопроса, и при переезде между процессами условие надо
+# восстановить, а не показать пользователю другое.
+
+def block_from_dict(data: dict) -> Block:
+    """
+    Собрать блок из словаря, выданного `to_dict()`.
+
+    Обратимы блоки, которые целиком состоят из данных. Картинка
+    восстанавливается из base64-PNG: исходный PIL.Image или путь не
+    сохраняются, но показывается ровно то же самое.
+
+    Неизвестный тип — ValueError, а не «молча TextBlock»: подмена блока
+    заглушкой выглядит как испорченное задание, и искать причину придётся
+    в отрендеренном виде, где её уже не видно.
+    """
+    if not isinstance(data, dict):
+        raise ValueError(f"Блок должен быть словарём, получено {type(data).__name__}")
+    kind = data.get("type")
+    builder = _BLOCK_BUILDERS.get(kind)
+    if builder is None:
+        raise ValueError(f"Неизвестный тип блока: {kind!r}")
+    return builder(data)
+
+
+def blocks_from_dicts(items) -> list:
+    """Собрать список блоков. Пустой вход — пустой список."""
+    return [block_from_dict(item) for item in (items or [])]
+
+
+def _image_from_dict(data: dict) -> Block:
+    raw = data.get("image_b64")
+    payload = base64.b64decode(raw) if raw else b""
+    return ImageBlock(payload, caption=data.get("caption", ""))
+
+
+_BLOCK_BUILDERS = {
+    "text": lambda d: TextBlock(d.get("content", "")),
+    "formula": lambda d: FormulaBlock(d.get("latex", "")),
+    "code": lambda d: CodeBlock(d.get("code", ""), d.get("language", "text")),
+    "table": lambda d: TableBlock(d.get("rows") or [], d.get("header")),
+    "image": _image_from_dict,
+}

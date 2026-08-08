@@ -16,8 +16,20 @@
   font-size: 0.9rem;
 }
 
-/* Formula */
+/* Formula.
+   KaTeX рисует настоящий текст, а не картинку, поэтому формула
+   наследует цвет и кегль окружения — специально задавать их не нужно и
+   не следует: заданный цвет разошёлся бы с темой. Ширину ограничиваем и
+   разрешаем горизонтальную прокрутку: длинный вывод (система уравнений,
+   развёрнутый ряд) иначе растягивает всю страницу. */
 .formula {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.2em 0;
+}
+.formulaInline {
   display: inline-block;
   vertical-align: middle;
   max-width: 100%;

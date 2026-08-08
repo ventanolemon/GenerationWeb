@@ -27,7 +27,16 @@ public static class GenerateEndpoints
                 return Results.BadRequest(new { error = "partition_id must be positive" });
             }
 
-            var result = await client.GenerateAsync(body.PartitionId, body.UserId, ct);
+            var (result, error, status) = await client.GenerateAsync(body, ct);
+            if (error is not null)
+            {
+                // Сервис объяснил отказ словами (нераскрытый режим
+                // прохождения, значение вне допустимого диапазона) —
+                // пересылаем как есть и с его кодом, а не подменяем
+                // своей формулировкой и не сводим всё к 400.
+                return Results.Content(error, "application/json",
+                                       statusCode: status);
+            }
             if (result is null)
             {
                 return Results.NotFound(new

@@ -20,7 +20,9 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from core import InteractiveTask, StaticTask
+from core import InteractiveTask, StaticTask, session_from_task
+from core.scenarios import (IMPLEMENTED_MODES, MAX_ATTEMPTS, Layer, Scenario,
+                            SessionMode)
 from ..context import current_user_id as current_user_id_var
 
 router = APIRouter(prefix="/generate", tags=["generate"])
@@ -29,6 +31,60 @@ router = APIRouter(prefix="/generate", tags=["generate"])
 class GenerateRequest(BaseModel):
     partition_id: int = Field(..., gt=0, description="ID раздела из Partitions")
     user_id: Optional[str] = Field(None, description="ID пользователя (login или guest UUID)")
+    interactive: bool = Field(
+        False,
+        description=(
+            "Открыть сессию с автопроверкой, если у задания есть "
+            "спецификация ответа. По умолчанию выключено: прикрепление "
+            "спецификации к генератору не должно менять поведение уже "
+            "работающих вызовов."))
+    session_mode: str = Field(
+        "practice_free",
+        description=(
+            "Режим прохождения. Определяет контракт о записи попытки: "
+            "practice_free попыток не пишет, practice пишет и считает. "
+            "homework и exam описаны в модели, но пока не открыты."))
+    max_attempts: Optional[int] = Field(
+        None, ge=1, le=10,
+        description=(
+            "Попыток на вопрос. Пусто — берётся умолчание режима. "
+            "Слой выдачи может это значение запереть."))
+
+
+def _scenario_from(body: "GenerateRequest") -> Scenario:
+    """
+    Собрать сценарий из запроса.
+
+    Неизвестный или ещё не открытый режим отвергается ЯВНО. ДЗ и зачёт
+    описаны в модели, но им нужна дисциплина выдачи, которой нет: срок,
+    единственная попытка, недоступность условия после сдачи. Записать
+    попытку с пометкой «зачёт», не обеспечив условий зачёта, значит
+    получить статистику, про которую потом нельзя сказать, что она
+    означает — а обнаружится это через семестр.
+
+    Слоя выдачи здесь ещё нет: параметры приходят от вызывающего и
+    ложатся на слой задания. Когда появится выдача, она наложится
+    следующим слоем и сможет запирать.
+    """
+    try:
+        mode = SessionMode(body.session_mode)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Неизвестный режим прохождения: {body.session_mode!r}")
+
+    if mode not in IMPLEMENTED_MODES:
+        raise HTTPException(
+            status_code=400,
+            detail=(f"Режим {mode.value!r} описан, но пока не открыт: "
+                    f"ему нужна дисциплина выдачи. Доступны: "
+                    f"{', '.join(sorted(m.value for m in IMPLEMENTED_MODES))}."))
+
+    scenario = Scenario.for_mode(mode)
+    if body.max_attempts is not None:
+        scenario = scenario.with_layer(Layer.TASK,
+                                       {MAX_ATTEMPTS: body.max_attempts})
+    return scenario
 
 
 @router.post("")
@@ -59,6 +115,37 @@ def generate_task(body: GenerateRequest, request: Request) -> dict:
             status_code=500,
             detail=f"Generator {generator.name if 'generator' in dir() else body.partition_id} failed: {e}",
         )
+
+    if isinstance(task, StaticTask) and body.interactive and task.is_checkable:
+        # Общая сессия над статическим заданием: генератор не писал ни
+        # цикла, ни подкласса — он только приложил спецификацию ответа.
+        scenario = _scenario_from(body)
+        session = session_from_task(task, scenario=scenario)
+        session_id = sessions.create(session, body.partition_id, body.user_id)
+        return {
+            "type": "interactive",
+            "session_id": session_id,
+            "partition_id": body.partition_id,
+            "prompt": [b.to_dict() for b in session.initial_prompt()],
+            "is_finished": session.is_finished(),
+            "supports_tolerant": False,
+            "widget": session.questions[0].widget_name(),
+            # Виджет говорит, ЧЕМ рисовать; поля — сколько их и что
+            # подписать. Без этого набор слотов нарисовать нельзя: имена
+            # полей знает только спецификация, а её студенту не отдают.
+            "fields": [f.to_dict()
+                       for f in session.questions[0].spec.input_fields()],
+            # Форма раскладки, если ответ — сетка (матрица, таблица).
+            # Поля идут построчно; без формы клиент нарисует их столбцом
+            # и таблица перестанет читаться как таблица.
+            "shape": list(getattr(session.questions[0].spec, "shape", None)
+                          or ()) or None,
+            # Варианты теста или пусто. Пусто — и когда вопрос не тест, и
+            # когда честный тест собрать не из чего: лучше поле ввода, чем
+            # тест, где верный ответ виден методом исключения.
+            "options": session.questions[0].options() or None,
+            "scenario": scenario.to_dict(),
+        }
 
     if isinstance(task, StaticTask):
         result = task.to_dict()

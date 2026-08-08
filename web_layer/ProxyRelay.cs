@@ -11,8 +11,20 @@ namespace WebLayer.Endpoints;
 /// </summary>
 internal static class ProxyRelay
 {
-    public static (string? uid, string? role) Identity(HttpRequest req) =>
-        (req.Headers["X-User-Id"].FirstOrDefault(), req.Headers["X-User-Role"].FirstOrDefault());
+    /// <summary>
+    /// Личность запроса целиком: заверенная (Authorization: Bearer) и
+    /// заявленная (X-User-Id / X-User-Role).
+    ///
+    /// Authorization здесь главный: по нему FastAPI сам смотрит, кто это и
+    /// какая у него роль. X-* остаются на время перехода — их ещё шлёт
+    /// десктоп — и перестанут что-либо значить, когда на сервере снимут
+    /// GEN_TRUST_IDENTITY_HEADERS. До этого шага роль приходила из браузера
+    /// и сервер ей верил, чего хватало, чтобы назначить себя админом.
+    /// </summary>
+    public static (string? uid, string? role, string? auth) Identity(HttpRequest req) =>
+        (req.Headers["X-User-Id"].FirstOrDefault(),
+         req.Headers["X-User-Role"].FirstOrDefault(),
+         req.Headers["Authorization"].FirstOrDefault());
 
     public static async Task<string?> ReadBodyAsync(HttpRequest req)
     {

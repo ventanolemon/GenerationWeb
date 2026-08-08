@@ -21,20 +21,30 @@ public sealed class ContourClient
     }
 
     /// <summary>
-    /// Проброс запроса к contour_service с identity-заголовками
-    /// (X-User-Id / X-User-Role — contour_service доверяет только им,
-    /// RBAC живёт здесь, в web_layer). Возвращает статус + сырое тело;
-    /// маппинг detail→error делает вызывающий эндпоинт.
+    /// Проброс запроса к contour_service с identity-заголовками.
+    ///
+    /// Главный из них — Authorization: по токену сервис сам смотрит, кто
+    /// это и какая у него роль. X-User-Id / X-User-Role едут рядом на время
+    /// перехода. Раньше здесь было написано, что RBAC живёт в web_layer, —
+    /// это неверно: сравнений роли тут нет ни одного.
+    ///
+    /// Возвращает статус + сырое тело; маппинг detail→error делает
+    /// вызывающий эндпоинт.
     /// </summary>
     public async Task<(int Status, string Body)> ProxyAsync(
         HttpMethod method, string path, string? userId, string? role,
-        string? jsonBody, CancellationToken ct)
+        string? jsonBody, CancellationToken ct, string? auth = null)
     {
         using var req = new HttpRequestMessage(method, path);
         if (!string.IsNullOrWhiteSpace(userId))
             req.Headers.TryAddWithoutValidation("X-User-Id", userId);
         if (!string.IsNullOrWhiteSpace(role))
             req.Headers.TryAddWithoutValidation("X-User-Role", role);
+        // Заверенная личность. Идёт вместе с X-*, а не вместо них:
+        // сервер сам решает, чему верить, и при предъявленном токене
+        // заголовки роли игнорирует.
+        if (!string.IsNullOrWhiteSpace(auth))
+            req.Headers.TryAddWithoutValidation("Authorization", auth);
         if (jsonBody is not null)
             req.Content = new StringContent(
                 jsonBody, System.Text.Encoding.UTF8, "application/json");

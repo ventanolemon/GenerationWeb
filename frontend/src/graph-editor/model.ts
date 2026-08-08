@@ -297,6 +297,39 @@ function parseOutputTunnels(params: Record<string, unknown> | undefined): PortDe
   return out;
 }
 
+/** Тип порта по виду слота ответа (зеркало answer_slots._PORT_TYPES). */
+const SLOT_PORT_TYPES: Record<string, string> = {
+  number: "number",
+  expr: "expr",
+  text: "string",
+};
+
+/**
+ * Разбор 'имя[:вид][:опция=значение]' у slots — зеркало
+ * answer_slots.parse_slots.
+ *
+ * Здесь разбор МЯГКИЙ, в отличие от питоновского: редактор рисует узел на
+ * каждое нажатие клавиши, и падать на недописанном объявлении ему нельзя.
+ * Строгий отказ остаётся на стороне движка, где он и нужен — при сборке
+ * графа.
+ */
+function parseAnswerSlots(params: Record<string, unknown> | undefined): PortDef[] {
+  const raw = params?.slots;
+  if (!Array.isArray(raw)) return [];
+  const out: PortDef[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    const parts = String(item).trim().split(":").map((p) => p.trim());
+    const name = parts[0];
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    const head = parts[1];
+    const kind = head && !head.includes("=") && head !== "case" ? head : "number";
+    out.push({ name, type: SLOT_PORT_TYPES[kind] ?? "number", required: true });
+  }
+  return out;
+}
+
 /** Разбор 'имя:тип:начальное' у registers → выходы reg_<имя>. */
 function parseRegisters(params: Record<string, unknown> | undefined): PortDef[] {
   const raw = params?.registers;
@@ -350,6 +383,44 @@ export function derivePorts(
         ],
         outputs: staticOut,
       };
+    case "task": {
+      // Порядок как в TaskNode.input_ports: слоты, маркеры условия и
+      // шаблона ответа (без тех, что заняты слотами), vars, blocks.
+      const slots = parseAnswerSlots(p);
+      const taken = new Set(slots.map((s) => s.name));
+      const markers: PortDef[] = [];
+      const seen = new Set<string>();
+      for (const name of [
+        ...markerNames(String(p.statement ?? "")),
+        ...markerNames(String(p.answer_template ?? "")),
+      ]) {
+        if (taken.has(name) || seen.has(name)) continue;
+        seen.add(name);
+        markers.push({ name, type: "any", required: false });
+      }
+      return {
+        inputs: [
+          ...slots,
+          ...markers,
+          VARS_PORT,
+          { name: "blocks", type: "block_list", required: false },
+        ],
+        outputs: staticOut,
+      };
+    }
+    case "expr_binop": {
+      // Сумма и произведение бывают многовходовыми (см. _VARIADIC_OPS в
+      // ядре); остальные операции зависят от порядка и остаются на двух.
+      const op = String(p.op ?? "add");
+      const raw = Number(p.count ?? 2) || 2;
+      const count = op === "add" || op === "mul" ? Math.max(2, raw) : 2;
+      return {
+        inputs: Array.from({ length: count }, (_, i) => ({
+          name: String.fromCharCode(97 + i), type: "expr", required: true,
+        })),
+        outputs: staticOut,
+      };
+    }
     case "var_dict": {
       const names = Array.isArray(p.names) ? p.names.map(String) : [];
       return {

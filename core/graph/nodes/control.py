@@ -58,7 +58,7 @@ class GuardNode(Node):
         want = self.params.get("mode", "require_true") == "require_true"
         if cond != want:
             raise RetryGeneration(
-                f"guard {self.node_id!r}: условие не выполнено (cond={cond})."
+                f"{self.node_ref()}: условие не выполнено (cond={cond})."
             )
         return {"out": inputs.get("value")}
 
@@ -80,11 +80,23 @@ class CompareNode(Node):
 
     Правый операнд — вход b либо (если не подключён) параметр b: сравнение
     с константой не требует отдельного узла-числа.
+
+    Сам ОПЕРАТОР тоже бывает входом. Понадобилось на старом задании по
+    информатике «сколько раз программа выведет YES»: знак сравнения там
+    выбирается случайно, то есть он данные, а не настройка узла. Обойти
+    это нечем — четыре узла с фиксированными знаками пришлось бы
+    выбирать мультиплексором, а `pick` булевы каналы не берёт вовсе.
+
+    Провод главнее параметра, как у весов случайного выбора и у
+    начального значения регистра: параметр остаётся значением по
+    умолчанию, а не спорит с проводом.
     """
     type_id = "compare"
     category = "control"
     display_name = "Сравнение"
-    INPUTS = [Port("a", PortType.NUMBER), Port("b", PortType.NUMBER, required=False)]
+    INPUTS = [Port("a", PortType.NUMBER),
+              Port("b", PortType.NUMBER, required=False),
+              Port("op", PortType.STRING, required=False)]
     OUTPUTS = [Port("out", PortType.BOOL)]
     PARAMS_SCHEMA = {
         "op": {"type": "enum", "values": list(_COMPARE_OPS), "default": "=="},
@@ -95,12 +107,20 @@ class CompareNode(Node):
         op = self.params.get("op", "==")
         if op not in _COMPARE_OPS:
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: неизвестный оператор {op!r}. "
+                f"{self.node_ref()}: неизвестный оператор {op!r}. "
                 f"Допустимы: {list(_COMPARE_OPS)}"
             )
 
     def compute(self, inputs, ctx: ExecContext):
-        op = _COMPARE_OPS[self.params.get("op", "==")]
+        name = inputs.get("op") or self.params.get("op", "==")
+        name = str(name).strip()
+        if name not in _COMPARE_OPS:
+            # По проводу пришёл мусор. Не молча подставляем «==»: тогда
+            # задание сравнивало бы не тем знаком, и никто бы не заметил.
+            raise RetryGeneration(
+                f"{self.node_ref()}: оператор {name!r} неизвестен; "
+                f"допустимы {', '.join(_COMPARE_OPS)}.")
+        op = _COMPARE_OPS[name]
         right = inputs.get("b")
         if right is None:
             right = self.params.get("b", 0)
@@ -109,6 +129,31 @@ class CompareNode(Node):
         except (TypeError, ValueError):
             right = 0.0
         return {"out": bool(op(float(inputs["a"]), right))}
+
+
+class BoolNumberNode(Node):
+    """
+    Логическое значение как число: да → 1, нет → 0.
+
+    Без него булев результат в арифметику не попадает вовсе, и «сколько
+    случаев из девяти подходит» — форма, которой полна информатика и
+    теория вероятностей, — собиралась мультиплексором с двумя
+    константами на каждое сравнение. Четыре узла шума в теле цикла из
+    двадцати одного, и все четыре не про задачу.
+
+    Отдельный узел, а не молчаливое приведение типов: `if x` над числом
+    и `if x` над логическим значением — разные вопросы, и сливать их в
+    графе значило бы прятать, где именно произошло превращение.
+    """
+    type_id = "bool_number"
+    category = "control"
+    display_name = "Да/нет → число"
+    description = "Логическое значение числом (1/0). Вход: BOOL. Выход: NUMBER."
+    INPUTS = [Port("in", PortType.BOOL)]
+    OUTPUTS = [Port("out", PortType.NUMBER)]
+
+    def compute(self, inputs, ctx: ExecContext):
+        return {"out": 1.0 if inputs.get("in") else 0.0}
 
 
 # Проверки одного числа. Имя → функция от (value, param).
@@ -139,7 +184,7 @@ class NumberCheckNode(Node):
         check = self.params.get("check", "even")
         if check not in _CHECKS:
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: неизвестная проверка {check!r}. "
+                f"{self.node_ref()}: неизвестная проверка {check!r}. "
                 f"Допустимы: {list(_CHECKS)}"
             )
 
@@ -189,7 +234,7 @@ class SelectNode(Node):
         vt = self.params.get("value_type", "number")
         if vt not in _SELECT_TYPES:
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: неизвестный тип ветвей {vt!r}. "
+                f"{self.node_ref()}: неизвестный тип ветвей {vt!r}. "
                 f"Допустимы: {list(_SELECT_TYPES)}"
             )
 
@@ -241,7 +286,7 @@ class PickNode(Node):
         vt = self.params.get("value_type", "block")
         if vt not in _SELECT_TYPES:
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: неизвестный тип каналов {vt!r}. "
+                f"{self.node_ref()}: неизвестный тип каналов {vt!r}. "
                 f"Допустимы: {list(_SELECT_TYPES)}"
             )
         try:
@@ -249,7 +294,7 @@ class PickNode(Node):
                 raise ValueError
         except (TypeError, ValueError):
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: count должен быть целым ≥ 2."
+                f"{self.node_ref()}: count должен быть целым ≥ 2."
             )
 
     def _count(self) -> int:
@@ -279,16 +324,16 @@ class PickNode(Node):
             i = int(round(float(inputs.get("index", 0))))
         except (TypeError, ValueError):
             raise RetryGeneration(
-                f"pick {self.node_id!r}: индекс не число ({inputs.get('index')!r})."
+                f"{self.node_ref()}: индекс не число ({inputs.get('index')!r})."
             )
         if not 0 <= i < self._count():
             raise RetryGeneration(
-                f"pick {self.node_id!r}: индекс {i} вне диапазона "
+                f"{self.node_ref()}: индекс {i} вне диапазона "
                 f"[0; {self._count()})."
             )
         value = inputs.get(f"in{i}")
         if value is None:
             raise RetryGeneration(
-                f"pick {self.node_id!r}: выбранный вход in{i} не подключён."
+                f"{self.node_ref()}: выбранный вход in{i} не подключён."
             )
         return {"out": value}

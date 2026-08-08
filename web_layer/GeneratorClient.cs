@@ -71,28 +71,62 @@ public sealed class GeneratorClient
     /// Бросает HttpRequestException при 5xx, возвращает null при 404
     /// (нет генератора для этого partition_id).
     /// </summary>
-    public async Task<JsonElement?> GenerateAsync(int partitionId, string? userId, CancellationToken ct)
+    public async Task<(JsonElement? Body, string? Error, int Status)> GenerateAsync(
+        GenerateRequest request, CancellationToken ct)
     {
         var response = await _http.PostAsJsonAsync(
-            "/generate", new { partition_id = partitionId, user_id = userId }, ct);
+            "/generate",
+            new
+            {
+                partition_id = request.PartitionId,
+                user_id = request.UserId,
+                interactive = request.Interactive,
+                session_mode = request.SessionMode,
+                max_attempts = request.MaxAttempts
+            },
+            ct);
 
+        // 404 разбирается первым и означает не ошибку запроса, а «нет
+        // генератора для этого раздела» — у эндпоинта своя формулировка.
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
-            return null;
+            return (null, null, 0);
+        }
+
+        // Любой 4xx пересылается как есть, с сохранением кода. Причин две
+        // и они разные: 400 — режим прохождения, который описан, но ещё не
+        // открыт (ДЗ, зачёт); 422 — не прошедшая валидацию max_attempts.
+        // Ловить только 400 значило бы отправить 422 в
+        // EnsureSuccessStatusCode и показать пользователю голую 500 вместо
+        // объяснения, которое сервис уже написал словами.
+        if ((int)response.StatusCode >= 400 && (int)response.StatusCode < 500)
+        {
+            return (null, await response.Content.ReadAsStringAsync(ct),
+                    (int)response.StatusCode);
         }
 
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions, ct);
+        return (await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions, ct),
+                null, 0);
     }
 
     // ─── Интерактив ────────────────────────────────────────────────────
 
     public async Task<(TurnResultResponse? Result, bool SessionExists)> SubmitAsync(
-        string sessionId, string userInput, bool tolerant, CancellationToken ct)
+        SubmitRequest request, CancellationToken ct)
     {
         var response = await _http.PostAsJsonAsync(
             "/interactive/submit",
-            new { session_id = sessionId, user_input = userInput, tolerant },
+            new
+            {
+                session_id = request.SessionId,
+                user_input = request.UserInput ?? string.Empty,
+                tolerant = request.Tolerant,
+                // null, а не пустой словарь: у FastAPI это различимо —
+                // отсутствие поля значит «отвечали строкой», и пустой
+                // словарь вместо него означал бы пустой ответ по всем полям.
+                values = request.Values
+            },
             ct);
 
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -103,6 +137,36 @@ public sealed class GeneratorClient
         response.EnsureSuccessStatusCode();
         var result = await response.Content.ReadFromJsonAsync<TurnResultResponse>(JsonOptions, ct);
         return (result, true);
+    }
+
+    // ─── Предпросмотр «что примут» (материал преподавателя) ────────────
+
+    /// <summary>
+    /// Список ответов, которые будут засчитаны данной спецификацией.
+    ///
+    /// Отдаём сырым JsonElement по той же причине, что и задание:
+    /// структура принадлежит ядру, и типизировать её здесь значило бы
+    /// править веб-слой при каждом новом виде ответа.
+    ///
+    /// Возвращает текст ошибки при 400 — спецификацию сюда приносит
+    /// редактор, и «не разобралась» это нормальный ответ на недописанное
+    /// объявление, а не сбой.
+    /// </summary>
+    public async Task<(JsonElement? Body, string? Error, int Status)> PreviewAnswerAsync(
+        JsonElement spec, string? mode, CancellationToken ct)
+    {
+        var response = await _http.PostAsJsonAsync(
+            "/answers/preview", new { spec, mode }, ct);
+
+        if ((int)response.StatusCode >= 400 && (int)response.StatusCode < 500)
+        {
+            return (null, await response.Content.ReadAsStringAsync(ct),
+                    (int)response.StatusCode);
+        }
+
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions, ct),
+                null, 0);
     }
 
     // ─── Экспорт ───────────────────────────────────────────────────────
@@ -189,18 +253,9 @@ public sealed class GeneratorClient
         return await response.Content.ReadFromJsonAsync<UserDto>(JsonOptions, ct);
     }
 
-    public async Task<UserDto?> UpdateProfileAsync(
-        string login, UpdateProfileRequest req, CancellationToken ct)
-    {
-        var response = await _http.PatchAsJsonAsync(
-            $"/auth/profile/{Uri.EscapeDataString(login)}",
-            new { fio = req.Fio, group = req.Group, email = req.Email,
-                  about = req.About, avatar_color = req.AvatarColor },
-            ct);
-        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<UserDto>(JsonOptions, ct);
-    }
+    // UpdateProfileAsync убран: правка профиля теперь требует identity и
+    // может законно ответить 403, а этот путь звал EnsureSuccessStatusCode
+    // и превращал отказ в 500. Эндпоинт ходит через ProxyAsync.
 
     public async Task<(bool Ok, string? Error)> ChangePasswordAsync(
         ChangePasswordRequest req, CancellationToken ct)
@@ -273,13 +328,18 @@ public sealed class GeneratorClient
     /// </summary>
     public async Task<(int Status, string Body)> ProxyAsync(
         HttpMethod method, string path, string? userId, string? role,
-        string? jsonBody, CancellationToken ct)
+        string? jsonBody, CancellationToken ct, string? auth = null)
     {
         using var req = new HttpRequestMessage(method, path);
         if (!string.IsNullOrWhiteSpace(userId))
             req.Headers.TryAddWithoutValidation("X-User-Id", userId);
         if (!string.IsNullOrWhiteSpace(role))
             req.Headers.TryAddWithoutValidation("X-User-Role", role);
+        // Заверенная личность. Идёт вместе с X-*, а не вместо них:
+        // сервер сам решает, чему верить, и при предъявленном токене
+        // заголовки роли игнорирует.
+        if (!string.IsNullOrWhiteSpace(auth))
+            req.Headers.TryAddWithoutValidation("Authorization", auth);
         if (jsonBody is not null)
             req.Content = new StringContent(
                 jsonBody, System.Text.Encoding.UTF8, "application/json");

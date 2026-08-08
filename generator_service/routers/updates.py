@@ -28,10 +28,12 @@ from __future__ import annotations
 import os
 from typing import Any, Optional
 
-from fastapi import APIRouter, Header, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from core import signing, signing_keys, updates
+
+from ..identity import SuperUser
 
 router = APIRouter(tags=["updates"])
 
@@ -66,15 +68,6 @@ class PublishRequest(BaseModel):
     min_supported: str = Field(default="", description="ниже — обязательное")
     notes: str = Field(default="")
 
-
-def _require_admin(x_user_id: Optional[str], x_user_role: Optional[str]) -> str:
-    uid = (x_user_id or "").strip()
-    if not uid:
-        raise HTTPException(status_code=401, detail="Нет заголовка X-User-Id.")
-    if (x_user_role or "").strip().lower() != "admin":
-        raise HTTPException(status_code=403,
-                            detail="Доступно только администратору.")
-    return uid
 
 
 def _run(fn, *args, **kwargs) -> Any:
@@ -144,8 +137,7 @@ def get_key_set(request: Request) -> dict[str, Any]:
 def post_rotate_keys(
     body: RotateKeysRequest,
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: SuperUser,
 ) -> dict[str, Any]:
     """
     Принять новый набор ключей. Сервер и здесь не подписывает — набор
@@ -156,32 +148,27 @@ def post_rotate_keys(
     подпись будет валидной. От этого спасает только доставка набора вне
     канала (новая сборка). См. app_updates.md.
     """
-    actor = _require_admin(x_user_id, x_user_role)
     repo = request.app.state.repo
     signing_keys.ensure_bootstrapped(repo, _public_key())
     return _run(signing_keys.rotate, repo, payload=body.payload,
                 signature=body.signature,
-                new_key_signature=body.new_key_signature, actor_login=actor)
+                new_key_signature=body.new_key_signature, actor_login=who.login)
 
 
 @router.get("/admin/signing-keys")
 def get_key_history(
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: SuperUser,
 ) -> dict[str, Any]:
-    _require_admin(x_user_id, x_user_role)
     return signing_keys.history(request.app.state.repo)
 
 
 @router.get("/admin/releases")
 def get_history(
     request: Request,
+    who: SuperUser,
     channel: Optional[str] = Query(default=None),
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
 ) -> dict[str, Any]:
-    _require_admin(x_user_id, x_user_role)
     return updates.history(request.app.state.repo, channel=channel)
 
 
@@ -189,11 +176,9 @@ def get_history(
 def post_publish(
     body: PublishRequest,
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: SuperUser,
 ) -> dict[str, Any]:
     """Сервер проверяет подпись и сохраняет. Не подписывает."""
-    actor = _require_admin(x_user_id, x_user_role)
     return _run(updates.publish, request.app.state.repo,
                 version=body.version, channel=body.channel,
                 platform=body.platform, sequence=body.sequence,
@@ -202,21 +187,19 @@ def post_publish(
                 signature=body.signature, public_key=_public_key(),
                 signing_key_id=body.signing_key_id,
                 min_supported=body.min_supported, notes=body.notes,
-                actor_login=actor)
+                actor_login=who.login)
 
 
 @router.post("/admin/releases/{version}/yank")
 def post_yank(
     version: str,
     request: Request,
+    who: SuperUser,
     channel: str = Query(default="stable"),
     platform: str = Query(default="any"),
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
 ) -> dict[str, Any]:
     """Перестать предлагать релиз. Уже установленное не откатывается — откат
     по команде сервера был бы ещё одним способом навязать клиенту чужой
     выбор; для этого выпускают новую версию."""
-    _require_admin(x_user_id, x_user_role)
     return _run(updates.yank, request.app.state.repo, version=version,
                 channel=channel, platform=platform)

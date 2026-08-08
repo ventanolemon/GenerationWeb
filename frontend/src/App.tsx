@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ReactElement } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import type { Role, UserInfo } from "./api/types";
+import { api } from "./api/client";
 import { SessionProvider, effectiveRole, useSession } from "./session";
 import type { SessionValue } from "./session";
 import LandingPage from "./views/LandingPage";
@@ -64,14 +65,22 @@ export default function App() {
   }
 
   function handleLogout() {
+    if (user?.token) {
+      void api.logout({ login: user.login, role: user.role, token: user.token });
+    }
     setAuthenticated(false);
     setUser(null);
     localStorage.removeItem(USER_STORAGE_KEY);
   }
 
   function updateUser(updated: UserInfo) {
-    setUser(updated);
-    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updated));
+    // Токен сохраняем: он приходит ТОЛЬКО с ответа на вход, а профиль
+    // (GET/PATCH /profile) его не несёт. Затирать им сохранённый — значит
+    // молча разлогинить человека на сервере после правки своего же имени:
+    // локально он остаётся «вошедшим», а запросы начинают получать 401.
+    const merged = { ...updated, token: updated.token ?? user?.token };
+    setUser(merged);
+    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(merged));
   }
 
   const session = useMemo<SessionValue | null>(() => {
@@ -81,7 +90,7 @@ export default function App() {
       user,
       guestId,
       role,
-      identity: user ? { login: user.login, role } : null,
+      identity: user ? { login: user.login, role, token: user.token } : null,
       effectiveUserId: user?.login ?? guestId,
       logout: handleLogout,
       updateUser,

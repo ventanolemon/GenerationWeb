@@ -6,6 +6,8 @@
 import type {
   AdminUser,
   AnalyticsOverview,
+  AnswerPreview,
+  AnswerSpec,
   Assignment,
   AssignmentProgress,
   ChangePasswordRequest,
@@ -17,6 +19,8 @@ import type {
   ExportRequest,
   GenerateResponse,
   Group,
+  MyOrganization,
+  Organization,
   Partition,
   PartitionCandidates,
   PartitionEditData,
@@ -32,15 +36,24 @@ import type {
 } from "./types";
 
 // Идентичность для RBAC-эндпоинтов (/analytics, /admin, /assignments,
-// /groups). FastAPI читает X-User-Id (обязателен) и X-User-Role; web_layer
-// их пробрасывает. Гость (login отсутствует) в эти витрины не ходит.
+// /groups). Заверяет её ТОКЕН: сервер по нему сам смотрит, кто это и какая
+// у него роль. X-User-Id / X-User-Role остаются на время перехода (их ещё
+// шлёт десктоп) и перестанут что-либо значить, когда на сервере снимут
+// GEN_TRUST_IDENTITY_HEADERS. Слать роль как заявление — ровно то, из-за
+// чего преподаватель мог назначить себя админом.
 export interface Identity {
   login: string;
   role?: Role;
+  token?: string;
 }
 
 function idHeaders(id: Identity): Record<string, string> {
-  return { "X-User-Id": id.login, "X-User-Role": id.role ?? "student" };
+  const headers: Record<string, string> = {
+    "X-User-Id": id.login,
+    "X-User-Role": id.role ?? "student",
+  };
+  if (id.token) headers["Authorization"] = `Bearer ${id.token}`;
+  return headers;
 }
 
 // Базовая обёртка вокруг fetch с двумя задачами: распарсить JSON и
@@ -97,10 +110,24 @@ export const api = {
     return request<Partition[]>(`/api/subjects/${subjectId}/partitions`);
   },
 
-  generate(partitionId: number, userId?: string | null): Promise<GenerateResponse> {
+  // Параметры прохождения (не генерации): одно и то же задание в
+  // тренировке и в зачёте живёт по-разному. interactive=false по
+  // умолчанию — появление спецификации ответа у генератора не должно
+  // менять поведение уже работающих экранов.
+  generate(
+    partitionId: number,
+    userId?: string | null,
+    session?: { interactive?: boolean; sessionMode?: string; maxAttempts?: number },
+  ): Promise<GenerateResponse> {
     return request<GenerateResponse>("/api/generate", {
       method: "POST",
-      body: JSON.stringify({ partitionId, userId: userId ?? null }),
+      body: JSON.stringify({
+        partitionId,
+        userId: userId ?? null,
+        interactive: session?.interactive ?? false,
+        sessionMode: session?.sessionMode ?? "practice_free",
+        maxAttempts: session?.maxAttempts ?? null,
+      }),
     });
   },
 
@@ -111,6 +138,30 @@ export const api = {
     });
   },
 
+  // Ответ по полям — для виджета, у которого их несколько. Склеивать
+  // поля в строку здесь нельзя: значение со знаком равенства или точкой
+  // с запятой сломало бы разбор на стороне ядра.
+  submitValues(
+    sessionId: string,
+    values: Record<string, string>,
+  ): Promise<TurnResultResponse> {
+    return request<TurnResultResponse>("/api/interactive/submit", {
+      method: "POST",
+      body: JSON.stringify({ sessionId, userInput: "", values }),
+    });
+  },
+
+  // «Что примут» — материал ПРЕПОДАВАТЕЛЯ, поэтому отдельный запрос, а не
+  // поле в ответе /generate: для выражения он стоит около 200 мс, и
+  // платить их на каждой генерации ради подсказки, которую смотрят раз
+  // при настройке, незачем.
+  previewAnswer(spec: AnswerSpec, mode?: string): Promise<AnswerPreview> {
+    return request<AnswerPreview>("/api/answers/preview", {
+      method: "POST",
+      body: JSON.stringify({ spec, mode: mode ?? null }),
+    });
+  },
+
   // ─── Авторизация и профиль ────────────────────────────────────────────────
 
   login(login: string, password: string): Promise<UserInfo> {
@@ -118,6 +169,20 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ login, password }),
     });
+  },
+
+  // Выход гасит сессию на сервере, а не только забывает её в браузере.
+  // Ошибку глотаем: пользователь всё равно выходит локально, и держать его
+  // в приложении из-за недоступной сети было бы хуже.
+  async logout(id: Identity): Promise<void> {
+    try {
+      await request<void>("/api/auth/logout", {
+        method: "POST",
+        headers: idHeaders(id),
+      });
+    } catch {
+      /* сессия истечёт сама по expires_at */
+    }
   },
 
   register(body: RegisterRequest): Promise<UserInfo> {
@@ -131,9 +196,16 @@ export const api = {
     return request<UserInfo>(`/api/auth/profile/${encodeURIComponent(login)}`);
   },
 
-  updateProfile(login: string, body: UpdateProfileRequest): Promise<UserInfo> {
+  // Требует identity: сервер пускает владельца профиля и админа. Раньше
+  // проверки не было вовсе — чужой профиль правился без единого заголовка.
+  updateProfile(
+    id: Identity,
+    login: string,
+    body: UpdateProfileRequest,
+  ): Promise<UserInfo> {
     return request<UserInfo>(`/api/auth/profile/${encodeURIComponent(login)}`, {
       method: "PATCH",
+      headers: idHeaders(id),
       body: JSON.stringify(body),
     });
   },
@@ -252,6 +324,97 @@ export const api = {
   adminListUsers(id: Identity): Promise<{ users: AdminUser[] }> {
     return request<{ users: AdminUser[] }>("/api/admin/users", {
       headers: idHeaders(id),
+    });
+  },
+
+  // ─── Организации (§8) ───────────────────────────────────────────────
+
+  myOrganization(id: Identity): Promise<MyOrganization> {
+    return request<MyOrganization>("/api/organizations/mine", {
+      headers: idHeaders(id),
+    });
+  },
+
+  adminListOrganizations(
+    id: Identity,
+  ): Promise<{ organizations: Organization[] }> {
+    return request("/api/admin/organizations", { headers: idHeaders(id) });
+  },
+
+  adminGetOrganization(id: Identity, orgId: number): Promise<Organization> {
+    return request(`/api/admin/organizations/${orgId}`, {
+      headers: idHeaders(id),
+    });
+  },
+
+  adminCreateOrganization(
+    id: Identity,
+    name: string,
+    parentId: number | null = null,
+  ): Promise<Organization> {
+    return request("/api/admin/organizations", {
+      method: "POST",
+      headers: idHeaders(id),
+      body: JSON.stringify({ name, parent_id: parentId }),
+    });
+  },
+
+  adminRenameOrganization(
+    id: Identity,
+    orgId: number,
+    name: string,
+  ): Promise<Organization> {
+    return request(`/api/admin/organizations/${orgId}`, {
+      method: "PATCH",
+      headers: idHeaders(id),
+      body: JSON.stringify({ name }),
+    });
+  },
+
+  adminAddToOrganization(
+    id: Identity,
+    orgId: number,
+    login: string,
+  ): Promise<{ login: string; organization_id: number | null }> {
+    return request(`/api/admin/organizations/${orgId}/members`, {
+      method: "POST",
+      headers: idHeaders(id),
+      body: JSON.stringify({ login }),
+    });
+  },
+
+  adminRemoveFromOrganization(
+    id: Identity,
+    orgId: number,
+    login: string,
+  ): Promise<{ login: string; organization_id: number | null }> {
+    return request(
+      `/api/admin/organizations/${orgId}/members/${encodeURIComponent(login)}`,
+      { method: "DELETE", headers: idHeaders(id) },
+    );
+  },
+
+  adminTransferOwnership(
+    id: Identity,
+    orgId: number,
+    login: string,
+  ): Promise<Organization> {
+    return request(`/api/admin/organizations/${orgId}/owner`, {
+      method: "POST",
+      headers: idHeaders(id),
+      body: JSON.stringify({ login }),
+    });
+  },
+
+  adminSetSuperuser(
+    id: Identity,
+    login: string,
+    isSuperuser: boolean,
+  ): Promise<{ login: string; is_superuser: boolean }> {
+    return request(`/api/admin/superusers/${encodeURIComponent(login)}`, {
+      method: "POST",
+      headers: idHeaders(id),
+      body: JSON.stringify({ is_superuser: isSuperuser }),
     });
   },
 

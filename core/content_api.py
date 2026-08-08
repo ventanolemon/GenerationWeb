@@ -43,9 +43,21 @@ def storage_of(owner: Optional[str]) -> str:
 
 # ---------- Обзор ----------
 
-def overview(repo: Repository) -> dict:
-    """Что где лежит — данные админского экрана переносов."""
+def overview(repo: Repository, *,
+             organization_id: Optional[int] = None) -> dict:
+    """
+    Что где лежит — данные админского экрана переносов.
+
+    `organization_id=None` — весь обзор (администратор развёртывания);
+    иначе только своя организация плюс встроенные предметы: они
+    принадлежат продукту и видны всем (§8.1), и прятать их от админа
+    организации значило бы показывать ему неполную картину его же
+    каталога.
+    """
     subjects = repo.subjects_with_owner()
+    if organization_id is not None:
+        subjects = [s for s in subjects
+                    if s.get("organization_id") in (organization_id, None)]
     for s in subjects:
         s["storage"] = storage_of(s["owner"])
     return {
@@ -88,7 +100,17 @@ def _affected_logins(repo: Repository, old: Optional[str],
     return {old, new}
 
 
-def _require_owner_exists(repo: Repository, login: Optional[str]) -> None:
+def _require_owner_exists(repo: Repository, login: Optional[str],
+                          organization_id: Optional[int] = None) -> None:
+    """
+    Кому вообще можно отдать личное хранилище.
+
+    С появлением организаций к роли добавилась принадлежность: передать
+    предмет преподавателю ЧУЖОЙ организации значило бы протащить контент
+    через границу контейнера, которую §8.1 объявляет непроницаемой.
+    `organization_id=None` — проверку организации не делаем (администратор
+    развёртывания переносит куда угодно осознанно).
+    """
     if login is None:
         return
     profile = repo.get_user_profile(login)
@@ -98,6 +120,12 @@ def _require_owner_exists(repo: Repository, login: Optional[str]) -> None:
         raise ContentActionError(
             f"Личное хранилище есть у преподавателя и администратора; "
             f"у {login!r} роль {profile.role!r}.")
+    if organization_id is not None:
+        target_org = repo.user_organization_id(login)
+        if target_org != organization_id:
+            raise ContentActionError(
+                f"{login!r} состоит в другой организации; передавать "
+                f"контент через границу организации нельзя.")
 
 
 def transfer(repo: Repository, *, subject_id: int,

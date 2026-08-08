@@ -16,13 +16,13 @@ import hashlib
 from typing import Optional
 
 from .graph.conversions import conversion_table
-from .graph.errors import GraphError, GraphValidationError
+from .graph.errors import GraphValidationError
 from .graph.executor import GraphExecutor
 from .graph.nodes import DEFAULT_REGISTRY
 from .graph.port_types import PortType
 from .graph.registry import NodeRegistry
 from .graph.spec import GraphSpec
-from . import graph_probe
+from .graph import isolation
 
 
 def catalog_version(registry: NodeRegistry = DEFAULT_REGISTRY) -> str:
@@ -82,47 +82,19 @@ def validate_graph(spec_dict: dict) -> dict:
             "catalog_version": catalog_version()}
 
 
-def _blocks_json(task, field: str) -> list[dict]:
-    """Блоки условия/ответа задания как список BlockJSON (Block.to_dict).
-    Для интерактивных заданий поле statement — синтетический текстовый блок
-    из начального промпта, answer — пуст."""
-    blocks = getattr(task, field, None)
-    if blocks is not None:
-        return [b.to_dict() for b in blocks]
-    if field == "statement":
-        stmt, _ = graph_probe.task_plain(task)
-        return [{"type": "text", "content": stmt}]
-    return []
-
-
 def preview_graph(spec_dict: dict, seeds: Optional[list[int]] = None,
                   max_seeds: int = 8) -> dict:
     """
     Исполнить граф на seeds и вернуть блоки условия/ответа (BlockJSON) —
-    рендерятся существующим frontend BlockRenderer. Тот же probe-механизм,
-    что у контура, но с тяжёлыми блоками для UI (probe_graph — без них).
-    """
-    seeds = (seeds if seeds is not None else graph_probe.DEFAULT_SEEDS)[:max_seeds]
-    try:
-        executor = GraphExecutor(GraphSpec.parse(spec_dict))
-    except GraphValidationError as e:
-        return {"ok": False, "errors": [str(e)], "runs": []}
+    рендерятся существующим frontend BlockRenderer.
 
-    runs = []
-    for seed in seeds:
-        res = graph_probe.run_once(executor, seed)
-        if res.task is None or res.error is not None:
-            runs.append({"seed": seed, "statement": [], "answer": [],
-                         "attempts": res.attempts, "wall_ms": round(res.wall_ms, 2),
-                         "error": res.error or "не удалось собрать задание"})
-            continue
-        try:
-            statement = _blocks_json(res.task, "statement")
-            answer = _blocks_json(res.task, "answer")
-            err = None
-        except Exception as e:  # рендер блока упал — не роняем весь предпросмотр
-            statement, answer, err = [], [], f"ошибка рендера блока: {e}"
-        runs.append({"seed": seed, "statement": statement, "answer": answer,
-                     "attempts": res.attempts, "wall_ms": round(res.wall_ms, 2),
-                     "error": err})
-    return {"ok": True, "errors": [], "runs": runs}
+    Самый опасный путь в сервисе: сюда приходят НЕСОХРАНЁННЫЕ графы прямо
+    из редактора, то есть произвольное содержимое от автора. Поэтому
+    исполнение уезжает в отдельный процесс без доступа к БД (§9); отказ
+    самого процесса — таймаут, смерть — превращается в обычную ошибку
+    предпросмотра, а не в падение запроса.
+    """
+    try:
+        return isolation.preview_graph_runs(spec_dict, seeds, max_seeds)
+    except isolation.WorkerError as e:
+        return {"ok": False, "errors": [str(e)], "runs": []}

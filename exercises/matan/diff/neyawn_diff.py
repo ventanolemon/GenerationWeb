@@ -162,7 +162,10 @@ def get_neyawn_diff():
     return (
         ("text", " 4.\tВычислить производную неявно заданной функции в точке M(1,1)\n"),
         ("formula", res_latex),
-        ("formula", ans_latex + f" \\quad \\text{{значение в точке }} M(1,1) = {ans_value}")
+        ("formula", ans_latex + f" \\quad \\text{{значение в точке }} M(1,1) = {ans_value}"),
+        # Задание просит ЗНАЧЕНИЕ производной в точке — его и проверяем.
+        # Само выражение y' проверять было бы другой задачей.
+        ("answer", ans_value),
     )
 
 

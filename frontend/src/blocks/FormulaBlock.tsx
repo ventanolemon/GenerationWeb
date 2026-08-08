@@ -1,27 +1,67 @@
+import { useMemo } from "react";
+import katex from "katex";
 import type { FormulaBlock } from "../api/types";
 import styles from "../styles/blocks.module.css";
 
 /**
- * Формула. PNG приходит base64-кодированным из ядра (matplotlib mathtext).
- * Если ядру не удалось отрендерить — image_b64 === null, и мы показываем
- * сырой LaTeX в обёртке $...$, чтобы хотя бы видна была математика.
+ * Формула — KaTeX по LaTeX-исходнику (план, §10.2, этап 7).
  *
- * Альт-текст содержит LaTeX-исходник: это и для accessibility (screen
- * readers), и для копирования формулы в буфер обмена.
+ * Раньше ядро присылало готовый PNG от matplotlib, и это был
+ * самостоятельный дефект, а не просто «некрасиво»:
+ *
+ *   * картинка не выделяется, не копируется и не ищется по странице;
+ *   * она не масштабируется вместе с текстом — при увеличении шрифта
+ *     формула остаётся прежней и расползается с окружающими строками;
+ *   * растр не подстраивается под тему и под плотность экрана;
+ *   * и это была почти вся страница: у типового задания матана
+ *     base64-PNG составлял 94 % ответа (5432 байта из 5760) и стоил
+ *     около 40 мс сериализации на КАЖДУЮ формулу — в синхронном
+ *     запросе, пока студент ждёт.
+ *
+ * KaTeX отдаёт настоящую вёрстку: текст, который наследует шрифт и
+ * тему, и разметку MathML для программ чтения с экрана. Ядро теперь
+ * шлёт только LaTeX.
+ *
+ * Отказ ловится и вырождается в исходник в `$...$` — ровно то, что
+ * показывалось и раньше, когда matplotlib не справлялся. Формула,
+ * которую не разобрать, это ошибка автора задания, и прятать её за
+ * пустым местом хуже, чем показать как есть.
  */
-export default function FormulaBlockView({ block }: { block: FormulaBlock }) {
-  if (block.image_b64) {
-    return (
-      <img
-        className={styles.formula}
-        src={`data:image/png;base64,${block.image_b64}`}
-        alt={block.latex}
-      />
-    );
+export default function FormulaBlockView({
+  block,
+  inline = false,
+}: {
+  block: FormulaBlock;
+  /** Внутри строки, а не отдельным блоком: меньше и без центрирования. */
+  inline?: boolean;
+}) {
+  const html = useMemo(() => {
+    try {
+      return katex.renderToString(block.latex, {
+        displayMode: !inline,
+        // Ошибку показываем сами, целым исходником: KaTeX подсвечивает
+        // место красным и пишет о нём на языке разбора TeX, а это тот
+        // самый жаргон, от которого §10.2 плана уводит.
+        throwOnError: true,
+        // Кириллица в математическом режиме — норма для наших заданий
+        // («\text» вокруг каждого слова автор писать не обязан), и
+        // предупреждать о ней в консоли не о чем.
+        strict: false,
+      });
+    } catch {
+      return null;
+    }
+  }, [block.latex, inline]);
+
+  if (html === null) {
+    return <code className={styles.formulaFallback}>${block.latex}$</code>;
   }
   return (
-    <code className={styles.formulaFallback}>
-      ${block.latex}$
-    </code>
+    <span
+      className={inline ? styles.formulaInline : styles.formula}
+      // Безопасно: строка целиком построена KaTeX, который экранирует
+      // ввод и без `trust` не выпускает ни \href, ни \includegraphics.
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
   );
 }

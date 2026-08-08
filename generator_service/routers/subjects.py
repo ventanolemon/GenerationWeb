@@ -52,15 +52,34 @@ def list_partitions(subject_id: int, request: Request) -> list[dict]:
         # физ. конструктор), Capability.INTERACTIVE заведомо нет —
         # composite-генераторы по стандарту STATIC.
         is_interactive = False
+        is_checkable = False
         if registry.has(p.id):
             try:
                 gen = registry.get(p.id, p.generation_params)
-                is_interactive = Capability.INTERACTIVE in gen.capabilities
+                # Два РАЗНЫХ вопроса, и слить их в один нельзя.
+                #
+                # is_interactive — «можно ли здесь отвечать»: и сессия
+                # генератора, и общая машинка над спецификацией.
+                # is_checkable — «есть ли у задания статическая форма
+                # ПОМИМО сессии».
+                #
+                # Разница видна на физике. Её задача проверяема, но она
+                # остаётся обычным заданием: преподаватель генерирует
+                # варианты и выгружает их в Word. Отдав витрине один флаг,
+                # мы увели бы весь предмет на экран тренажёра и отняли
+                # экспорт. У тренажёра слов, наоборот, статической формы
+                # нет вовсе — только сессия.
+                is_interactive = bool(
+                    gen.capabilities & (Capability.INTERACTIVE
+                                        | Capability.CHECKABLE))
+                is_checkable = bool(gen.capabilities & Capability.CHECKABLE)
             except Exception:
                 # Если фабрика для группы/теста не смогла собрать детей
                 # (например, после удаления одного из дочерних разделов),
                 # она бросит RuntimeError. Это не интерактив, точно.
                 is_interactive = False
+                is_checkable = False
         d["is_interactive"] = is_interactive
+        d["is_checkable"] = is_checkable
         result.append(d)
     return result

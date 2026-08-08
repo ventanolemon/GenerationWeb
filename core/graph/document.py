@@ -43,6 +43,15 @@ class DocEdge:
         return (self.from_node, self.from_port, self.to_node, self.to_port)
 
 
+def _edge_key(src_node: str, src_port: str, dst_node: str, dst_port: str) -> str:
+    """
+    Ключ ребра для meta-хранилищ, завязанных на конкретный провод (bends).
+    Не индекс в списке DocEdge: индексы едут при вставке/удалении рёбер, и
+    данные, привязанные к позиции в списке, молча уехали бы на чужой провод.
+    """
+    return f"{src_node}:{src_port}->{dst_node}:{dst_port}"
+
+
 class GraphDocument:
     """Изменяемый граф (узлы + рёбра + meta). Источник правды для редактора."""
 
@@ -80,6 +89,10 @@ class GraphDocument:
 
     def remove_node(self, node_id: str) -> None:
         self.nodes.pop(node_id, None)
+        # Перегибы рёбер узла снимаем ДО их удаления из self.edges — иначе
+        # осиротевший ключ переживёт узел и всплывёт, если id переиспользуют.
+        for e in self.edges_for(node_id):
+            self.set_edge_bends(*e.as_tuple(), [])
         self.edges = [e for e in self.edges
                       if e.from_node != node_id and e.to_node != node_id]
         self.set_node_expanded(node_id, False)
@@ -109,6 +122,8 @@ class GraphDocument:
 
     def remove_edge(self, edge: DocEdge) -> None:
         self.edges = [e for e in self.edges if e.as_tuple() != edge.as_tuple()]
+        # Перегиб без ребра — мусор, который никогда не отрисуется заново.
+        self.set_edge_bends(*edge.as_tuple(), [])
 
     def edges_for(self, node_id: str) -> list[DocEdge]:
         return [e for e in self.edges
@@ -470,6 +485,59 @@ class GraphDocument:
     def remove_comment(self, comment_id: str) -> None:
         items = [c for c in self.comments() if c.get("id") != comment_id]
         self._set_comments(items)
+
+    # ---------- Ручные точки перегиба провода (meta, вне соединения) ----------
+    #
+    # Трассировщик кладёт провода сам; ручная поправка — точки перегиба —
+    # живёт в meta["bends"] = {edge_key: [[x, y], ...]}, РЯДОМ с layout и
+    # comments, а не в самом DocEdge. Причина — синк: конфликт по
+    # РАСПОЛОЖЕНИЮ безвреден (LWW по проводу — просто взять чью-то версию),
+    # конфликт по ЛОГИКЕ (кто с кем соединён) осмыслен и требует разбора.
+    # Смешать значило бы ловить LWW-конфликты из-за того, что двое просто
+    # подвигали провод. Ключ строится _edge_key — не индексом в self.edges,
+    # см. её докстроку.
+
+    def bends(self) -> dict[str, list]:
+        raw = self.meta.get("bends")
+        return raw if isinstance(raw, dict) else {}
+
+    def edge_bends(self, src_node: str, src_port: str,
+                   dst_node: str, dst_port: str) -> list[list[float]]:
+        """
+        Точки перегиба провода. Мусорная запись (не список пар чисел)
+        читается как «перегибов нет», а не роняет вызов: meta приходит по
+        синку от чужого клиента и из файлов, сохранённых старой версией.
+        """
+        raw = self.bends().get(_edge_key(src_node, src_port, dst_node, dst_port))
+        if not isinstance(raw, list):
+            return []
+        points: list[list[float]] = []
+        for p in raw:
+            if isinstance(p, (list, tuple)) and len(p) == 2:
+                try:
+                    points.append([float(p[0]), float(p[1])])
+                except (TypeError, ValueError):
+                    continue      # одна кривая точка не должна топить весь провод
+        return points
+
+    def set_edge_bends(self, src_node: str, src_port: str,
+                       dst_node: str, dst_port: str,
+                       points: list) -> None:
+        """Пустой points СТИРАЕТ ключ, а не оставляет []: иначе meta пухнет
+        мусором и диффы синка шумят на пустом месте."""
+        key = _edge_key(src_node, src_port, dst_node, dst_port)
+        bends = dict(self.bends())
+        if points:
+            bends[key] = [[float(x), float(y)] for x, y in points]
+        else:
+            bends.pop(key, None)
+        if bends:
+            self.meta["bends"] = bends
+        else:
+            self.meta.pop("bends", None)
+
+    def clear_bends(self) -> None:
+        self.meta.pop("bends", None)
 
     # ---------- Валидация ----------
 

@@ -10,7 +10,7 @@ import os
 import tempfile
 import unittest
 
-from core import admin_api
+from core import admin_api, auth_sessions
 from core.repository import Repository
 
 
@@ -48,6 +48,11 @@ class ChangeRoleTests(AdminApiTestBase):
         super().setUp()
         self.repo.create_user("root", "p", "Админ", "", role="admin")
         self.repo.create_user("alla", "p", "Алла", "", role="teacher")
+
+    def _h(self, login):
+        """Настоящая сессия: роль сервер читает из БД, а не из заголовка."""
+        token = auth_sessions.issue(self.repo, login)["token"]
+        return {"Authorization": f"Bearer {token}"}
 
     def test_admin_promotes_teacher_to_admin(self):
         out = admin_api.change_role(self.repo, actor_login="root",
@@ -105,6 +110,11 @@ class RouterTests(AdminApiTestBase):
         self.repo.create_user("root", "p", "Админ", "", role="admin")
         self.repo.create_user("alla", "p", "Алла", "", role="teacher")
 
+    def _h(self, login):
+        """Настоящая сессия: роль сервер читает из БД, а не из заголовка."""
+        token = auth_sessions.issue(self.repo, login)["token"]
+        return {"Authorization": f"Bearer {token}"}
+
     def test_401_without_identity(self):
         r = self._client().get("/admin/users")
         self.assertEqual(r.status_code, 401)
@@ -112,14 +122,14 @@ class RouterTests(AdminApiTestBase):
     def test_403_for_non_admin(self):
         r = self._client().get(
             "/admin/users",
-            headers={"X-User-Id": "alla", "X-User-Role": "teacher"},
+            headers=self._h("alla"),
         )
         self.assertEqual(r.status_code, 403)
 
     def test_200_lists_users_for_admin(self):
         r = self._client().get(
             "/admin/users",
-            headers={"X-User-Id": "root", "X-User-Role": "admin"},
+            headers=self._h("root"),
         )
         self.assertEqual(r.status_code, 200)
         logins = {u["login"] for u in r.json()["users"]}
@@ -129,7 +139,7 @@ class RouterTests(AdminApiTestBase):
         r = self._client().post(
             "/admin/users/root/role",
             json={"role": "teacher"},
-            headers={"X-User-Id": "root", "X-User-Role": "admin"},
+            headers=self._h("root"),
         )
         self.assertEqual(r.status_code, 400)
 
@@ -137,7 +147,7 @@ class RouterTests(AdminApiTestBase):
         r = self._client().post(
             "/admin/users/alla/role",
             json={"role": "admin"},
-            headers={"X-User-Id": "root", "X-User-Role": "admin"},
+            headers=self._h("root"),
         )
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.json(), {"login": "alla", "role": "admin"})

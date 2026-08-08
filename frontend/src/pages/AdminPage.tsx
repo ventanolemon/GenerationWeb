@@ -4,12 +4,14 @@ import { useSession } from "../session";
 import type { AdminUser, Group, Role } from "../api/types";
 import { useAsync } from "../screens/useAsync";
 import { RU_ROLE } from "../screens/format";
+import OrganizationsPanel from "./OrganizationsPanel";
 import styles from "../styles/screens.module.css";
 
-type Sub = "users" | "groups" | "perms";
+type Sub = "users" | "groups" | "orgs" | "perms";
 const SUBS: { key: Sub; label: string }[] = [
   { key: "users", label: "Пользователи и роли" },
   { key: "groups", label: "Группы" },
+  { key: "orgs", label: "Организации" },
   { key: "perms", label: "Права по ролям" },
 ];
 
@@ -20,9 +22,7 @@ export default function AdminPage() {
       <div className={styles.pageHead}>
         <div>
           <h1 className={styles.h1}>Администрирование</h1>
-          <p className={styles.sub}>
-            Роли и права применяются у пользователя при следующем входе
-          </p>
+          <ScopeLine />
         </div>
         <div className={styles.seg} role="group" aria-label="Раздел администрирования">
           {SUBS.map((s) => (
@@ -35,8 +35,43 @@ export default function AdminPage() {
 
       {sub === "users" && <UsersPanel />}
       {sub === "groups" && <GroupsPanel />}
+      {sub === "orgs" && <OrganizationsPanel />}
       {sub === "perms" && <PermsMatrix />}
     </div>
+  );
+}
+
+/**
+ * Чем именно управляет вошедший.
+ *
+ * Без этой строки экран врёт: «Администрирование» выглядит одинаково у
+ * админа кафедры и у администратора развёртывания, а видят и могут они
+ * разное. `admin` теперь означает «админ СВОЕЙ организации» (§8.2), и
+ * молчать об этом — значит выдавать «не ваша организация» за случайный
+ * сбой.
+ */
+function ScopeLine() {
+  const { identity } = useSession();
+  const { data } = useAsync(() => api.myOrganization(identity!), [identity]);
+  if (!data) {
+    return (
+      <p className={styles.sub}>
+        Роли и права применяются у пользователя при следующем входе
+      </p>
+    );
+  }
+  return (
+    <p className={styles.sub}>
+      {data.organization ? (
+        <>
+          Организация: <b>{data.organization.name}</b>
+          {data.is_owner && " — вы её владелец"}
+        </>
+      ) : (
+        "Вы не состоите в организации"
+      )}
+      {data.is_superuser && " · администратор развёртывания"}
+    </p>
   );
 }
 
@@ -78,7 +113,9 @@ function UsersPanel() {
               <tr>
                 <th>Пользователь</th>
                 <th>Группа</th>
-                <th>Роль</th>
+                <th title="Роль внутри организации; полномочия уровня развёртывания — отдельный флаг">
+                  Роль в организации
+                </th>
                 <th>Регистрация</th>
               </tr>
             </thead>
@@ -113,6 +150,14 @@ function UsersPanel() {
                             reload();
                           }}
                         />
+                        {u.is_superuser && (
+                          <span
+                            className={`${styles.pill} ${styles.ok}`}
+                            title="Администратор развёртывания: пакеты узлов, ключи подписи, выпуски, публичный API"
+                          >
+                            развёртывание
+                          </span>
+                        )}
                         {u.login === viewer && <span className={styles.badgeYou}>это вы</span>}
                       </div>
                     </td>
@@ -130,6 +175,8 @@ function UsersPanel() {
       <div style={{ padding: "10px 16px", borderTop: "1px solid var(--border)" }}>
         <span className={styles.inlineHint}>
           ⚠ Нельзя изменить свою роль и нельзя понизить последнего администратора.
+          Роль действует ВНУТРИ организации; пакеты узлов, ключи подписи и
+          выпуски — за администратором развёртывания, это отдельная ось.
         </span>
       </div>
     </div>
