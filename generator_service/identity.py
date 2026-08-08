@@ -90,7 +90,14 @@ def resolve(request: Request, authorization: Optional[str] = None,
         return None
     _warn_once()
     role = (x_user_role or "").strip().lower() or _STRICTEST_ROLE
-    return Identity(login=login, role=role, source="header")
+    # Организацию и флаг администратора развёртывания клиент НЕ заявляет
+    # даже в переходном режиме: их читаем из БД. Роль в этой ветке всё ещё
+    # с чужих слов, но принадлежность к организации — уже нет, и это
+    # ограничивает ущерб от подделанного заголовка одной организацией.
+    repo = request.app.state.repo
+    return Identity(login=login, role=role, source="header",
+                    organization_id=repo.user_organization_id(login),
+                    is_superuser=repo.is_superuser(login))
 
 
 def require(request: Request, authorization: Optional[str] = None,
@@ -149,6 +156,35 @@ def _required(
     return require(request, authorization, x_user_id, x_user_role)
 
 
+def require_superuser(request: Request, authorization: Optional[str] = None,
+                      x_user_id: Optional[str] = None,
+                      x_user_role: Optional[str] = None) -> Identity:
+    """
+    Гейт администратора РАЗВЁРТЫВАНИЯ.
+
+    Отдельно от `require_admin`, потому что это другая ось (§8.2): `admin`
+    после введения организаций означает «админ своей организации», а
+    пакеты узлов, ключи подписи, выпуски и публичный API остаются решением
+    уровня развёртывания. Набор установленных пакетов один на всех — иначе
+    вопрос «какой код здесь исполняется» переходит к организации.
+    """
+    who = require(request, authorization, x_user_id, x_user_role)
+    if not who.is_superuser:
+        raise HTTPException(
+            status_code=403,
+            detail="Доступно только администратору развёртывания.")
+    return who
+
+
+def _superuser(
+    request: Request,
+    authorization: Optional[str] = Header(default=None),
+    x_user_id: Optional[str] = Header(default=None),
+    x_user_role: Optional[str] = Header(default=None),
+) -> Identity:
+    return require_superuser(request, authorization, x_user_id, x_user_role)
+
+
 def _admin(
     request: Request,
     authorization: Optional[str] = Header(default=None),
@@ -173,9 +209,12 @@ def actor(who: Optional[Identity]) -> tuple[Optional[str], str]:
 MaybeUser = Annotated[Optional[Identity], Depends(_headers)]
 #: Личность обязательна — иначе 401.
 CurrentUser = Annotated[Identity, Depends(_required)]
-#: Личность обязательна и роль — admin, иначе 403.
+#: Личность обязательна и роль — admin (в СВОЕЙ организации), иначе 403.
 AdminUser = Annotated[Identity, Depends(_admin)]
+#: Администратор развёртывания: пакеты, ключи, выпуски, публичный API.
+SuperUser = Annotated[Identity, Depends(_superuser)]
 
 
-__all__ = ["Identity", "resolve", "require", "require_admin", "trust_headers",
-           "MaybeUser", "CurrentUser", "AdminUser"]
+__all__ = ["Identity", "resolve", "require", "require_admin",
+           "require_superuser", "trust_headers", "actor",
+           "MaybeUser", "CurrentUser", "AdminUser", "SuperUser"]

@@ -15,6 +15,8 @@ generator_service/routers/groups.py адаптирует HTTP и проверя�
 
 from __future__ import annotations
 
+from typing import Optional
+
 from .repository import Repository
 
 
@@ -32,17 +34,30 @@ def _group_dict(repo: Repository, group) -> dict:
     return d
 
 
-def list_groups(repo: Repository) -> list[dict]:
-    return [_group_dict(repo, g) for g in repo.list_groups()]
+def list_groups(repo: Repository, *,
+                organization_id: Optional[int] = None) -> list[dict]:
+    """Группы. `organization_id=None` — все (администратор развёртывания);
+    иначе только свои: группы принадлежат организации (§8.1)."""
+    groups = repo.list_groups()
+    if organization_id is not None:
+        groups = [g for g in groups
+                  if repo.group_organization_id(g.id) == organization_id]
+    return [_group_dict(repo, g) for g in groups]
 
 
-def create_group(repo: Repository, *, name: str, actor_login: str) -> dict:
+def create_group(repo: Repository, *, name: str, actor_login: str,
+                 organization_id: Optional[int] = None) -> dict:
     name = (name or "").strip()
     if not name:
         raise GroupActionError("Имя группы не может быть пустым.")
     if repo.group_by_name(name) is not None:
         raise GroupActionError(f"Группа {name!r} уже существует.")
     gid = repo.create_group(name, created_by=actor_login)
+    # Группа заводится в организации создателя: иначе она повисла бы вне
+    # контейнера и была бы видна всем сразу.
+    if organization_id is None:
+        organization_id = repo.user_organization_id(actor_login)
+    repo.set_group_organization(gid, organization_id)
     return _group_dict(repo, repo.get_group(gid))
 
 
@@ -73,13 +88,29 @@ def remove_member(repo: Repository, *, group_id: int, login: str) -> dict:
     return _group_dict(repo, grp)
 
 
-def assign_teacher(repo: Repository, *, group_id: int, login: str) -> dict:
+def assign_teacher(repo: Repository, *, group_id: int, login: str,
+                   organization_id: Optional[int] = None) -> dict:
+    """
+    Назначить преподавателя на группу.
+
+    К проверке роли добавилась организация: назначать можно teacher/admin
+    ТОЙ ЖЕ организации. Раньше проверялась только роль назначаемого, и с
+    появлением контейнера этого стало мало — преподаватель чужой кафедры,
+    поставленный на группу, видел бы её студентов и их работы.
+    """
     grp = _require_group(repo, group_id)
     prof = _require_user(repo, login)
     if prof.role not in ("teacher", "admin"):
         raise GroupActionError(
             f"Назначать на группу можно только teacher/admin; у {login!r} "
             f"роль {prof.role!r}.")
+    if organization_id is not None:
+        if repo.user_organization_id(login) != organization_id:
+            raise GroupActionError(
+                f"{login!r} состоит в другой организации.")
+        if repo.group_organization_id(group_id) not in (None, organization_id):
+            raise GroupActionError(
+                f"Группа #{group_id} принадлежит другой организации.")
     repo.assign_teacher_to_group(login, group_id)
     return _group_dict(repo, grp)
 

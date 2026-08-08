@@ -116,20 +116,32 @@ class UsersMixin:
     def create_user(
         self, login: str, password: str, fio: str, group: str,
         email: str = "", role: str = "student",
+        organization_id: Optional[int] = None,
     ) -> bool:
         """Регистрирует нового пользователя. Возвращает True при успехе,
-        False если логин уже занят."""
+        False если логин уже занят.
+
+        Без явной организации новичок попадает в организацию по умолчанию —
+        ту, что завела миграция 014. Иначе он не видел бы ничего и ждал
+        приёма, а на развёртывании с самостоятельной регистрацией это
+        означало бы, что зарегистрироваться можно, а пользоваться нельзя.
+        Перевести его в другую организацию — отдельная админская операция."""
         if role not in ROLES:
             raise ValueError(f"Неизвестная роль {role!r}; допустимы {ROLES}.")
         with self._connect() as conn:
+            if organization_id is None:
+                row = conn.execute(
+                    "SELECT id FROM organizations ORDER BY id LIMIT 1"
+                ).fetchone()
+                organization_id = row[0] if row else None
             try:
                 cur = conn.execute(
                     "INSERT INTO users "
                     "(login, password, password_hash, role, FIO, \"group\", "
-                    " email, avatar_color, created_at) "
-                    "VALUES (?, '', ?, ?, ?, ?, ?, '', ?)",
+                    " email, avatar_color, created_at, organization_id) "
+                    "VALUES (?, '', ?, ?, ?, ?, ?, '', ?, ?)",
                     (login, hash_password(password), role, fio, group,
-                     email, time.time()),
+                     email, time.time(), organization_id),
                 )
                 conn.execute(
                     "UPDATE users SET id = rowid WHERE rowid = ? AND id IS NULL",
@@ -214,14 +226,16 @@ class UsersMixin:
         """
         Строка сессии вместе со СВЕЖЕЙ ролью из `users`.
 
-        Роль join'ится, а не хранится в сессии: она обязана меняться в тот
-        же миг, что и в БД. Хранили бы — понижение админа не действовало бы
-        до истечения его сессии.
+        Роль, организация и флаг администратора развёртывания join'ятся, а
+        не хранятся в сессии: они обязаны меняться в тот же миг, что и в
+        БД. Хранили бы — понижение админа и перевод между организациями не
+        действовали бы до истечения сессии.
         """
         with self._connect() as conn:
             row = conn.execute(
                 "SELECT s.token_hash, s.login, s.created_at, s.last_seen_at, "
-                "       s.expires_at, s.revoked_at, u.role "
+                "       s.expires_at, s.revoked_at, u.role, "
+                "       u.organization_id, u.is_superuser "
                 "FROM auth_sessions s JOIN users u ON u.login = s.login "
                 "WHERE s.token_hash = ?",
                 (token_hash,),
@@ -230,7 +244,8 @@ class UsersMixin:
             return None
         return {"token_hash": row[0], "login": row[1], "created_at": row[2],
                 "last_seen_at": row[3], "expires_at": row[4],
-                "revoked_at": row[5], "role": row[6]}
+                "revoked_at": row[5], "role": row[6],
+                "organization_id": row[7], "is_superuser": bool(row[8])}
 
     def touch_auth_session(self, token_hash: str) -> None:
         with self._connect() as conn:

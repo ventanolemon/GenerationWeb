@@ -30,7 +30,7 @@ _MONOREPO = os.path.abspath(os.path.join(_HERE, ".."))
 if _MONOREPO not in sys.path:
     sys.path.insert(0, _MONOREPO)
 
-from core import grants_api, sync_api  # noqa: E402
+from core import grants_api, organizations_api, sync_api  # noqa: E402
 from core.repository import Repository  # noqa: E402
 
 
@@ -52,8 +52,24 @@ class GrantsTestBase(unittest.TestCase):
                                                       "Курс Бориса",
                                                       owner_user_id="boris")
 
+        # Предметы преподавателей — в организации по умолчанию, как их
+        # положил бы обычный путь заведения.
+        for sid in (self.alla_subject, self.boris_subject):
+            self.repo.set_subject_organization(
+                sid, self.repo.default_organization_id())
+
     def tearDown(self):
         os.unlink(self.db_path)
+
+    def _default_access(self, value):
+        """
+        Умолчание видимости — настройка ОРГАНИЗАЦИИ (§8.1), а не
+        развёртывания: выдачи работают внутри организации, значит и
+        умолчание для них живёт там же. `set_default_subject_access`
+        остался значением для новых организаций и для тех, кто вне их.
+        """
+        self.repo.set_organization_default_access(
+            self.repo.default_organization_id(), value)
 
 
 # ---------- Схема ----------
@@ -137,6 +153,9 @@ class RepositoryGrantsTests(GrantsTestBase):
              "boris": sorted([self.builtin, self.alla_subject])})
 
     def test_default_access_roundtrip_and_validation(self):
+        # Настройка РАЗВЁРТЫВАНИЯ: после §8 она осталась значением для новых
+        # организаций и для тех, кто вне их. Действующее для человека
+        # умолчание считает effective_default_access.
         self.assertEqual(self.repo.default_subject_access(), "all")
         self.repo.set_default_subject_access("none")
         self.assertEqual(self.repo.default_subject_access(), "none")
@@ -152,11 +171,16 @@ class RepositoryGrantsTests(GrantsTestBase):
         teachers_before = {t: self.repo.scope_version(t)
                            for t in ("alla", "boris")}
         student_before = self.repo.scope_version("stud")
-        self.repo.set_default_subject_access("none")
+        organizations_api.set_default_access(
+            self.repo, org_id=self.repo.default_organization_id(),
+            value="none")
         for t, before in teachers_before.items():
             self.assertEqual(self.repo.scope_version(t), before + 1)
-        # Студента переключение не касается — выдачи только про teacher.
-        self.assertEqual(self.repo.scope_version("stud"), student_before)
+        # Студент — участник той же организации, и его эпоха тоже растёт:
+        # переключение меняет набор всем, а «выдачи только про teacher» —
+        # свойство granted_scope, а не повод не сообщать об изменении.
+        self.assertGreaterEqual(self.repo.scope_version("stud"),
+                                student_before)
 
     def test_owned_subject_ids(self):
         self.assertEqual(self.repo.owned_subject_ids("alla"),
@@ -169,7 +193,7 @@ class RepositoryGrantsTests(GrantsTestBase):
 class MyGrantsTests(GrantsTestBase):
     def test_teacher_sees_own_grants_and_mode(self):
         self.repo.replace_subject_grants("alla", [self.builtin])
-        self.repo.set_default_subject_access("none")
+        self._default_access("none")
         out = grants_api.my_grants(self.repo, actor_login="alla",
                                    role="teacher")
         self.assertEqual(out["subject_ids"], [self.builtin])
@@ -179,7 +203,7 @@ class MyGrantsTests(GrantsTestBase):
     def test_non_teacher_is_never_restricted(self):
         # Даже в строгом режиме: применивший снимок без разбора роли клиент
         # не должен запереть админа в пустой витрине.
-        self.repo.set_default_subject_access("none")
+        self._default_access("none")
         for role in ("admin", "student"):
             out = grants_api.my_grants(self.repo, actor_login="root",
                                        role=role)
@@ -202,11 +226,11 @@ class GrantedScopeTruthTableTests(GrantsTestBase):
         self.assertEqual(self._scope(), {self.builtin})
 
     def test_none_without_grants_restricts_to_nothing(self):
-        self.repo.set_default_subject_access("none")
+        self._default_access("none")
         self.assertEqual(self._scope(), set())
 
     def test_non_teacher_and_guest_never_restricted(self):
-        self.repo.set_default_subject_access("none")
+        self._default_access("none")
         self.repo.replace_subject_grants("alla", [self.builtin])
         self.assertIsNone(self._scope(role="admin"))
         self.assertIsNone(self._scope(role="student"))
@@ -331,19 +355,19 @@ class SyncScopeTests(GrantsTestBase):
         self.repo.replace_subject_grants("alla", [self.boris_subject])
         self.assertIn(self.alla_subject, self._subject_ids(self._pull("alla")))
         self.repo.replace_subject_grants("alla", [])
-        self.repo.set_default_subject_access("none")
+        self._default_access("none")
         self.assertEqual(self._subject_ids(self._pull("alla")),
                          {self.alla_subject})
 
     def test_strict_mode_without_grants_leaves_only_own(self):
-        self.repo.set_default_subject_access("none")
+        self._default_access("none")
         out = self._pull("boris")
         self.assertEqual(self._subject_ids(out), {self.boris_subject})
         self.assertEqual({p["id"] for p in out["partitions"]},
                          {self.boris_part})
 
     def test_admin_and_student_are_not_restricted(self):
-        self.repo.set_default_subject_access("none")
+        self._default_access("none")
         self.assertEqual(
             self._subject_ids(self._pull("root", role="admin")),
             {self.builtin, self.alla_subject, self.boris_subject})
@@ -352,7 +376,7 @@ class SyncScopeTests(GrantsTestBase):
                          {self.builtin})
 
     def test_anonymous_scope_still_sees_everything(self):
-        self.repo.set_default_subject_access("none")
+        self._default_access("none")
         out = sync_api.pull(self.repo, device_id="d", user_id=None, cursors={})
         self.assertEqual(self._subject_ids(out),
                          {self.builtin, self.alla_subject,
@@ -360,7 +384,7 @@ class SyncScopeTests(GrantsTestBase):
 
     def test_tombstones_ignore_scope(self):
         # Удаление обязано доехать, даже если предмет выпал из области.
-        self.repo.set_default_subject_access("none")
+        self._default_access("none")
         self.repo.delete_partition(self.builtin_part)
         out = self._pull("alla")
         self.assertIn(self.builtin_part,
@@ -431,7 +455,9 @@ class ScopeEpochTests(GrantsTestBase):
 
     def test_default_access_switch_rebuilds_every_teacher(self):
         known = {t: self.repo.scope_version(t) for t in ("alla", "boris")}
-        self.repo.set_default_subject_access("none")
+        organizations_api.set_default_access(
+            self.repo, org_id=self.repo.default_organization_id(),
+            value="none")
         for t, v in known.items():
             self.assertTrue(self._pull(t, v)["resync"])
 
@@ -534,7 +560,9 @@ class RouterTests(GrantsTestBase):
                   headers=self._h("root", "admin"))
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.json()["default_access"], "none")
-        self.assertEqual(self.repo.default_subject_access(), "none")
+        # Настройка теперь у ОРГАНИЗАЦИИ вызывающего, а не одна на
+        # развёртывание: выдачи работают внутри организации (§8.1).
+        self.assertEqual(self.repo.effective_default_access("root"), "none")
 
     def test_bad_payloads_return_400(self):
         c = self._client()

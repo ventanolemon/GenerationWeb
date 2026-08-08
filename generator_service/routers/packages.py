@@ -28,7 +28,7 @@ from pydantic import BaseModel, Field
 
 from core import node_packages, signing
 
-from ..identity import AdminUser
+from ..identity import SuperUser
 
 router = APIRouter(tags=["packages"])
 
@@ -88,7 +88,7 @@ def get_manifest(
 def post_publish(
     body: PublishPackageRequest,
     request: Request,
-    who: AdminUser,
+    who: SuperUser,
 ) -> dict[str, Any]:
     return _run(node_packages.publish, request.app.state.repo,
                 name=body.name, version=body.version, sequence=body.sequence,
@@ -104,7 +104,7 @@ def post_install(
     name: str,
     body: InstallRequest,
     request: Request,
-    who: AdminUser,
+    who: SuperUser,
 ) -> dict[str, Any]:
     """Разрешить пакет на сервере. Это решение администратора о том, какой
     код здесь исполняется, — потому графы с неустановленными пакетами и
@@ -117,7 +117,7 @@ def post_install(
 def delete_install(
     name: str,
     request: Request,
-    who: AdminUser,
+    who: SuperUser,
 ) -> dict[str, Any]:
     return _run(node_packages.uninstall, request.app.state.repo, name=name)
 
@@ -126,7 +126,7 @@ def delete_install(
 def post_yank(
     name: str,
     request: Request,
-    who: AdminUser,
+    who: SuperUser,
     version: str = Query(...),
 ) -> dict[str, Any]:
     return _run(node_packages.yank, request.app.state.repo, name=name,
@@ -136,7 +136,7 @@ def post_yank(
 @router.get("/admin/packages/requests")
 def get_requests(
     request: Request,
-    who: AdminUser,
+    who: SuperUser,
 ) -> dict[str, Any]:
     """Очередь «людям не хватает пакета X»: без неё отказ на push'е
     превращается в переписку в чате."""

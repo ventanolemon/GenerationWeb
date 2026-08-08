@@ -171,7 +171,30 @@ def visible_scope(
     allowed = grants_api.granted_scope(repo, user_id, role)
     if allowed is None:
         return visible
-    return sorted(allowed | set(repo.owned_subject_ids(user_id)))
+    return sorted(_within_organization(
+        repo, user_id, allowed | set(repo.owned_subject_ids(user_id))))
+
+
+def _within_organization(repo: Repository, user_id: str,
+                         subject_ids: set[int]) -> set[int]:
+    """
+    Выбросить из набора предметы чужих организаций (§8.1).
+
+    Нужна отдельно от `visible_subject_ids`, потому что выдачи
+    (`granted_scope`) считаются мимо неё — по таблице `subject_grants`. Через
+    API выдать предмет преподавателю чужой организации нельзя, но полагаться
+    на это одно значило бы держать границу контейнера на том, что её негде
+    нарушить. Здесь она держится на том, что нарушение не проходит.
+
+    Встроенные предметы (`organization_id IS NULL`) остаются: они
+    принадлежат продукту и видны всем — единственное, что пересекает
+    границу.
+    """
+    if repo.is_superuser(user_id):
+        return subject_ids
+    org_id = repo.user_organization_id(user_id)
+    return {sid for sid in subject_ids
+            if repo.subject_organization_id(sid) in (None, org_id)}
 
 
 def check_authoring_read(

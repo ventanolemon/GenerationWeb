@@ -28,7 +28,7 @@ from pydantic import BaseModel, Field
 
 from core import api_clients
 
-from ..identity import AdminUser
+from ..identity import SuperUser
 
 router = APIRouter(prefix="/admin/api-clients", tags=["admin"])
 
@@ -67,7 +67,7 @@ def _run(fn, *args, **kwargs) -> Any:
 @router.get("")
 def list_clients(
     request: Request,
-    who: AdminUser,
+    who: SuperUser,
 ) -> dict[str, Any]:
     return {"clients": api_clients.list_clients(request.app.state.repo)}
 
@@ -76,7 +76,7 @@ def list_clients(
 def create_client(
     body: CreateClientRequest,
     request: Request,
-    who: AdminUser,
+    who: SuperUser,
 ) -> dict[str, Any]:
     return _run(api_clients.create_client, request.app.state.repo,
                 name=body.name, owner_login=who.login,
@@ -87,7 +87,7 @@ def create_client(
 def get_client(
     client_id: int,
     request: Request,
-    who: AdminUser,
+    who: SuperUser,
 ) -> dict[str, Any]:
     return _run(api_clients.describe_client, request.app.state.repo, client_id)
 
@@ -96,7 +96,7 @@ def get_client(
 def delete_client(
     client_id: int,
     request: Request,
-    who: AdminUser,
+    who: SuperUser,
 ) -> dict[str, Any]:
     return _run(api_clients.delete_client, request.app.state.repo,
                 client_id=client_id)
@@ -107,7 +107,7 @@ def issue_key(
     client_id: int,
     body: IssueKeyRequest,
     request: Request,
-    who: AdminUser,
+    who: SuperUser,
 ) -> dict[str, Any]:
     """Открытое значение ключа возвращается ЕДИНСТВЕННЫЙ раз — дальше в базе
     только хэш. Потерян — выпустите новый и отзовите старый."""
@@ -121,7 +121,7 @@ def revoke_key(
     client_id: int,
     prefix: str,
     request: Request,
-    who: AdminUser,
+    who: SuperUser,
 ) -> dict[str, Any]:
     return _run(api_clients.revoke_key, request.app.state.repo,
                 client_id=client_id, prefix=prefix)
@@ -132,7 +132,7 @@ def set_subjects(
     client_id: int,
     body: SubjectsRequest,
     request: Request,
-    who: AdminUser,
+    who: SuperUser,
 ) -> dict[str, Any]:
     """Пустой список = клиенту доступны все встроенные предметы и только они
     (авторский контент наружу без явного решения не уходит)."""
@@ -145,7 +145,7 @@ def set_quota(
     client_id: int,
     body: QuotaRequest,
     request: Request,
-    who: AdminUser,
+    who: SuperUser,
 ) -> dict[str, Any]:
     return _run(api_clients.set_quota, request.app.state.repo,
                 client_id=client_id, daily_quota=body.daily_quota)
@@ -156,7 +156,7 @@ def set_status(
     client_id: int,
     body: StatusRequest,
     request: Request,
-    who: AdminUser,
+    who: SuperUser,
 ) -> dict[str, Any]:
     return _run(api_clients.set_status, request.app.state.repo,
                 client_id=client_id, status=body.status)

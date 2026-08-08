@@ -52,7 +52,9 @@ def get_groups(
     request: Request,
     who: AdminUser,
 ) -> dict[str, Any]:
-    return {"groups": groups_api.list_groups(request.app.state.repo)}
+    return {"groups": groups_api.list_groups(
+        request.app.state.repo,
+        organization_id=None if who.is_superuser else who.organization_id)}
 
 
 @router.post("/admin/groups")
@@ -62,7 +64,8 @@ def create_group(
     who: AdminUser,
 ) -> dict[str, Any]:
     return _guard(lambda: groups_api.create_group(
-        request.app.state.repo, name=body.name, actor_login=who.login))
+        request.app.state.repo, name=body.name, actor_login=who.login,
+        organization_id=who.organization_id))
 
 
 @router.post("/admin/groups/{group_id}/members")
@@ -95,7 +98,8 @@ def assign_teacher(
     who: AdminUser,
 ) -> dict[str, Any]:
     return _guard(lambda: groups_api.assign_teacher(
-        request.app.state.repo, group_id=group_id, login=body.login))
+        request.app.state.repo, group_id=group_id, login=body.login,
+        organization_id=None if who.is_superuser else who.organization_id))
 
 
 @router.delete("/admin/groups/{group_id}/teachers/{login}")

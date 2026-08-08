@@ -32,7 +32,8 @@ if _MONOREPO not in sys.path:
 from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-from core import api_clients, content_api, sync_api  # noqa: E402
+from core import (api_clients, content_api, organizations_api,  # noqa: E402
+                  sync_api)
 from core.repository import Repository  # noqa: E402
 from generator_service import errors  # noqa: E402
 from generator_service.routers import admin_content  # noqa: E402
@@ -45,6 +46,11 @@ class StorageTestBase(unittest.TestCase):
         os.unlink(self.db_path)
         self.repo = Repository(self.db_path)
         self.repo.create_user("root", "p", "Админ", "", role="admin")
+        # Тот же шаг, что делает сервис при старте: развёртыванию нужен
+        # администратор развёртывания (is_superuser), иначе пакеты, ключи,
+        # выпуски и публичный API закрыты для всех. Роль admin теперь
+        # означает «админ своей организации» — см. §8.2.
+        organizations_api.ensure_bootstrapped(self.repo)
         self.repo.create_user("alla", "p", "Алла", "", role="teacher")
         self.repo.create_user("boris", "p", "Борис", "", role="teacher")
         self.repo.create_user("stud", "p", "Студент", "КСБО-11")

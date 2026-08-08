@@ -66,6 +66,13 @@ class Identity:
     #: Откуда взялась личность: "session" — заверена токеном, "header" —
     #: заявлена клиентом (переходный режим, см. generator_service/identity.py).
     source: str = "session"
+    #: Организация, в которой человек состоит (§8). None — вне организаций:
+    #: так выглядит исключённый, которого ещё никуда не приняли.
+    organization_id: Optional[int] = None
+    #: Администратор РАЗВЁРТЫВАНИЯ — пакеты узлов, ключи подписи, выпуски,
+    #: публичный API. Ортогонален роли: `admin` теперь значит «админ своей
+    #: организации», а решения уровня развёртывания остаются здесь (§8.2).
+    is_superuser: bool = False
 
     @property
     def verified(self) -> bool:
@@ -124,7 +131,9 @@ def resolve(repo: Repository, raw_token: str) -> Identity:
     # Скользящее last_seen: отличить брошенную сессию от активной, не
     # продлевая её сверх expires_at.
     repo.touch_auth_session(row["token_hash"])
-    return Identity(login=row["login"], role=row["role"], source="session")
+    return Identity(login=row["login"], role=row["role"], source="session",
+                    organization_id=row.get("organization_id"),
+                    is_superuser=bool(row.get("is_superuser")))
 
 
 def bearer_token(header_value: Optional[str]) -> str:

@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 
 from core import content_api
 
-from ..identity import AdminUser, CurrentUser
+from ..identity import AdminUser, CurrentUser, SuperUser
 
 router = APIRouter(tags=["content"])
 
@@ -45,17 +45,24 @@ def get_overview(
     request: Request,
     who: AdminUser,
 ) -> dict[str, Any]:
-    return content_api.overview(request.app.state.repo)
+    """Обзор сужен до своей организации; администратор развёртывания видит
+    всё. Раньше ручка смешивала личное и общее по всему развёртыванию —
+    после §8 это означало бы показывать чужие организации."""
+    return content_api.overview(
+        request.app.state.repo,
+        organization_id=None if who.is_superuser else who.organization_id)
 
 
 @router.post("/admin/content/{subject_id}/publish")
 def post_publish(
     subject_id: int,
     request: Request,
-    who: AdminUser,
+    who: SuperUser,
 ) -> dict[str, Any]:
-    """Личное → общее: предмет становится доступен всем и переходит под
-    администрирование продукта."""
+    """Личное → общее: предмет становится ВСТРОЕННЫМ — видимым всем
+    организациям сразу. По §8.1 это единственное, что пересекает границу
+    контейнера, поэтому решение принадлежит развёртыванию, а не
+    организации: иначе любой админ кафедры раздавал бы контент всему вузу."""
     return _run(content_api.publish, request.app.state.repo,
                 subject_id=subject_id, actor_login=who.login)
 
@@ -77,8 +84,10 @@ def post_assign(
 def get_public_visibility(
     subject_id: int,
     request: Request,
-    who: AdminUser,
+    who: SuperUser,
 ) -> dict[str, Any]:
+    """Кому предмет виден наружу. Следует за решением по API-клиентам: они
+    остаются на уровне развёртывания, значит и диагностика — тоже."""
     return content_api.public_visibility(request.app.state.repo, subject_id)
 
 

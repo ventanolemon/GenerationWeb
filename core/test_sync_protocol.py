@@ -24,7 +24,7 @@ _MONOREPO = os.path.abspath(os.path.join(_HERE, ".."))
 if _MONOREPO not in sys.path:
     sys.path.insert(0, _MONOREPO)
 
-from core import sync_api  # noqa: E402
+from core import organizations_api, sync_api  # noqa: E402
 from core.repository import Repository  # noqa: E402
 
 
@@ -425,12 +425,48 @@ class PushAuthorizationTests(SyncTestBase):
         self.assertEqual(self.repo.subject_owner(out["accepted"][0]["id"]),
                          "alla")
 
-    def test_admin_may_set_owner_explicitly(self):
+    def test_superuser_may_create_a_builtin_subject(self):
+        """
+        `owner_user_id = None` — это заведение ВСТРОЕННОГО предмета, видимого
+        всем организациям сразу. По §8.1 такое решение принадлежит
+        развёртыванию, а не организации, поэтому нужен is_superuser.
+        """
+        # Здесь роль приходит параметром, а не из БД, — но is_superuser
+        # читается именно из БД, поэтому учётная запись нужна настоящая.
+        self.repo.create_user("root", "p", "Админ", "", role="admin")
+        organizations_api.ensure_bootstrapped(self.repo)
+        self.assertTrue(self.repo.is_superuser("root"))
         out = self._push({"kind": "subject", "id": None, "base_version": 0,
                           "data": {"subject_name": "Системный",
                                    "owner_user_id": None}},
                          user_id="root", role="admin")
         self.assertIsNone(self.repo.subject_owner(out["accepted"][0]["id"]))
+
+    def test_org_admin_cannot_smuggle_a_builtin_subject(self):
+        """
+        Обратная половина расщепления: админ организации, отправив тот же
+        push с десктопа, получает предмет во ВЛАДЕНИЕ, а не встроенный.
+        Иначе админ любой кафедры раздавал бы контент всему развёртыванию.
+        """
+        self.repo.create_user("root", "p", "Админ", "", role="admin")
+        self.assertFalse(self.repo.is_superuser("root"),
+                         "без ensure_bootstrapped флага быть не должно")
+        out = self._push({"kind": "subject", "id": None, "base_version": 0,
+                          "data": {"subject_name": "Попытка",
+                                   "owner_user_id": None}},
+                         user_id="root", role="admin")
+        self.assertEqual(self.repo.subject_owner(out["accepted"][0]["id"]),
+                         "root")
+
+    def test_admin_may_still_hand_a_subject_to_another_login(self):
+        # Вторая половина прежней строки — перенос владения внутри
+        # организации — осталась за админом организации.
+        out = self._push({"kind": "subject", "id": None, "base_version": 0,
+                          "data": {"subject_name": "Аллин",
+                                   "owner_user_id": "alla"}},
+                         user_id="root", role="admin")
+        self.assertEqual(self.repo.subject_owner(out["accepted"][0]["id"]),
+                         "alla")
 
     def test_denial_does_not_block_the_rest_of_the_batch(self):
         foreign = self.repo.create_subject("Чужой", "Чужой",

@@ -362,16 +362,32 @@ def _insert_entity(conn, repo: Repository, kind: str, data: dict, now: float,
         # (подставить владельцем другого) или системным (owner NULL —
         # такие видят все, а правят одни админы). Полю с той стороны
         # доверять нечему, поэтому владельцем становится автор запроса.
-        # Админу поле оставлено: перенос владения и заведение системных
-        # предметов — законные админские операции.
-        owner = data.get("owner_user_id") if role == "admin" else actor
+        #
+        # Админу поле оставлено, но РАСЩЕПЛЕНО (§8.1): одна строка кода
+        # делала два разных дела. «Отдать другому логину» — операция внутри
+        # организации, её вправе админ организации. «Сделать встроенным»
+        # (owner = NULL) — заведение предмета, видимого ВСЕМ организациям,
+        # то есть решение уровня продукта: только администратор
+        # развёртывания. Иначе админ любой кафедры раздавал бы контент
+        # всему развёртыванию одним push'ем с десктопа.
+        owner = actor
+        if role == "admin":
+            claimed = data.get("owner_user_id")
+            if claimed is None:
+                owner = None if repo.is_superuser(actor or "") else actor
+            else:
+                owner = claimed
+        # Организация предмета — организация владельца. У встроенного
+        # (owner IS NULL) её нет: он принадлежит продукту и виден всем.
+        org_id = (repo.user_organization_id(owner)
+                  if owner is not None else None)
         cur = conn.execute(
             "INSERT INTO Subjects (subject_name, pra_subject, owner_user_id, "
-            " row_version, updated_at) VALUES (?, ?, ?, ?, ?)",
+            " organization_id, row_version, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
             (
                 str(data.get("subject_name") or ""),
                 str(data.get("pra_subject") or data.get("subject_name") or ""),
-                owner,
+                owner, org_id,
                 ver, now,
             ),
         )

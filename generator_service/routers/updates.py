@@ -33,7 +33,7 @@ from pydantic import BaseModel, Field
 
 from core import signing, signing_keys, updates
 
-from ..identity import AdminUser
+from ..identity import SuperUser
 
 router = APIRouter(tags=["updates"])
 
@@ -137,7 +137,7 @@ def get_key_set(request: Request) -> dict[str, Any]:
 def post_rotate_keys(
     body: RotateKeysRequest,
     request: Request,
-    who: AdminUser,
+    who: SuperUser,
 ) -> dict[str, Any]:
     """
     Принять новый набор ключей. Сервер и здесь не подписывает — набор
@@ -158,7 +158,7 @@ def post_rotate_keys(
 @router.get("/admin/signing-keys")
 def get_key_history(
     request: Request,
-    who: AdminUser,
+    who: SuperUser,
 ) -> dict[str, Any]:
     return signing_keys.history(request.app.state.repo)
 
@@ -166,7 +166,7 @@ def get_key_history(
 @router.get("/admin/releases")
 def get_history(
     request: Request,
-    who: AdminUser,
+    who: SuperUser,
     channel: Optional[str] = Query(default=None),
 ) -> dict[str, Any]:
     return updates.history(request.app.state.repo, channel=channel)
@@ -176,7 +176,7 @@ def get_history(
 def post_publish(
     body: PublishRequest,
     request: Request,
-    who: AdminUser,
+    who: SuperUser,
 ) -> dict[str, Any]:
     """Сервер проверяет подпись и сохраняет. Не подписывает."""
     return _run(updates.publish, request.app.state.repo,
@@ -194,7 +194,7 @@ def post_publish(
 def post_yank(
     version: str,
     request: Request,
-    who: AdminUser,
+    who: SuperUser,
     channel: str = Query(default="stable"),
     platform: str = Query(default="any"),
 ) -> dict[str, Any]:

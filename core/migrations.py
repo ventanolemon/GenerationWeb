@@ -755,6 +755,131 @@ def _m013_auth_sessions(conn: sqlite3.Connection) -> None:
     """)
 
 
+def _m014_organizations(conn: sqlite3.Connection) -> None:
+    """
+    Организации (§8 плана): внешнее пространство имён, а не третий фильтр.
+
+    Пользователи, группы и предметы принадлежат организации, выдачи
+    работают ВНУТРИ неё. Свалка предотвращается по построению: чужой
+    организации не видно вовсе. Исключение одно — встроенные предметы
+    (`owner_user_id IS NULL`): они принадлежат продукту и видны всем.
+    Здесь у них `organization_id IS NULL`, и это единственное, что
+    пересекает границу.
+
+    **`is_superuser` — отдельный флаг, а не четвёртая роль.** С появлением
+    организаций `admin` перестаёт значить «может всё в развёртывании» и
+    становится ролью ВНУТРИ организации (§8.2: руководитель — «админ,
+    ограниченный организацией»). Но 20 проверок из инвентаря — пакеты
+    узлов, ключи подписи, выпуски, публичный API — обязаны остаться
+    глобальными: набор установленных пакетов один на развёртывание, иначе
+    решение «какой код здесь исполняется» переходит к организации (§8.1).
+    Их субъект и есть superuser.
+
+    Флаг ортогонален роли осознанно. Четвёртая роль заставила бы пройти
+    все 24 сравнения с `"admin"` и в каждом решить, проходит ли superadmin
+    (почти всегда «да» — то есть везде появилось бы «или»), плюс поменять
+    тип `Role` во фронте и список ролей в интерфейсе. Флаг не трогает
+    иерархию вообще.
+
+    **`parent_id` — форма без семантики** (§8.3). Список смежности заложен
+    сразу: для трёх уровней (университет → институт → кафедра) ни вложенных
+    множеств, ни таблиц замыканий не нужно. Наследование НЕ реализуется и
+    реализовано быть не должно, пока не приняты продуктовые решения:
+    каскадирует ли выдача с уровня университета на кафедры, видит ли
+    руководитель института содержимое своих кафедр. Принимать их вслепую
+    заранее хуже, чем не принимать.
+
+    **`owner_login` — владелец организации** (§8.2), ровно один, операция
+    одна — передача. Той же формы, что инвариант «последний админ» в
+    `admin_api.change_role`.
+
+    **`default_subject_access` переезжает в организацию.** Раньше это была
+    одна строка `app_settings` на всё развёртывание, но по смыслу это
+    «умолчание видимости контента преподавателям», а выдачи теперь живут
+    внутри организации. Значение из `app_settings` переносится как есть —
+    поведение существующего развёртывания не меняется.
+
+    **Миграция поведение-сохраняющая.** Заводится одна организация, в неё
+    попадают все существующие пользователи, группы и авторские предметы; все
+    нынешние админы получают `is_superuser = 1`. То есть сегодняшний админ
+    остаётся и админом своей организации, и администратором развёртывания —
+    ровно то, чем он был до миграции.
+    """
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS organizations (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            name         TEXT    NOT NULL,
+            -- §8.3: форму заложить, семантику не реализовывать.
+            parent_id    INTEGER REFERENCES organizations(id),
+            -- §8.2: ровно один владелец; единственная операция — передача.
+            owner_login  TEXT,
+            default_subject_access TEXT NOT NULL DEFAULT 'all',
+            created_at   REAL    NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS ix_organizations_parent
+            ON organizations(parent_id);
+    """)
+
+    # NULL = «вне организации». У предмета это означает встроенный (продукт),
+    # у пользователя — состояние, которое обязан разобрать superuser.
+    _add_column_if_missing(conn, "users", "organization_id", "INTEGER")
+    _add_column_if_missing(conn, "users", "is_superuser",
+                           "INTEGER NOT NULL DEFAULT 0")
+    _add_column_if_missing(conn, "Subjects", "organization_id", "INTEGER")
+    _add_column_if_missing(conn, "groups", "organization_id", "INTEGER")
+    conn.executescript("""
+        CREATE INDEX IF NOT EXISTS ix_users_organization
+            ON users(organization_id);
+        CREATE INDEX IF NOT EXISTS ix_subjects_organization
+            ON Subjects(organization_id);
+    """)
+
+    # --- Backfill: одна организация, в ней всё, что уже есть ---
+    # Организация заводится ВСЕГДА, в том числе на пустой БД: на свежей
+    # установке миграции отрабатывают раньше, чем появится первый
+    # пользователь, и без этого регистрироваться было бы некуда.
+    if not _table_exists(conn, "users"):
+        return
+    if conn.execute("SELECT COUNT(*) FROM organizations").fetchone()[0]:
+        return
+
+    default_access = "all"
+    if _table_exists(conn, "app_settings"):
+        row = conn.execute(
+            "SELECT value FROM app_settings WHERE key = 'default_subject_access'"
+        ).fetchone()
+        if row and row[0] in ("all", "none"):
+            default_access = row[0]
+
+    # Владельцем становится первый по счёту админ. Если админов нет —
+    # NULL, и организация ждёт, пока superuser назначит владельца: выдумывать
+    # владельца из тех, кто им не является, хуже, чем оставить пустым.
+    owner_row = conn.execute(
+        "SELECT login FROM users WHERE role = 'admin' ORDER BY rowid LIMIT 1"
+    ).fetchone()
+    conn.execute(
+        "INSERT INTO organizations (name, parent_id, owner_login, "
+        "default_subject_access, created_at) VALUES (?, NULL, ?, ?, ?)",
+        ("Основная", owner_row[0] if owner_row else None, default_access,
+         time.time()),
+    )
+    org_id = conn.execute("SELECT id FROM organizations ORDER BY id LIMIT 1"
+                          ).fetchone()[0]
+
+    conn.execute("UPDATE users SET organization_id = ? "
+                 "WHERE organization_id IS NULL", (org_id,))
+    # Сегодняшний админ был администратором развёртывания — им и остаётся.
+    conn.execute("UPDATE users SET is_superuser = 1 WHERE role = 'admin'")
+    # Встроенные предметы (owner IS NULL) остаются вне организаций: они
+    # принадлежат продукту и видны всем (§8.1).
+    conn.execute("UPDATE Subjects SET organization_id = ? "
+                 "WHERE owner_user_id IS NOT NULL AND organization_id IS NULL",
+                 (org_id,))
+    if _table_exists(conn, "groups"):
+        conn.execute("UPDATE groups SET organization_id = ? "
+                     "WHERE organization_id IS NULL", (org_id,))
+
+
 # Порядок применения. Добавлять новые кортежами (version, name, fn).
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = [
     (1, "rbac_foundation", _m001_rbac_foundation),
@@ -770,6 +895,7 @@ MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = [
     (11, "signing_keys", _m011_signing_keys),
     (12, "attempt_scenarios", _m012_attempt_scenarios),
     (13, "auth_sessions", _m013_auth_sessions),
+    (14, "organizations", _m014_organizations),
 ]
 
 
