@@ -39,6 +39,7 @@ from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from core import content_authz, sync_api  # noqa: E402
+from core import auth_sessions  # noqa: E402
 from core.repository import Repository  # noqa: E402
 from generator_service import errors  # noqa: E402
 from generator_service.routers import partitions as partitions_router  # noqa: E402
@@ -80,14 +81,18 @@ class ReadAuthzTestBase(unittest.TestCase):
             if os.path.exists(self.db_path + suffix):
                 os.unlink(self.db_path + suffix)
 
-    @staticmethod
-    def _headers(login=None, role=None) -> dict:
-        headers = {}
-        if login is not None:
-            headers["X-User-Id"] = login
-        if role is not None:
-            headers["X-User-Role"] = role
-        return headers
+    def _headers(self, login=None, role=None) -> dict:
+        """
+        Заголовки личности: настоящая сессия, а не заявление.
+
+        `login=None` — гость (заголовков нет вовсе). Роль игнорируется:
+        сервер читает её из БД по токену. Раньше её можно было заявить, и
+        именно поэтому преподаватель мог назвать себя админом.
+        """
+        if login is None:
+            return {}
+        token = auth_sessions.issue(self.repo, login)["token"]
+        return {"Authorization": f"Bearer {token}"}
 
     def _get(self, partition_id: int, login=None, role=None):
         return self.client.get(f"/partitions/{partition_id}",
@@ -144,9 +149,13 @@ class AuthoringReadTests(ReadAuthzTestBase):
             self.assertEqual(
                 self._get(pid, login="root", role="admin").status_code, 200)
 
-    def test_missing_role_header_defaults_to_no_rights(self):
-        self.assertEqual(self._get(self.alla_part, login="alla").status_code,
-                         403)
+    def test_role_comes_from_the_database_not_from_the_header(self):
+        """Заявить себе роль заголовком больше нельзя — сервер читает её
+        из БД по токену."""
+        headers = {**self._headers(login="boris"), "X-User-Role": "admin"}
+        r = self.client.get(f"/partitions/{self.alla_part}", headers=headers)
+        self.assertEqual(r.status_code, 404,
+                         "заголовок роли открыл чужой раздел")
 
 
 class RefusalIsIndistinguishableTests(ReadAuthzTestBase):

@@ -11,6 +11,7 @@ import tempfile
 import unittest
 
 from core import groups_api
+from core import auth_sessions  # noqa: E402
 from core.repository import Repository
 
 
@@ -174,8 +175,17 @@ class RouterTests(GroupsTestBase):
         self.repo.create_user("root", "p", "Админ", "", role="admin")
         self.repo.create_user("alla", "p", "Алла", "", role="teacher")
 
-    def _h(self, login, role):
-        return {"X-User-Id": login, "X-User-Role": role}
+    def _h(self, login, role=None):
+        """
+        Заголовки личности: настоящая сессия, а не заявление.
+
+        Роль больше не передаётся — сервер читает её из БД по токену
+        (GEN_TRUST_IDENTITY_HEADERS снят). Параметр оставлен, чтобы не
+        переписывать сотни вызовов, и игнорируется: если он расходится с
+        БД, прав это не добавляет — в этом и была суть перехода.
+        """
+        token = auth_sessions.issue(self.repo, login)["token"]
+        return {"Authorization": f"Bearer {token}"}
 
     def test_401_without_identity(self):
         self.assertEqual(self._client().get("/admin/groups").status_code, 401)

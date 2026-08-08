@@ -235,6 +235,31 @@ class ProfileAuthorizationTests(AuthSessionBase):
 # ---------- Переходный режим ----------
 
 class TransitionalHeaderTrustTests(AuthSessionBase):
+    def test_headers_are_not_trusted_by_default(self):
+        """
+        Умолчание — НЕ доверять. Флаг остался переходным средством для
+        развёртывания, где не обновили десктопы; рабочая настройка — эта.
+        """
+        os.environ.pop("GEN_TRUST_IDENTITY_HEADERS", None)
+        self.assertFalse(auth_sessions.trust_headers())
+        r = self.client.get("/auth/me", headers={"X-User-Id": "alla",
+                                                 "X-User-Role": "admin"})
+        self.assertEqual(r.status_code, 401)
+
+    def test_the_escalation_from_the_audit_is_closed(self):
+        """
+        Прогон из organizations_readiness.md §4 на умолчаниях: преподаватель
+        заявляет X-User-Role: admin и повышает студента. Теперь — 401.
+        """
+        os.environ.pop("GEN_TRUST_IDENTITY_HEADERS", None)
+        from generator_service.routers import admin as admin_router
+        self.app.include_router(admin_router.router)
+        r = self.client.post("/admin/users/stud/role", json={"role": "admin"},
+                             headers={"X-User-Id": "alla",
+                                      "X-User-Role": "admin"})
+        self.assertEqual(r.status_code, 401)
+        self.assertEqual(self.repo.get_user_profile("stud").role, "student")
+
     def test_headers_are_accepted_while_the_flag_is_on(self):
         os.environ["GEN_TRUST_IDENTITY_HEADERS"] = "1"
         body = self.client.get("/auth/me",

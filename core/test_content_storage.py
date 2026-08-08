@@ -32,8 +32,8 @@ if _MONOREPO not in sys.path:
 from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-from core import (api_clients, content_api, organizations_api,  # noqa: E402
-                  sync_api)
+from core import (api_clients, auth_sessions, content_api,  # noqa: E402
+                  organizations_api, sync_api)
 from core.repository import Repository  # noqa: E402
 from generator_service import errors  # noqa: E402
 from generator_service.routers import admin_content  # noqa: E402
@@ -77,9 +77,17 @@ class StorageTestBase(unittest.TestCase):
             return conn.execute("SELECT row_version FROM Subjects WHERE id = ?",
                                 (subject_id,)).fetchone()[0]
 
-    @staticmethod
-    def _h(login, role):
-        return {"X-User-Id": login, "X-User-Role": role}
+    def _h(self, login, role=None):
+        """
+        Заголовки личности: настоящая сессия, а не заявление.
+
+        Роль больше не передаётся — сервер читает её из БД по токену
+        (GEN_TRUST_IDENTITY_HEADERS снят). Параметр оставлен, чтобы не
+        переписывать сотни вызовов, и игнорируется: если он расходится с
+        БД, прав это не добавляет — в этом и была суть перехода.
+        """
+        token = auth_sessions.issue(self.repo, login)["token"]
+        return {"Authorization": f"Bearer {token}"}
 
 
 # ---------- Модель хранилищ ----------

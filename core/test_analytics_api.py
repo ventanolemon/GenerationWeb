@@ -12,7 +12,7 @@ import tempfile
 import time
 import unittest
 
-from core import analytics_api
+from core import analytics_api, auth_sessions
 from core.repository import Repository
 
 DAY = 86400.0
@@ -286,7 +286,8 @@ class RouterTests(AnalyticsApiTestBase):
         self.repo.create_user("alla", "p", "Алла", "", role="teacher")
         r = self._client().get(
             "/analytics/overview",
-            headers={"X-User-Id": "alla", "X-User-Role": "teacher"},
+            headers={"Authorization": "Bearer " +
+                     auth_sessions.issue(self.repo, "alla")["token"]},
         )
         self.assertEqual(r.status_code, 200)
         data = r.json()

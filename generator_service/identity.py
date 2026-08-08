@@ -10,23 +10,20 @@
 
 Здесь один резолвер и один гейт.
 
-**Переходный режим.** Заверенная личность (`Authorization: Bearer`)
-вводится раньше, чем на неё переведены все клиенты — десктоп, web_layer и
-фронт обновляются следующими шагами. Пока они не обновлены, заголовкам
-`X-User-Id`/`X-User-Role` приходится доверять, и это включается флагом
-`GEN_TRUST_IDENTITY_HEADERS` (по умолчанию ВКЛЮЧЁН, чтобы шаг не ломал
-работающее развёртывание). Выключение флага — последний шаг работы по
-идентичности; после него заголовки перестают что-либо значить.
+**Заголовкам больше не верят.** `GEN_TRUST_IDENTITY_HEADERS` выключен по
+умолчанию: личность заверяет токен, роль сервер читает у себя в БД.
+Флаг остался переходным средством для развёртывания, где ещё не обновили
+десктопы, — включать осознанно и ненадолго.
 
-Флаг существует, чтобы у дыры была одна видимая ручка, а не чтобы её
-сохранить: `identity.source` всегда говорит, заверена личность или
-заявлена, и это видно в тестах и в журнале.
+Само правило разрешения живёт в `core/auth_sessions.resolve_identity`, а
+не здесь: сервисов два (генератор и контур), они ходят в одну БД и оба
+принимают личность от web_layer. Держи правило в одном из них — и снятие
+доверия закрыло бы дыру только у него. Здесь остались адаптеры: перевод
+отказа в HTTP-статус и зависимости FastAPI.
 """
 
 from __future__ import annotations
 
-import logging
-import os
 from typing import Annotated, Optional
 
 from fastapi import Depends, Header, HTTPException, Request
@@ -34,70 +31,21 @@ from fastapi import Depends, Header, HTTPException, Request
 from core import auth_sessions
 from core.auth_sessions import Identity
 
-log = logging.getLogger(__name__)
-
-#: Самая строгая из настоящих ролей. Умолчание при неразобранной личности
-#: обязано быть строгим: заголовок может не доехать, и «не доехал» не
-#: должно означать «можно больше».
-_STRICTEST_ROLE = "student"
-
-_WARNED = False
-
-
-def trust_headers() -> bool:
-    """Доверять ли `X-User-Id`/`X-User-Role`. Переходный режим, см. модуль."""
-    raw = os.environ.get("GEN_TRUST_IDENTITY_HEADERS", "1").strip().lower()
-    return raw not in ("0", "false", "no", "off")
-
-
-def _warn_once() -> None:
-    global _WARNED
-    if not _WARNED:
-        _WARNED = True
-        log.warning(
-            "Личность принята из заголовков X-User-Id/X-User-Role: их пишет "
-            "клиент, и роль в них не заверена. Переходный режим — снимается "
-            "GEN_TRUST_IDENTITY_HEADERS=0 после перевода клиентов на токены."
-        )
+#: Переэкспорт: роутеры и тесты спрашивают про доверие заголовкам здесь,
+#: а решает core — один ответ на оба сервиса.
+trust_headers = auth_sessions.trust_headers
 
 
 def resolve(request: Request, authorization: Optional[str] = None,
             x_user_id: Optional[str] = None,
             x_user_role: Optional[str] = None) -> Optional[Identity]:
-    """
-    Личность запроса или None, если её нет.
-
-    Порядок: сначала токен (заверенная), потом — если переходный режим не
-    выключен — заголовки (заявленная). Токен, если он есть, ВСЕГДА главнее:
-    иначе клиент, предъявивший настоящую сессию, мог бы дописать себе роль
-    заголовком.
-    """
-    token = auth_sessions.bearer_token(authorization)
-    if token:
-        # Негодный токен — это отказ, а не повод откатиться к заголовкам:
-        # молчаливый откат означал бы, что протухшая сессия даёт больше
-        # прав, чем свежая.
-        try:
-            return auth_sessions.resolve(request.app.state.repo, token)
-        except auth_sessions.AuthError as exc:
-            raise HTTPException(status_code=exc.status, detail=str(exc))
-
-    if not trust_headers():
-        return None
-
-    login = (x_user_id or "").strip()
-    if not login:
-        return None
-    _warn_once()
-    role = (x_user_role or "").strip().lower() or _STRICTEST_ROLE
-    # Организацию и флаг администратора развёртывания клиент НЕ заявляет
-    # даже в переходном режиме: их читаем из БД. Роль в этой ветке всё ещё
-    # с чужих слов, но принадлежность к организации — уже нет, и это
-    # ограничивает ущерб от подделанного заголовка одной организацией.
-    repo = request.app.state.repo
-    return Identity(login=login, role=role, source="header",
-                    organization_id=repo.user_organization_id(login),
-                    is_superuser=repo.is_superuser(login))
+    """Личность запроса или None. Правило — в core, здесь только перевод
+    отказа в HTTP-статус."""
+    try:
+        return auth_sessions.resolve_identity(
+            request.app.state.repo, authorization, x_user_id, x_user_role)
+    except auth_sessions.AuthError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc))
 
 
 def require(request: Request, authorization: Optional[str] = None,
@@ -202,7 +150,8 @@ def actor(who: Optional[Identity]) -> tuple[Optional[str], str]:
     прежние копии: `sync.py` подставлял `teacher`, и запись открывалась
     тому, кто просто не прислал заголовок.
     """
-    return (who.login, who.role) if who else (None, _STRICTEST_ROLE)
+    return ((who.login, who.role) if who
+            else (None, auth_sessions.STRICTEST_ROLE))
 
 
 #: Личность, если она есть; None у гостя. Для ручек, которые гостю открыты.

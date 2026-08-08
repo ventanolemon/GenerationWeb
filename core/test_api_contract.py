@@ -30,6 +30,7 @@ if _MONOREPO not in sys.path:
 from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
+from core import auth_sessions  # noqa: E402
 from core.repository import Repository  # noqa: E402
 from generator_service import errors  # noqa: E402
 from generator_service.routers import grants as grants_router  # noqa: E402
@@ -70,9 +71,17 @@ class ContractTestBase(unittest.TestCase):
     def tearDown(self):
         os.unlink(self.db_path)
 
-    @staticmethod
-    def _h(login, role):
-        return {"X-User-Id": login, "X-User-Role": role}
+    def _h(self, login, role=None):
+        """
+        Заголовки личности: настоящая сессия, а не заявление.
+
+        Роль больше не передаётся — сервер читает её из БД по токену
+        (GEN_TRUST_IDENTITY_HEADERS снят). Параметр оставлен, чтобы не
+        переписывать сотни вызовов, и игнорируется: если он расходится с
+        БД, прав это не добавляет — в этом и была суть перехода.
+        """
+        token = auth_sessions.issue(self.repo, login)["token"]
+        return {"Authorization": f"Bearer {token}"}
 
 
 # ---------- Конверт ошибки ----------

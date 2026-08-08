@@ -28,6 +28,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import secrets
 import time
@@ -136,6 +137,81 @@ def resolve(repo: Repository, raw_token: str) -> Identity:
                     is_superuser=bool(row.get("is_superuser")))
 
 
+# ---------- Разрешение личности запроса ----------
+#
+# Живёт в core/, а не в одном из сервисов, потому что сервисов ДВА:
+# generator_service и contour_service ходят в одну БД и оба принимают
+# личность от web_layer. Пока правило было в генераторе, снятие доверия к
+# заголовкам закрыло бы дыру только у него, а контур продолжал бы верить
+# заголовку `X-User-Role` — а у него на роли завязано, кто видит и
+# утверждает чужие джобы.
+
+log = logging.getLogger(__name__)
+
+#: Самая строгая из настоящих ролей. Умолчание при неразобранной личности
+#: обязано быть строгим: заголовок может не доехать, и «не доехал» не
+#: должно означать «можно больше».
+STRICTEST_ROLE = "student"
+
+_WARNED = False
+
+
+def trust_headers() -> bool:
+    """
+    Доверять ли `X-User-Id`/`X-User-Role`.
+
+    ПО УМОЛЧАНИЮ — НЕТ. Флаг остался переходным средством для развёртывания,
+    где ещё не обновили десктопы: у старой сборки токена нет, и без
+    послабления она разом потеряет запись в общий каталог. Включать его
+    осознанно и ненадолго — пока он включён, роль приходит с чужих слов.
+    """
+    raw = os.environ.get("GEN_TRUST_IDENTITY_HEADERS", "0").strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
+def _warn_once() -> None:
+    global _WARNED
+    if not _WARNED:
+        _WARNED = True
+        log.warning(
+            "GEN_TRUST_IDENTITY_HEADERS включён: личность принимается из "
+            "заголовков X-User-Id/X-User-Role, которые пишет клиент, и роль "
+            "в них не заверена. Это переходный режим для необновлённых "
+            "десктопов, а не рабочая настройка."
+        )
+
+
+def resolve_identity(repo: Repository, authorization: Optional[str] = None,
+                     x_user_id: Optional[str] = None,
+                     x_user_role: Optional[str] = None) -> Optional[Identity]:
+    """
+    Личность запроса или None, если её нет. Бросает AuthError на негодном
+    токене — переводить в HTTP-статус адаптеру сервиса.
+
+    Токен, если он есть, ВСЕГДА главнее заголовков: иначе клиент,
+    предъявивший настоящую сессию, мог бы дописать себе роль заголовком.
+    Негодный токен — отказ, а не повод откатиться к заголовкам: молчаливый
+    откат означал бы, что протухшая сессия даёт больше прав, чем свежая.
+    """
+    token = bearer_token(authorization)
+    if token:
+        return resolve(repo, token)
+
+    if not trust_headers():
+        return None
+
+    login = (x_user_id or "").strip()
+    if not login:
+        return None
+    _warn_once()
+    role = (x_user_role or "").strip().lower() or STRICTEST_ROLE
+    # Организацию и флаг администратора развёртывания клиент не заявляет
+    # даже здесь: их читаем из БД.
+    return Identity(login=login, role=role, source="header",
+                    organization_id=repo.user_organization_id(login),
+                    is_superuser=repo.is_superuser(login))
+
+
 def bearer_token(header_value: Optional[str]) -> str:
     """`Authorization: Bearer xxx` → `xxx`. Чужая схема — пусто."""
     text = (header_value or "").strip()
@@ -160,6 +236,7 @@ def revoke_all(repo: Repository, login: str) -> int:
     return repo.revoke_auth_sessions_for(login)
 
 
-__all__ = ["Identity", "AuthError", "issue", "resolve", "revoke",
-           "revoke_all", "hash_token", "bearer_token", "ttl_seconds",
+__all__ = ["Identity", "AuthError", "issue", "resolve", "resolve_identity",
+           "revoke", "revoke_all", "hash_token", "bearer_token",
+           "ttl_seconds", "trust_headers", "STRICTEST_ROLE",
            "DEFAULT_TTL_SECONDS"]

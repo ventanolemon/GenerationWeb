@@ -22,16 +22,58 @@ from fastapi.testclient import TestClient
 from contour_service import main as contour_main
 from contour_service.providers import MockProvider, TASK_CRITIC, TASK_GENERATE
 from contour_service.providers.mock import graph_response
+from core import auth_sessions
 from contour_service.worker import process_one
 from exercises.graph_examples import EXAMPLES
 
 PHYSICS = EXAMPLES["physics_force"]["graph"]
 
-# X-User-Id — логин-строка (канонический id, единый с десктопом).
-TEACHER = {"X-User-Id": "alla", "X-User-Role": "teacher"}
-OTHER_TEACHER = {"X-User-Id": "boris", "X-User-Role": "teacher"}
-ADMIN = {"X-User-Id": "root", "X-User-Role": "admin"}
-STUDENT = {"X-User-Id": "stud", "X-User-Role": "student"}
+# Личность заверяется токеном: контур больше не верит заголовку роли —
+# на ней у него завязано, кто видит и утверждает ЧУЖИЕ джобы, а заголовок
+# пишет браузер. Наборы собираются в setUp, когда есть app.state.repo.
+_USERS = (("alla", "teacher"), ("boris", "teacher"),
+          ("root", "admin"), ("stud", "student"))
+
+
+class IdentityIsVerifiedTests(unittest.TestCase):
+    """
+    Контур больше не верит заголовку роли.
+
+    Раньше здесь и в комментариях было записано «RBAC живёт в web_layer,
+    сервис доверяет заголовкам». Первое неверно — во всём web_layer нет ни
+    одного сравнения роли; второе опасно: на роли у контура завязано, кто
+    видит и утверждает ЧУЖИЕ джобы, а заголовок пишет браузер.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        self._tmp.close()
+        os.environ["CONTOUR_DB_PATH"] = self._tmp.name
+        os.environ["CONTOUR_WORKER_DISABLED"] = "1"
+        os.environ["CONTOUR_PROVIDER"] = "mock"
+        os.environ.pop("GEN_TRUST_IDENTITY_HEADERS", None)
+        self.client = TestClient(contour_main.app)
+        self.client.__enter__()
+        contour_main.app.state.repo.create_user(
+            "alla", "p", "Алла", "", role="teacher")
+
+    def tearDown(self):
+        self.client.__exit__(None, None, None)
+        os.unlink(self._tmp.name)
+
+    def test_claimed_role_is_refused(self):
+        r = self.client.get("/contour/jobs",
+                            headers={"X-User-Id": "alla",
+                                     "X-User-Role": "admin"})
+        self.assertEqual(r.status_code, 401)
+
+    def test_session_is_accepted_and_role_comes_from_the_database(self):
+        token = auth_sessions.issue(contour_main.app.state.repo,
+                                    "alla")["token"]
+        r = self.client.get("/contour/jobs",
+                            headers={"Authorization": f"Bearer {token}",
+                                     "X-User-Role": "admin"})
+        self.assertEqual(r.status_code, 200)
 
 
 class ApiFullCycleTests(unittest.TestCase):
@@ -55,6 +97,17 @@ class ApiFullCycleTests(unittest.TestCase):
               "summary": "Задание корректно и разнообразно."}]))
         # Предмет для будущей партиции.
         app.state.repo.ensure_subject(3, "Физика (тест контура)")
+        # Учётные записи + сессии: роль контур читает из БД.
+        for login, role in _USERS:
+            app.state.repo.create_user(login, "p", login.title(), "", role=role)
+        self.TEACHER, self.OTHER_TEACHER, self.ADMIN, self.STUDENT = (
+            self._session(login) for login, _ in _USERS)
+
+    @staticmethod
+    def _session(login):
+        token = auth_sessions.issue(contour_main.app.state.repo,
+                                    login)["token"]
+        return {"Authorization": f"Bearer {token}"}
 
     def tearDown(self):
         self.client.__exit__(None, None, None)
@@ -69,7 +122,7 @@ class ApiFullCycleTests(unittest.TestCase):
 
     def test_full_cycle_to_approved_partition_and_corpus(self):
         # 1. Создание джобы (202, queued).
-        resp = self.client.post("/contour/jobs", headers=TEACHER, json={
+        resp = self.client.post("/contour/jobs", headers=self.TEACHER, json={
             "description": "Задачи на силу F=ma по физике",
             "subject_id": 3,
         })
@@ -81,7 +134,7 @@ class ApiFullCycleTests(unittest.TestCase):
         self.assertTrue(self._run_worker())
 
         # 3. Поллинг: awaiting_human, превью заданий и вердикт на месте.
-        resp = self.client.get(f"/contour/jobs/{job_id}", headers=TEACHER)
+        resp = self.client.get(f"/contour/jobs/{job_id}", headers=self.TEACHER)
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertEqual(body["status"], "awaiting_human")
@@ -103,7 +156,7 @@ class ApiFullCycleTests(unittest.TestCase):
 
         # 4. Утверждение: партиция constracted=4 + корпус generate.
         resp = self.client.post(f"/contour/jobs/{job_id}/approve",
-                                headers=TEACHER,
+                                headers=self.TEACHER,
                                 json={"partition_name": "Сила (контур)"})
         self.assertEqual(resp.status_code, 200, resp.text)
         approved = resp.json()
@@ -132,38 +185,38 @@ class ApiFullCycleTests(unittest.TestCase):
 
         # 5. Повторное утверждение невозможно (статус уже approved).
         resp = self.client.post(f"/contour/jobs/{job_id}/approve",
-                                headers=TEACHER, json={})
+                                headers=self.TEACHER, json={})
         self.assertEqual(resp.status_code, 409)
 
     def test_ownership_and_roles(self):
-        resp = self.client.post("/contour/jobs", headers=TEACHER, json={
+        resp = self.client.post("/contour/jobs", headers=self.TEACHER, json={
             "description": "Мои задачи", "subject_id": 3})
         job_id = resp.json()["job_id"]
 
         # Чужой teacher джобу не видит (404), admin — видит.
         self.assertEqual(
             self.client.get(f"/contour/jobs/{job_id}",
-                            headers=OTHER_TEACHER).status_code, 404)
+                            headers=self.OTHER_TEACHER).status_code, 404)
         self.assertEqual(
             self.client.get(f"/contour/jobs/{job_id}",
-                            headers=ADMIN).status_code, 200)
+                            headers=self.ADMIN).status_code, 200)
 
         # student не может запускать контур; без заголовка — 401.
         self.assertEqual(
-            self.client.post("/contour/jobs", headers=STUDENT, json={
+            self.client.post("/contour/jobs", headers=self.STUDENT, json={
                 "description": "хочу задание", "subject_id": 3}).status_code, 403)
         self.assertEqual(
             self.client.post("/contour/jobs", json={
                 "description": "хочу задание", "subject_id": 3}).status_code, 401)
 
     def test_reject_writes_escalation_log(self):
-        resp = self.client.post("/contour/jobs", headers=TEACHER, json={
+        resp = self.client.post("/contour/jobs", headers=self.TEACHER, json={
             "description": "Задачи на силу", "subject_id": 3})
         job_id = resp.json()["job_id"]
         self._run_worker()
 
         resp = self.client.post(f"/contour/jobs/{job_id}/reject",
-                                headers=TEACHER,
+                                headers=self.TEACHER,
                                 json={"reason": "слишком просто"})
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["status"], "rejected")
@@ -177,17 +230,17 @@ class ApiFullCycleTests(unittest.TestCase):
 
     def _seed_approved_record(self) -> None:
         """Прогнать цикл до approve — в корпусе появляется generate-запись."""
-        job_id = self.client.post("/contour/jobs", headers=TEACHER, json={
+        job_id = self.client.post("/contour/jobs", headers=self.TEACHER, json={
             "description": "Задачи на силу F=ma", "subject_id": 3}).json()["job_id"]
         self._run_worker()
         self.client.post(f"/contour/jobs/{job_id}/approve",
-                         headers=TEACHER, json={"partition_name": "Сила"})
+                         headers=self.TEACHER, json={"partition_name": "Сила"})
 
     def test_corpus_list_detail_and_curation(self):
         self._seed_approved_record()
 
         # Список: admin видит обучающие записи + сводку.
-        resp = self.client.get("/corpus", headers=ADMIN)
+        resp = self.client.get("/corpus", headers=self.ADMIN)
         self.assertEqual(resp.status_code, 200, resp.text)
         body = resp.json()
         self.assertGreaterEqual(body["total"], 1)
@@ -202,26 +255,26 @@ class ApiFullCycleTests(unittest.TestCase):
         rec_id = rec["id"]
 
         # Деталь: полная запись с target_graph.
-        resp = self.client.get(f"/corpus/{rec_id}", headers=ADMIN)
+        resp = self.client.get(f"/corpus/{rec_id}", headers=self.ADMIN)
         self.assertEqual(resp.status_code, 200)
         self.assertIn("target_graph", resp.json()["record"])
 
         # Разметка «золотой эталон» + коммент.
-        resp = self.client.patch(f"/corpus/{rec_id}/curation", headers=ADMIN,
+        resp = self.client.patch(f"/corpus/{rec_id}/curation", headers=self.ADMIN,
                                  json={"curation": "gold", "comment": "чистый пример"})
         self.assertEqual(resp.status_code, 200, resp.text)
 
         # Сводка и фильтр отражают разметку.
-        body = self.client.get("/corpus", headers=ADMIN).json()
+        body = self.client.get("/corpus", headers=self.ADMIN).json()
         self.assertEqual(body["summary"]["gold"], 1)
-        gold = self.client.get("/corpus?curation=gold", headers=ADMIN).json()
+        gold = self.client.get("/corpus?curation=gold", headers=self.ADMIN).json()
         self.assertEqual(gold["total"], 1)
         self.assertEqual(gold["records"][0]["comment"], "чистый пример")
 
         # Курация — admin-only; несуществующая запись → 404.
-        self.assertEqual(self.client.get("/corpus", headers=TEACHER).status_code, 403)
+        self.assertEqual(self.client.get("/corpus", headers=self.TEACHER).status_code, 403)
         self.assertEqual(
-            self.client.patch("/corpus/нет-такой/curation", headers=ADMIN,
+            self.client.patch("/corpus/нет-такой/curation", headers=self.ADMIN,
                               json={"curation": "gold"}).status_code, 404)
 
 

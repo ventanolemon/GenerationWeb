@@ -31,6 +31,7 @@ if _MONOREPO not in sys.path:
     sys.path.insert(0, _MONOREPO)
 
 from core import grants_api, organizations_api, sync_api  # noqa: E402
+from core import auth_sessions  # noqa: E402
 from core.repository import Repository  # noqa: E402
 
 
@@ -510,9 +511,17 @@ class RouterTests(GrantsTestBase):
         app.state.repo = self.repo
         return TestClient(app)
 
-    @staticmethod
-    def _h(login, role):
-        return {"X-User-Id": login, "X-User-Role": role}
+    def _h(self, login, role=None):
+        """
+        Заголовки личности: настоящая сессия, а не заявление.
+
+        Роль больше не передаётся — сервер читает её из БД по токену
+        (GEN_TRUST_IDENTITY_HEADERS снят). Параметр оставлен, чтобы не
+        переписывать сотни вызовов, и игнорируется: если он расходится с
+        БД, прав это не добавляет — в этом и была суть перехода.
+        """
+        token = auth_sessions.issue(self.repo, login)["token"]
+        return {"Authorization": f"Bearer {token}"}
 
     def test_mine_requires_identity(self):
         self.assertEqual(
