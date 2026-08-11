@@ -17,17 +17,76 @@ Subject и Partition уже умеют в to_dict() (см. core/repository.py), 
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Request
+from typing import Any, Optional
 
-from core import Capability
+from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, Field
+
+from core import Capability, subjects_api
+
+from .. import identity
+from ..identity import CurrentUser, MaybeUser
 
 router = APIRouter(prefix="/subjects", tags=["subjects"])
 
 
+class SubjectRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    parent_name: str = Field(default="", max_length=200)
+
+
+def _run(fn, *args, **kwargs) -> Any:
+    try:
+        return fn(*args, **kwargs)
+    except subjects_api.SubjectActionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.get("")
-def list_subjects(request: Request) -> list[dict]:
+def list_subjects(request: Request, who: MaybeUser) -> list[dict]:
+    """
+    Витрина предметов. РАНЬШЕ отдавала все подряд — после §8 это означало,
+    что преподаватель одной организации видит предметы соседней. Скоуп
+    здесь тот же, что у синка и аналитики: два разных ответа на вопрос
+    «что мне видно» разъезжаются.
+    """
     repo = request.app.state.repo
-    return [s.to_dict() for s in repo.list_subjects()]
+    actor, role = identity.actor(who)
+    visible = subjects_api.visible(repo, actor=actor, role=role)["subjects"]
+    allowed = {row["id"] for row in visible}
+    return [s.to_dict() for s in repo.list_subjects() if s.id in allowed]
+
+
+@router.get("/manage")
+def list_for_management(request: Request, who: CurrentUser) -> dict[str, Any]:
+    """То же, но с владельцем и числом разделов — данные редактора."""
+    return subjects_api.visible(request.app.state.repo,
+                                actor=who.login, role=who.role)
+
+
+@router.post("")
+def create_subject(body: SubjectRequest, request: Request,
+                   who: CurrentUser) -> dict[str, Any]:
+    return _run(subjects_api.create, request.app.state.repo,
+                name=body.name, parent_name=body.parent_name,
+                actor=who.login, role=who.role,
+                organization_id=who.organization_id)
+
+
+@router.patch("/{subject_id}")
+def rename_subject(subject_id: int, body: SubjectRequest, request: Request,
+                   who: CurrentUser) -> dict[str, Any]:
+    return _run(subjects_api.rename, request.app.state.repo,
+                subject_id=subject_id, name=body.name, actor=who.login,
+                role=who.role, organization_id=who.organization_id)
+
+
+@router.delete("/{subject_id}")
+def delete_subject(subject_id: int, request: Request,
+                   who: CurrentUser) -> dict[str, Any]:
+    return _run(subjects_api.delete, request.app.state.repo,
+                subject_id=subject_id, actor=who.login, role=who.role,
+                organization_id=who.organization_id)
 
 
 @router.get("/{subject_id}/partitions")

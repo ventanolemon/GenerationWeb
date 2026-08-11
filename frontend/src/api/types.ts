@@ -380,6 +380,20 @@ export interface AnalyticsOverview {
 
 // ─── Администрирование (/admin/*) ──────────────────────────────────────────
 
+/** Предмет в редакторе: с владельцем и числом разделов. */
+export interface ManagedSubject {
+  id: number;
+  name: string;
+  parent_name: string;
+  owner: string | null;
+  partition_count: number;
+  organization_id: number | null;
+  // Встроенный принадлежит продукту и виден всем организациям — менять
+  // его может только администратор развёртывания (§8.1).
+  is_builtin: boolean;
+  is_mine: boolean;
+}
+
 export interface Organization {
   id: number;
   name: string;

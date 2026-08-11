@@ -37,12 +37,11 @@ public sealed class GeneratorClient
 
     // ─── Справочники ───────────────────────────────────────────────────
 
-    public async Task<List<SubjectDto>> ListSubjectsAsync(CancellationToken ct)
-    {
-        var subjects = await _http.GetFromJsonAsync<List<SubjectDto>>(
-            "/subjects", JsonOptions, ct);
-        return subjects ?? new List<SubjectDto>();
-    }
+    // ListSubjectsAsync убран: витрина предметов стала персональной
+    // (§8 — своя организация, свои выдачи), и тянуть её без identity
+    // значило бы показывать один и тот же список всем. Ходит через
+    // ProxyAsync, как остальные RBAC-эндпоинты.
+
 
     public async Task<List<PartitionDto>?> ListPartitionsAsync(int subjectId, CancellationToken ct)
     {

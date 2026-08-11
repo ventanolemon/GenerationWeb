@@ -193,8 +193,11 @@ def _within_organization(repo: Repository, user_id: str,
     if repo.is_superuser(user_id):
         return subject_ids
     org_id = repo.user_organization_id(user_id)
+    # Карта одним запросом: витрина предметов зовёт это на каждое открытие
+    # страницы, и запрос на предмет превращался бы в N+1.
+    by_subject = repo.subject_organization_map()
     return {sid for sid in subject_ids
-            if repo.subject_organization_id(sid) in (None, org_id)}
+            if by_subject.get(sid) in (None, org_id)}
 
 
 def check_authoring_read(

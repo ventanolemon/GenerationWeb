@@ -127,6 +127,27 @@ class _FakeRepo:
             partition.constracted, "single"
         )
 
+    # --- поверхность, которую требует витрина предметов ---
+    # После §8 список предметов персонален: он считает скоуп, а не отдаёт
+    # всё подряд. Здесь все предметы встроенные (владельца нет), поэтому
+    # видны любому — включая гостя этого смоук-теста.
+
+    def subjects_with_owner(self) -> list[dict]:
+        return [{"id": s.id, "name": s.name, "parent_name": s.parent_name,
+                 "owner": None, "partition_count": len(
+                     self.list_partitions_for_subject(s.id)),
+                 "organization_id": None}
+                for s in self._subjects]
+
+    def subject_organization_map(self) -> dict:
+        return {s.id: None for s in self._subjects}
+
+    def is_superuser(self, login) -> bool:
+        return False
+
+    def user_organization_id(self, login):
+        return None
+
 
 def _make_app():
     """Собирает FastAPI app с подменёнными repo/registry — без lifespan."""

@@ -136,6 +136,20 @@ class OrganizationsMixin:
                 (int(subject_id),)).fetchone()
         return row[0] if row else None
 
+    def subject_organization_map(self) -> dict:
+        """
+        Все живые предметы → их организация, ОДНИМ запросом.
+
+        Нужна витрине предметов: она самая горячая, и спрашивать
+        организацию по одному предмету значило бы N запросов на каждое
+        открытие страницы.
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, organization_id FROM Subjects "
+                "WHERE deleted_at IS NULL").fetchall()
+        return {r[0]: r[1] for r in rows}
+
     def effective_default_access(self, login: Optional[str]) -> str:
         """
         Умолчание видимости, действующее для этого человека.

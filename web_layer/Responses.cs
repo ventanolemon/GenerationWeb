@@ -7,6 +7,11 @@ namespace WebLayer.Contracts;
 /// Subject — справочник предметов. Минимальная C#-проекция того, что
 /// отдаёт FastAPI (Repository.Subject.to_dict()).
 /// </summary>
+/// <summary>
+/// Описание формы, а не её разбор: витрина предметов стала
+/// персональной и ходит через ProxyAsync, отдавая тело FastAPI как
+/// есть. Тип оставлен как документация контракта для фронта.
+/// </summary>
 public record SubjectDto(
     int Id,
     string Name,

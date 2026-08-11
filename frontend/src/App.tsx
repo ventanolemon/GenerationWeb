@@ -9,6 +9,7 @@ import LandingPage from "./views/LandingPage";
 import AppLayout from "./layouts/AppLayout";
 import GeneratorPage from "./pages/GeneratorPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
+import SubjectsPage from "./pages/SubjectsPage";
 import AdminPage from "./pages/AdminPage";
 import HomeworkPage from "./pages/HomeworkPage";
 import ContourPage from "./pages/ContourPage";
@@ -125,6 +126,14 @@ export default function App() {
             element={
               <RequireRole roles={["teacher", "admin"]}>
                 <ContourPage />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="subjects"
+            element={
+              <RequireRole roles={["teacher", "admin"]}>
+                <SubjectsPage />
               </RequireRole>
             }
           />

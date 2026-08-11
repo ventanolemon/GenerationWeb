@@ -270,6 +270,37 @@ class ContentMixin:
             )
             return cur.lastrowid
 
+    def rename_subject(self, subject_id: int, name: str) -> bool:
+        """Переименовать. Новый row_version обязателен: имя уезжает в pull,
+        и без версии десктопы о переименовании не узнают."""
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE Subjects SET subject_name = ?, row_version = ?, "
+                "updated_at = ? WHERE id = ? AND deleted_at IS NULL",
+                (name, self.next_row_version(conn, "Subjects"),
+                 time.time(), subject_id),
+            )
+            return cur.rowcount > 0
+
+    def delete_subject(self, subject_id: int) -> bool:
+        """
+        Мягкое удаление: tombstone, а не DELETE.
+
+        Синк узнаёт об удалении только по строке с `deleted_at` и новым
+        `row_version` — та же механика, что у разделов. Физическое удаление
+        не доехало бы до десктопов вовсе, и предмет воскрес бы при
+        следующем push'е.
+        """
+        now = time.time()
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE Subjects SET deleted_at = ?, row_version = ?, "
+                "updated_at = ? WHERE id = ? AND deleted_at IS NULL",
+                (now, self.next_row_version(conn, "Subjects"), now,
+                 subject_id),
+            )
+            return cur.rowcount > 0
+
     def set_subject_owner(self, subject_id: int,
                           owner_user_id: Optional[str]) -> bool:
         """

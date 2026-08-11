@@ -19,6 +19,7 @@ import type {
   ExportRequest,
   GenerateResponse,
   Group,
+  ManagedSubject,
   MyOrganization,
   Organization,
   Partition,
@@ -323,6 +324,41 @@ export const api = {
 
   adminListUsers(id: Identity): Promise<{ users: AdminUser[] }> {
     return request<{ users: AdminUser[] }>("/api/admin/users", {
+      headers: idHeaders(id),
+    });
+  },
+
+  // ─── Предметы ───────────────────────────────────────────────────────
+  // Витрина стала персональной: свой скоуп у каждого (§8). Поэтому все
+  // четыре ручки требуют identity, включая чтение.
+
+  listManagedSubjects(id: Identity): Promise<{ subjects: ManagedSubject[] }> {
+    return request("/api/subjects/manage", { headers: idHeaders(id) });
+  },
+
+  createSubject(id: Identity, name: string): Promise<ManagedSubject> {
+    return request("/api/subjects", {
+      method: "POST",
+      headers: idHeaders(id),
+      body: JSON.stringify({ name }),
+    });
+  },
+
+  renameSubject(
+    id: Identity,
+    subjectId: number,
+    name: string,
+  ): Promise<ManagedSubject> {
+    return request(`/api/subjects/${subjectId}`, {
+      method: "PATCH",
+      headers: idHeaders(id),
+      body: JSON.stringify({ name }),
+    });
+  },
+
+  deleteSubject(id: Identity, subjectId: number): Promise<{ deleted: boolean }> {
+    return request(`/api/subjects/${subjectId}`, {
+      method: "DELETE",
       headers: idHeaders(id),
     });
   },
