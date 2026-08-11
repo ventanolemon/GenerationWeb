@@ -176,6 +176,64 @@ class ContentMixin:
                      partition_id),
                 )
 
+    def ensure_graph_partition(
+        self,
+        partition_id: int,
+        subject_id: int,
+        name: str,
+        graph: dict,
+    ) -> None:
+        """
+        Гарантировать наличие раздела-графа (constracted=4), принадлежащего
+        продукту. Идемпотентно; граф обновляется при расхождении.
+
+        Отдельный метод, а не `upsert_partition`, по той же причине, что и
+        у `ensure_code_partition`: id здесь ЗАДАН, а не выдан базой. Эти
+        разделы поставляются вместе с приложением, и их номера должны быть
+        одинаковы на всех установках — иначе домашнее задание, выданное на
+        одной, укажет на другой раздел на второй.
+
+        Владелец не проставляется намеренно: `owner_user_id IS NULL` — это
+        и есть «принадлежит продукту», единственное, что по §8 пересекает
+        границу организаций.
+
+        Граф ОБНОВЛЯЕТСЯ при расхождении, в отличие от кода-генератора: он
+        и есть содержимое задания, и правка в поставке обязана доехать.
+        Правки пользователя тут не теряются — свои задания он заводит
+        своими разделами, а не переписывает поставочные.
+        """
+        raw = json.dumps(graph, ensure_ascii=False)
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT partition_name, subject_id, constracted, "
+                "       generation_parametrs "
+                "FROM Partitions WHERE id = ?", (partition_id,)
+            ).fetchone()
+            if row is None:
+                try:
+                    conn.execute(
+                        "INSERT INTO Partitions "
+                        "(id, subject_id, partition_name, constracted, "
+                        " generation_parametrs, row_version, updated_at) "
+                        "VALUES (?, ?, ?, 4, ?, ?, ?)",
+                        (partition_id, subject_id, name, raw,
+                         self.next_row_version(conn, "Partitions"),
+                         time.time()),
+                    )
+                except sqlite3.IntegrityError:
+                    pass
+                return
+            if (row[0], row[1], row[2], row[3]) == (name, subject_id, 4, raw):
+                return
+            conn.execute(
+                "UPDATE Partitions SET partition_name = ?, subject_id = ?, "
+                "constracted = 4, generation_parametrs = ?, row_version = ?, "
+                "updated_at = ? WHERE id = ?",
+                (name, subject_id, raw,
+                 self.next_row_version(conn, "Partitions"), time.time(),
+                 partition_id),
+            )
+
     def upsert_partition(
         self,
         subject_id: int,

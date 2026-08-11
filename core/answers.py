@@ -1193,6 +1193,18 @@ def _transformations():
 _EXAMPLE_FORMS_LIMIT = 40
 
 
+#: `lambda` — ключевое слово Python, и `parse_expr` на нём падает целиком.
+#: У sympy для этого своя договорённость: писать `lamda`, печатается всё
+#: равно как λ. Студент, однако, наберёт привычное написание, и получить за
+#: него «выражение не разобрано» он не должен — поэтому оба пишутся в одно.
+#: Замена по границе слова: `lambdas` или `lambda_1` трогать нельзя.
+_LAMBDA_WORD = re.compile(r"\blambda\b")
+
+
+def _lamda(source: str) -> str:
+    return _LAMBDA_WORD.sub("lamda", source)
+
+
 class ExpressionError(ValueError):
     """Ввод не прошёл проверку до разбора или не разобрался."""
 
@@ -1398,7 +1410,7 @@ class ExpressionSpec(AnswerSpec):
         Белый список — до разбора, а не после: `parse_expr` исполняет
         ввод, и проверять уже разобранное дерево поздно.
         """
-        source = normalize(text)
+        source = _lamda(normalize(text))
         if HOLE in source:
             # Пустое место из палитры формул (этап 7). Клиент кнопку
             # «Ответить» при этом не даёт, но ответ мог прийти и не от

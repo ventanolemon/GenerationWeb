@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import keyword
 import os
 import random
 import sys
@@ -78,13 +79,34 @@ class SpectrumTests(unittest.TestCase):
                     self.assertNotEqual(vector, sp.zeros(*vector.shape))
 
     def test_char_poly_vanishes_exactly_on_the_spectrum(self):
-        lam = sp.Symbol("lambda")
         for seed in SEEDS:
             instance = EIGEN.build(random.Random(seed), size=3)
             poly = instance.values["char_poly"]
+            # Переменная берётся из самого многочлена, а не пишется здесь
+            # буквами: с зашитым написанием `subs` молча ничего не
+            # подставляет, и тест проверяет равенство нулю выражения,
+            # которое нулём быть и не обязано.
+            variables = poly.free_symbols
             with self.subTest(seed=seed):
+                self.assertEqual(len(variables), 1, variables)
+                lam = next(iter(variables))
                 for value in instance.values["eigenvalues"]:
                     self.assertEqual(poly.subs(lam, value), 0)
+
+    def test_char_poly_variable_is_not_a_python_keyword(self):
+        """
+        `lambda` — ключевое слово Python: `parse_expr` спотыкается о него
+        и падает на выражении целиком. Пока переменная звалась так,
+        задание «выпишите характеристический многочлен» не принимало НИ
+        ОДНОГО ответа, включая собственный эталон. Написание `lamda` —
+        договорённость sympy ровно для этого случая; печатается оно всё
+        равно как λ, так что студент разницы не видит.
+        """
+        for seed in SEEDS:
+            poly = EIGEN.build(random.Random(seed), size=3).values["char_poly"]
+            for symbol in poly.free_symbols:
+                with self.subTest(seed=seed, symbol=symbol.name):
+                    self.assertFalse(keyword.iskeyword(symbol.name))
 
     def test_trace_and_determinant_agree_with_the_spectrum(self):
         """Сумма и произведение λ — независимая перекрёстная проверка."""
