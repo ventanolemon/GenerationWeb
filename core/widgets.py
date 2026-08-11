@@ -165,6 +165,14 @@ CHOICE_ONE = Widget(
          "порождает сама спецификация — та же типизация, что даёт проверку.",
 )
 
+TEXT_AREA = Widget(
+    name="text_area",
+    title="Многострочное поле",
+    kinds=frozenset({"output"}),
+    hint="Несколько строк. Нужно там, где строки — часть ответа: вывод "
+         "программы.",
+)
+
 SLOT_FIELDS = Widget(
     name="slot_fields",
     title="Отдельные поля",
@@ -189,8 +197,8 @@ SLOT_INLINE = Widget(
 
 
 def _register_builtin(registry: "WidgetRegistry") -> "WidgetRegistry":
-    for widget in (TEXT_INPUT, FORMULA_INPUT, CHOICE_ONE, SLOT_FIELDS,
-                   GRID_FIELDS, SLOT_INLINE):
+    for widget in (TEXT_INPUT, FORMULA_INPUT, CHOICE_ONE, TEXT_AREA,
+                   SLOT_FIELDS, GRID_FIELDS, SLOT_INLINE):
         registry.register(widget)
     return registry
 

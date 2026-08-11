@@ -68,34 +68,36 @@ class CCodeGenerator:
             z_after = z + 1  # z++
             avg = (x_after + y_after + z_after) / 3.0
             outputs = [f"Branch A: avg={avg:.1f}"]
-            branch_code = [
-                f"        y += 3;",
-                f"        z++;",
-                f"        avg = (x + y + z) / 3.0f;",
-                f"        printf(\"Branch A: avg=%.1f\\n\", avg);"
-            ]
         else:
             temp = math.sin(x_after) * 10
             diff = abs(temp - y)
             z_after = z - 1  # --z
             outputs = [f"Branch B: diff={diff:.2f}, z={z_after}"]
-            branch_code = [
-                f"        float temp = sin(x) * 10;",
-                f"        diff = fabs(temp - y);",
-                f"        --z;",
-                f"        printf(\"Branch B: diff=%.2f, z=%d\\n\", diff, z);"
-            ]
 
+        # В листинг идут ОБЕ ветки, а исполняется та, которую выберет
+        # условие. Раньше в код попадала только «сработавшая», и ставилась
+        # она внутрь `if` — без `else`. Когда условие ложно, программа не
+        # печатала НИЧЕГО, а ключ обещал «Branch B: …». Проверено
+        # компиляцией: 14 условных заданий из 131 (11%) уходили
+        # преподавателю с выводом, которого не бывает.
         lines = [
-                    f"    int x = {x}, y = {y}, z = {z};",
-                    f"    float avg, diff;",
-                    f"    ",
-                    f"    x--;",
-                    f"    if (x * y > pow(z, 3)) {{"
-                ] + branch_code + [
-                    f"    }}",
-                    f"    "
-                ]
+            f"    int x = {x}, y = {y}, z = {z};",
+            f"    float avg, diff;",
+            f"    ",
+            f"    x--;",
+            f"    if (x * y > pow(z, 3)) {{",
+            f"        y += 3;",
+            f"        z++;",
+            f"        avg = (x + y + z) / 3.0f;",
+            f"        printf(\"Branch A: avg=%.1f\\n\", avg);",
+            f"    }} else {{",
+            f"        float temp = sin(x) * 10;",
+            f"        diff = fabs(temp - y);",
+            f"        --z;",
+            f"        printf(\"Branch B: diff=%.2f, z=%d\\n\", diff, z);",
+            f"    }}",
+            f"    ",
+        ]
         return lines, outputs
 
     def generate_loop(self) -> Tuple[List[str], List[str]]:
@@ -141,14 +143,22 @@ class CCodeGenerator:
         ]
         return lines, outputs
 
-    def generate_code(self):
-        """Генерирует валидный C-код и сохраняет ожидаемый вывод"""
+    def generate_code(self, kind: str = None):
+        """
+        Генерирует валидный C-код и сохраняет ожидаемый вывод.
+
+        kind — какой вид программы построить ("linear", "conditional",
+        "loop"); None означает «как повезёт». Задавать его нужно, когда
+        код заказывает модель: вид программы там параметр задания.
+        """
         types = {
             "linear": self.generate_linear,
             "conditional": self.generate_conditional,
             "loop": self.generate_loop
         }
-        choice = random.choice(list(types.keys()))
+        if kind is not None and kind not in types:
+            raise ValueError(f"неизвестный вид программы: {kind!r}")
+        choice = kind or random.choice(list(types.keys()))
         self.code_type = choice
         body, outputs = types[choice]()
         self.body_lines = body
@@ -293,7 +303,6 @@ class CCodeGenerator:
         # and any(v in line for v in ['%d', '%f', '%c'])
         # and
         if not candidates:
-            print("------------------")
             return False
 
         idx = random.choice(candidates)
@@ -309,7 +318,9 @@ class CCodeGenerator:
                 code_lines[idx] = new_line
                 mistakes_log.append(f"line {idx + 1}: use of undeclared '{fake_var}'")
                 return True
-        print(line)
+        # Печать отсюда убрана: это библиотека, и на сервере она сыпала бы
+        # в лог на каждой генерации. Не сработавшая порча ошибок — обычное
+        # дело, вызывающий на это и смотрит по возвращаемому значению.
         return False
 
     def mistake_printf_format_mismatch(self, code_lines: List[str], mistakes_log: List[str]) -> bool:
@@ -356,16 +367,23 @@ class CCodeGenerator:
         idx = random.choice(op_candidates)
         line = code_lines[idx]
 
-        # Ищем имя переменной
+        # Ищем имя переменной. Оператор бывает и ПОСТФИКСНЫМ (`z++`), и
+        # ПРЕФИКСНЫМ (`--z`), а имя стоит с разных сторон. Раньше имя
+        # искалось только слева, и на строке `    --z;` слева не было
+        # ничего: `"".split()[-1]` роняло генерацию с IndexError, то есть
+        # /generate отвечал 500. Достижимо это было и до правки ветвления
+        # (`--z;` попадал в листинг, когда срабатывала ветка B), а после
+        # неё строка есть в КАЖДОЙ условной программе.
         var_name = None
-        if '++' in line:
-            var_name = line.split('++')[0].strip().split()[-1]
-        elif '--' in line:
-            var_name = line.split('--')[0].strip().split()[-1]
+        for op in ('++', '--'):
+            if op not in line:
+                continue
+            before = line.split(op)[0].strip().split()
+            after = line.split(op, 1)[1].strip().strip(';').split()
+            var_name = before[-1] if before else (after[0] if after else None)
+            break
 
-        # print(var_name, line, "-------------------")
         if not var_name or len(var_name) > 5:  # Защита от мусора
-            # print("asas")
             return False
 
         # Ищем объявление переменной

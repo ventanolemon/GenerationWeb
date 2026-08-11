@@ -134,6 +134,35 @@ class TextBlockNode(Node):
         return {"out": TextBlock(str(inputs.get("text", "")))}
 
 
+class CodeBlockNode(Node):
+    """
+    Листинг кода из строки. STRING → BLOCK.
+
+    Появился вместе с моделью программы на C: до неё показать код из
+    графа было нечем — `text_block` отдаёт обычный абзац, а листинг без
+    моноширинного шрифта и сохранённых отступов читается как каша, и
+    задание «найдите ошибку в строке 7» теряет смысл вместе с нумерацией.
+    """
+    type_id = "code_block"
+    category = "content"
+    display_name = "Листинг кода"
+    description = ("Блок с кодом (моноширинный, отступы сохраняются). "
+                   "Вход: STRING. Выход: BLOCK.")
+    INPUTS = [Port("text", PortType.STRING)]
+    OUTPUTS = [Port("out", PortType.BLOCK)]
+    PARAMS_SCHEMA = {
+        "language": {"type": "string", "default": "c", "optional": True},
+    }
+
+    def compute(self, inputs, ctx: ExecContext):
+        from core.blocks import CodeBlock          # ленивый: тянет Qt
+        language = str(self.params.get("language", "") or "text")
+        return {"out": CodeBlock(str(inputs.get("text", "")), language=language)}
+
+    def summary(self) -> str:
+        return str(self.params.get("language", "") or "")
+
+
 class TextNode(Node):
     """
     Текстовый блок с подстановкой #имя# прямо из параметра. Объединяет шаблон,

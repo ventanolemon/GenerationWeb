@@ -23,12 +23,14 @@
 -----
     имя[:вид][:опция=значение]...
 
-Вид: `number` (по умолчанию), `expr`, `text`, `matrix`, `logic`.
+Вид: `number` (по умолчанию), `expr`, `text`, `matrix`, `logic`,
+`output`.
 
 Опции числа      : unit=, abs=, rel=, sig=
 Опции выражения  : vars=, reject=
 Опции строки     : alt=, wrong=, case, typos=
 Опции функции    : vars=
+Вывод программы  : без опций
 Общие            : label=, mode=, choices=, много
 
 Примеры::
@@ -39,6 +41,7 @@
     city:text:wrong=Казань|Тверь|Самара:choices=4
     пропуски:text:много:typos=0
     функция:logic:vars=A,B,C
+    вывод:output
 
 Сколько полей — знают данные
 ----------------------------
@@ -67,7 +70,7 @@ from ..errors import GraphValidationError, RetryGeneration
 from ..port_types import PortType
 
 
-KINDS = ("number", "expr", "text", "matrix", "logic")
+KINDS = ("number", "expr", "text", "matrix", "logic", "output")
 
 #: Опции, осмысленные для каждого вида, плюс общие. Список нужен не для
 #: подсказки, а для отказа: `alt=` у числового слота почти наверняка значит,
@@ -88,6 +91,10 @@ _OPTIONS: Dict[str, Tuple[str, ...]] = {
     # Логическая функция: имена входов. Допусков у неё быть не может —
     # функция либо та же, либо другая, промежуточного нет.
     "logic": ("vars",),
+    # Вывод программы: сравнивается построчно и целиком, настраивать
+    # нечего. Допуск на опечатку здесь был бы прямым вредом — `sum=86`
+    # вместо `sum=85` отличается одним символом.
+    "output": (),
 }
 #: `choices=N` — показать ответ ТЕСТОМ из N вариантов. Общая опция, а
 #: не свойство вида: тестом задаётся и число, и выражение, и строка.
@@ -110,6 +117,7 @@ _PORT_TYPES = {
     # это её оформление; принимать её в слот значило бы проверять показ
     # вместо величины, с чего вся работа по стандарту и начиналась.
     "logic": PortType.EXPR,
+    "output": PortType.STRING,
 }
 
 
@@ -210,6 +218,9 @@ class SlotDecl:
             return self._matrix(value, active)
         if self.kind == "logic":
             return self._logic(value, active)
+        if self.kind == "output":
+            from core.answers import OutputSpec
+            return OutputSpec(value=str(value), mode=active)
         return self._text(value, active, wrong)
 
     def _many(self, value: Any, active):

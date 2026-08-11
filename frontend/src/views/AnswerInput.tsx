@@ -337,6 +337,20 @@ export default function AnswerInput({
             {field.label && (
               <span className={styles.answerLabel}>{field.label}</span>
             )}
+            {/* Вывод программы многострочный, и строки в нём — часть
+                ответа (проверка сравнивает их по порядку). В однострочном
+                поле его физически не набрать так, как он выглядит. */}
+            {field.kind === "output" ? (
+              <textarea
+                className={`${styles.answerInput} ${styles.answerInputMono}`}
+                rows={5}
+                value={values[key] ?? ""}
+                onChange={(e) => set(key, e.target.value)}
+                placeholder={field.hint || "Вывод программы"}
+                disabled={disabled}
+                autoFocus={index === 0}
+              />
+            ) : (
             <input
               ref={index === 0 ? firstRef : undefined}
               className={
@@ -354,6 +368,7 @@ export default function AnswerInput({
               disabled={disabled}
               autoFocus={index === 0}
             />
+            )}
             {/* Подсказка стоит рядом с полем ПОСТОЯННО, а не только в
                 placeholder. Объявленная размерность обязательна: ответ
                 «9.81» там, где ждут «9.81 м/с^2», не засчитывается. А

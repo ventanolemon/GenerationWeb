@@ -16,10 +16,12 @@ from .base import (
 )
 from .registry import DEFAULT_MODELS, ModelRegistry
 from .linal_eigen import MODEL as LINAL_EIGEN
+from .opvs_ccode import MODEL as OPVS_CCODE
 from .opvs_circuit import MODEL as OPVS_CIRCUIT
 
 DEFAULT_MODELS.register(LINAL_EIGEN)
 DEFAULT_MODELS.register(OPVS_CIRCUIT)
+DEFAULT_MODELS.register(OPVS_CCODE)
 
 __all__ = [
     "DEFAULT_MODELS", "Instance", "Model", "ModelConfigError", "ModelError",

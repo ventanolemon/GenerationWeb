@@ -1585,6 +1585,61 @@ def _literal_count(expr) -> int:
 
 
 # ======================================================================
+#  Вывод программы
+# ======================================================================
+
+
+@dataclass
+class OutputSpec(AnswerSpec):
+    """
+    Ответ — то, что программа напечатает. Величина МНОГОСТРОЧНАЯ.
+
+    Почему не `text`. Общая нормализация схлопывает любые пробелы, включая
+    переводы строк (см. `normalize`), — а для «выполните программу на
+    бумаге» строки и есть ответ: три величины на трёх строках и те же три
+    в одну строку либо в другом порядке это разные ответы. Плюс у строки
+    по умолчанию включён допуск на опечатку, и `sum=86` вместо `sum=85`
+    прошло бы как описка. Молча: автор задания об этом не узнает.
+
+    Что прощается: хвостовые пробелы и лишние переводы строки в конце —
+    это следствие того, чем набирали текст, а не ответ. Что значимо:
+    состав строк и их порядок.
+    """
+
+    kind: ClassVar[str] = "output"
+
+    value: str = ""
+    mode: CheckMode = DEFAULT_MODE
+    tuning: dict = field(default_factory=dict)
+
+    def check(self, user_input: str, *,
+              mode: Optional[CheckMode] = None) -> Verdict:
+        active = self.effective_mode(mode)
+        if not (user_input or "").strip():
+            return Verdict(False, active, Reason.EMPTY, "",
+                           "Ответ не введён.")
+        from .program_output import same_output
+
+        if same_output(self.value, user_input):
+            return Verdict(True, active, Reason.EXACT, user_input.strip())
+        return Verdict(False, active, Reason.MISMATCH, user_input.strip(),
+                       "Программа печатает не это.")
+
+    def display_blocks(self) -> List[Block]:
+        from .blocks import CodeBlock
+
+        # Листингом, а не абзацем: в выводе значимы пробелы и переносы, а
+        # обычный абзац их и схлопнет, и перенесёт по ширине окна.
+        return [CodeBlock(self.value, language="text")]
+
+    def _candidate_examples(self, mode: CheckMode) -> List[str]:
+        return [self.value]
+
+    def _payload(self) -> dict:
+        return {"value": self.value}
+
+
+# ======================================================================
 #  Набор слотов
 # ======================================================================
 
@@ -1896,6 +1951,10 @@ def _build_logic(data: dict) -> LogicSpec:
         **_common(data))
 
 
+def _build_output(data: dict) -> OutputSpec:
+    return OutputSpec(value=str(data.get("value", "")), **_common(data))
+
+
 def _build_slots(data: dict) -> SlotsSpec:
     return SlotsSpec(
         slots=tuple(
@@ -1910,6 +1969,7 @@ _REGISTRY = {
     TextSpec.kind: _build_text,
     ExpressionSpec.kind: _build_expression,
     LogicSpec.kind: _build_logic,
+    OutputSpec.kind: _build_output,
     SlotsSpec.kind: _build_slots,
 }
 
@@ -1918,6 +1978,6 @@ __all__ = [
     "CheckMode", "DEFAULT_MODE", "Reason", "Verdict", "InputField",
     "normalize", "Tolerance", "ToleranceKind",
     "AnswerSpec", "NumberSpec", "TextSpec", "ExpressionSpec", "LogicSpec",
-    "SlotsSpec",
+    "OutputSpec", "SlotsSpec",
     "ExpressionError", "significant_digits",
 ]
