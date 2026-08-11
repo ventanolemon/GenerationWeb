@@ -6,6 +6,8 @@
 // спрашивают, кто куда попал, — если бы ветка была авторской пометкой,
 // проверять было бы нечего.
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   addEdge,
@@ -66,6 +68,38 @@ const CATALOG: Catalog = {
       outputs: [{ name: "out", type: "number", required: false }],
       params_schema: {},
     },
+  ],
+};
+
+/** Случай из общего файла ожиданий (core/graph/branch_cases.json). */
+interface SharedCase {
+  name: string;
+  why: string;
+  nodes: Record<string, { type: string; params?: Record<string, unknown> }>;
+  edges: string[][];
+  expect_sink: string | null;
+  expect_nodes: Record<string, string>;
+  expect_edges: Record<string, string>;
+}
+
+/**
+ * Каталог под общие случаи: типы узлов там настоящие, движковые. От
+ * каталога нужны только порты источников — правила портов `task` и
+ * `static_task` model.ts знает сам, и проверяются как раз они.
+ */
+const SHARED_CATALOG: Catalog = {
+  ...CATALOG,
+  nodes: [
+    ...CATALOG.nodes,
+    ...["constant_number", "text", "var_dict"].map((type_id) => ({
+      type_id,
+      category: "sources",
+      display_name: type_id,
+      description: "",
+      inputs: [],
+      outputs: [{ name: "out", type: "any", required: false }],
+      params_schema: {},
+    })),
   ],
 };
 
@@ -234,6 +268,42 @@ describe("ветки условия и ответа", () => {
     );
     expect(branchMap(CATALOG, g).sink).toBeNull();
   });
+});
+
+describe("общие ожидания с движком (core/graph/branch_cases.json)", () => {
+  // Правило живёт дважды: здесь (branchMap) и в core/graph/branches.py.
+  // Так решено осознанно — гонять граф на сервер ради подсветки нелепо,
+  // редактор и так держит локальные зеркала правил портов. Но две
+  // реализации одного правила — ровно тот дрейф, ради которого заведён
+  // scripts/core_drift.py, а он сравнивает Python с Python и про
+  // TypeScript ничего не знает. Один файл ожиданий на обе стороны:
+  // разойдясь, они уронят тест той стороны, которая отстала.
+  //
+  // Читается через fs, а не import: файл лежит вне корня фронтенда —
+  // он принадлежит движку, а не веб-клиенту, и это правильное место.
+  const raw = readFileSync(
+    resolve(__dirname, "../../../core/graph/branch_cases.json"), "utf-8");
+  const cases = JSON.parse(raw).cases as SharedCase[];
+
+  it("файл случаев не пуст", () => {
+    // Пустой файл прошёл бы все остальные проверки, не проверив ничего.
+    expect(cases.length).toBeGreaterThanOrEqual(5);
+  });
+
+  for (const c of cases) {
+    it(c.name, () => {
+      const g = graph(
+        Object.entries(c.nodes).map(([id, spec]) => ({
+          id, type: spec.type, params: spec.params ?? {},
+        })),
+        c.edges as [string, string][],
+      );
+      const b = branchMap(SHARED_CATALOG, g);
+      expect(b.sink).toBe(c.expect_sink);
+      expect(Object.fromEntries(b.nodes)).toEqual(c.expect_nodes);
+      expect(Object.fromEntries(b.edges)).toEqual(c.expect_edges);
+    });
+  }
 });
 
 describe("подписи проводов", () => {

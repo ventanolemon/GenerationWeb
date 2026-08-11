@@ -1,0 +1,128 @@
+{
+  "_": [
+    "Ветки «условие»/«ответ»: ОДИН набор ожиданий на две реализации.",
+    "",
+    "Правило живёт дважды — в core/graph/branches.py и в его TS-зеркале",
+    "frontend/src/graph-editor/model.ts (branchMap). Так сделано осознанно:",
+    "гонять граф на сервер ради подсветки нелепо, а редактор и так держит",
+    "локальные зеркала правил портов. Но две реализации одного правила —",
+    "это ровно тот дрейф, ради которого заведён scripts/core_drift.py, а он",
+    "сравнивает Python с Python и про TypeScript ничего не знает.",
+    "",
+    "Поэтому ожидания вынесены сюда, и обе стороны проверяются по ним:",
+    "core/test_graph_branches.py и frontend/src/graph-editor/model.test.ts.",
+    "Разойдясь, реализации уронят тест той стороны, которая отстала.",
+    "",
+    "Формат случая: nodes (id → тип и params), edges (пары «узел:порт»),",
+    "expect_nodes (id → ветка; отсутствие = до финала не доходит),",
+    "expect_edges (ключ провода → ветка), expect_sink (null = не определён)."
+  ],
+  "cases": [
+    {
+      "name": "условие, ответ, общее и ничей",
+      "why": "Базовое деление: разметки нет, а ветки есть.",
+      "nodes": {
+        "a": {"type": "constant_number", "params": {"value": 1}},
+        "c": {"type": "constant_number", "params": {"value": 2}},
+        "shared": {"type": "constant_number", "params": {"value": 3}},
+        "dead": {"type": "constant_number", "params": {"value": 4}},
+        "fin": {"type": "task", "params": {
+          "statement": "Дано #a# и #s#", "slots": ["x:number", "y:number"]}}
+      },
+      "edges": [
+        ["a:out", "fin:a"],
+        ["c:out", "fin:x"],
+        ["shared:out", "fin:s"],
+        ["shared:out", "fin:y"]
+      ],
+      "expect_sink": "fin",
+      "expect_nodes": {
+        "a": "statement", "c": "answer", "shared": "both", "fin": "both"
+      },
+      "expect_edges": {
+        "a:out->fin:a": "statement",
+        "c:out->fin:x": "answer",
+        "shared:out->fin:s": "statement",
+        "shared:out->fin:y": "answer"
+      }
+    },
+    {
+      "name": "маркер шаблона ответа — это ответ",
+      "why": "Вход появляется от #имя# и в условии, и в шаблоне ответа; по имени порта их не различить.",
+      "nodes": {
+        "v": {"type": "constant_number", "params": {"value": 1}},
+        "fin": {"type": "task", "params": {
+          "statement": "Посчитайте", "slots": ["x:number"],
+          "layout": "template", "answer_template": "x = #v#"}}
+      },
+      "edges": [["v:out", "fin:v"]],
+      "expect_sink": "fin",
+      "expect_nodes": {"v": "answer", "fin": "both"},
+      "expect_edges": {"v:out->fin:v": "answer"}
+    },
+    {
+      "name": "маркер и в условии, и в шаблоне ответа — общий",
+      "why": "Одно и то же имя в обоих текстах: отнести к одной стороне значило бы соврать.",
+      "nodes": {
+        "v": {"type": "constant_number", "params": {"value": 1}},
+        "fin": {"type": "task", "params": {
+          "statement": "Дано #v#", "slots": ["x:number"],
+          "layout": "template", "answer_template": "при #v#"}}
+      },
+      "edges": [["v:out", "fin:v"]],
+      "expect_sink": "fin",
+      "expect_nodes": {"v": "both", "fin": "both"},
+      "expect_edges": {"v:out->fin:v": "both"}
+    },
+    {
+      "name": "static_task делится по своим двум портам",
+      "why": "У низкоуровневого финала деление прямое, без разбора текстов.",
+      "nodes": {
+        "s": {"type": "text", "params": {"text": "условие"}},
+        "a": {"type": "text", "params": {"text": "ответ"}},
+        "fin": {"type": "static_task", "params": {}}
+      },
+      "edges": [["s:out", "fin:statement"], ["a:out", "fin:answer"]],
+      "expect_sink": "fin",
+      "expect_nodes": {"s": "statement", "a": "answer", "fin": "both"},
+      "expect_edges": {
+        "s:out->fin:statement": "statement",
+        "a:out->fin:answer": "answer"
+      }
+    },
+    {
+      "name": "без финала веток нет",
+      "why": "Считать не от чего — и это не то же самое, что «веток нет».",
+      "nodes": {"a": {"type": "constant_number", "params": {"value": 1}}},
+      "edges": [],
+      "expect_sink": null,
+      "expect_nodes": {},
+      "expect_edges": {}
+    },
+    {
+      "name": "при двух финалах ветки не считаются",
+      "why": "Граф уже ошибочен; подсветка накрыла бы настоящую проблему правдоподобной картинкой.",
+      "nodes": {
+        "f1": {"type": "static_task", "params": {}},
+        "f2": {"type": "static_task", "params": {}}
+      },
+      "edges": [],
+      "expect_sink": null,
+      "expect_nodes": {},
+      "expect_edges": {}
+    },
+    {
+      "name": "vars и blocks уходят в условие",
+      "why": "vars подставляется в текст условия, blocks дописывается к нему блоками.",
+      "nodes": {
+        "v": {"type": "var_dict", "params": {"names": ["k"]}},
+        "fin": {"type": "task", "params": {
+          "statement": "Дано #k#", "slots": ["x:number"]}}
+      },
+      "edges": [["v:out", "fin:vars"]],
+      "expect_sink": "fin",
+      "expect_nodes": {"v": "statement", "fin": "both"},
+      "expect_edges": {"v:out->fin:vars": "statement"}
+    }
+  ]
+}
