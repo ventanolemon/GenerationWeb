@@ -127,6 +127,39 @@ class FormulaTests(unittest.TestCase):
                         self.assertIn(element.name, text)
 
 
+class LiveInputTests(unittest.TestCase):
+    """
+    Каждый нарисованный вход обязан ВЛИЯТЬ на выход.
+
+    Прежняя проверка полноты смотрела на присутствие переменной в записи,
+    а не на её влияние: `A ^ C ^ (B v A)` упрощается до `A ^ C`, и вход B
+    оставался нарисованным проводом в никуда. Замер до правки — 49 схем
+    из 150. Для задания это хуже, чем кажется: в таблице истинности
+    появляется столбец, от которого ничего не зависит, и студент
+    справедливо подозревает ошибку в чертеже.
+    """
+
+    def test_no_input_is_semantically_dead(self):
+        for seed in range(30):
+            random.seed(seed)
+            elements = pg.make_function()
+            names = sorted(e.name for e in elements if e.type == "INPUT")
+            with self.subTest(seed=seed):
+                self.assertEqual(
+                    pg.dead_inputs(elements[-1].to_sympy(), names), set(),
+                    "вход нарисован, но не влияет на выход")
+
+    def test_dead_input_is_detected(self):
+        # Сторож самой проверки: на заведомо мёртвом входе она обязана
+        # сработать, иначе тест выше не значит ничего.
+        import sympy as sp
+
+        a, b = sp.Symbol("A"), sp.Symbol("B")
+        self.assertEqual(pg.dead_inputs(sp.And(a, sp.Or(a, b)), ["A", "B"]),
+                         {"B"})
+        self.assertEqual(pg.dead_inputs(sp.Or(a, b), ["A", "B"]), set())
+
+
 class MakeFunctionTests(unittest.TestCase):
     """Публичный вход: он и попадает в задание."""
 

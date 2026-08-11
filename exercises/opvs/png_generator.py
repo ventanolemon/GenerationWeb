@@ -195,6 +195,31 @@ class ValidationResult:
     error:        str = ""
 
 
+def dead_inputs(expr: SympyExpr, names: list) -> Set[str]:
+    """
+    Входы, значение которых не меняет функцию НИ НА ОДНОМ наборе.
+
+    Считается по таблице истинности, а не упрощением: входов три-четыре,
+    таблица укладывается в шестнадцать строк, и прямой перебор и дешевле,
+    и точнее — упрощение зависит от формы записи, а влияние входа не
+    зависит ни от чего.
+    """
+    symbols = [Symbol(n) for n in names]
+    width = len(names)
+    table = {}
+    for mask in range(1 << width):
+        row = tuple((mask >> (width - 1 - i)) & 1 for i in range(width))
+        table[row] = bool(expr.subs(
+            dict(zip(symbols, [bool(v) for v in row]))))
+    dead = set()
+    for i, name in enumerate(names):
+        flipped = ((row[:i] + (1 - row[i],) + row[i + 1:]) for row in table)
+        if all(table[row] == table[other]
+               for row, other in zip(table, flipped)):
+            dead.add(name)
+    return dead
+
+
 def validate_circuit(elements: list) -> ValidationResult:
     """
     Символьная верификация сгенерированной логической схемы.
@@ -241,9 +266,17 @@ def validate_circuit(elements: list) -> ValidationResult:
     is_tautology = not bool(satisfiable(Not(expr)))
 
     # ── 3. Полнота входных переменных ─────────────────────────────────────────
-    declared  = {Symbol(e.name) for e in inputs}
-    used      = expr.free_symbols
-    missing   = {str(s) for s in declared - used}
+    #
+    # Проверяется ВЛИЯНИЕ входа, а не его присутствие в записи. Раньше
+    # здесь стояло `declared - expr.free_symbols`, то есть вход считался
+    # живым, если встречался в формуле хоть раз. Но `A ^ C ^ (B v A)`
+    # упрощается до `A ^ C`: вход B нарисован, провод от него идёт в
+    # вентиль — и не влияет на выход ни на одном наборе. На чертеже это
+    # читается как ошибка, а в таблице истинности даёт столбец, от
+    # которого ничего не зависит. Замер: 49 схем из 150 (33%) проходили
+    # прежнюю проверку с таким входом.
+    declared  = [str(e.name) for e in inputs]
+    missing   = dead_inputs(expr, declared)
 
     # ── Формируем итоговый результат ──────────────────────────────────────────
     errors = []
@@ -266,7 +299,7 @@ def validate_circuit(elements: list) -> ValidationResult:
 
 
 # ─── Генерация случайной логической функции ───────────────────────────────────
-def make_function(max_attempts: int = 20) -> list:
+def make_function(max_attempts: int = 20, n_inputs: int | None = None) -> list:
     """
     Генерирует трёхслойную логическую схему для функции от 3-4 переменных.
 
@@ -275,6 +308,10 @@ def make_function(max_attempts: int = 20) -> list:
       Слой 1: 2-3 вентиля над входными переменными
       Слой 2: 1-2 вентиля над первым слоем
       Слой 3: выходной вентиль, объединяющий незадействованные узлы
+
+    n_inputs — число входов; None означает «как повезёт» (3 или 4).
+    Задавать его нужно, когда схему заказывает модель: число входов там
+    параметр задания, а не случайность.
 
     После построения DAG выполняется символьная верификация через
     ``validate_circuit()``. Если схема является тавтологией, противоречием
@@ -285,7 +322,7 @@ def make_function(max_attempts: int = 20) -> list:
     получить валидную схему.
     """
     for attempt in range(1, max_attempts + 1):
-        elements = _build_random_circuit()
+        elements = _build_random_circuit(n_inputs)
         vr = validate_circuit(elements)
         if vr.valid:
             return elements
@@ -330,9 +367,9 @@ def _consume(unused: list, gate: "LogicElement") -> None:
                 break
 
 
-def _build_random_circuit() -> list:
+def _build_random_circuit(n_inputs: int | None = None) -> list:
     """Одна попытка стохастической сборки DAG (вызывается из make_function)."""
-    n_inputs = random.randint(3, 4)
+    n_inputs = random.randint(3, 4) if n_inputs is None else int(n_inputs)
     inputs   = [LogicElement('INPUT', name=chr(ord('A') + i))
                 for i in range(n_inputs)]
     unused   = list(inputs)    # элементы без потребителя на текущий момент

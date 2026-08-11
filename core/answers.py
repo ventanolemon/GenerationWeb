@@ -1428,6 +1428,163 @@ class ExpressionSpec(AnswerSpec):
 
 
 # ======================================================================
+#  Логическая функция
+# ======================================================================
+
+
+@dataclass
+class LogicSpec(AnswerSpec):
+    """
+    Ответ — булева функция, а не её запись.
+
+    Отдельный вид, а не `expression` с другой настройкой, по двум
+    причинам, и первая решающая. `ExpressionSpec` разбирает ввод как
+    АЛГЕБРУ: `A ^ B` там — исключающее ИЛИ (питоновский `^`), а в схеме и
+    в учебнике это конъюнкция. Ошибка молчаливая: студент пишет верный
+    ответ и получает «неправильно». Вторая причина — эквивалентность:
+    у функции она проверяется по таблице истинности, а не через
+    `simplify(a − b)`, которое над булевыми значениями не имеет смысла.
+
+    Режимы. Мягкий принимает ЛЮБУЮ запись той же функции — это ответ на
+    «выпишите функцию по схеме», где правильных записей бесконечно много.
+    Строгий дополнительно требует, чтобы запись была не длиннее
+    минимальной, — это ответ на «упростите выражение», где исходная
+    формула эквивалентна, но задание не решает. Ровно та же опасность,
+    из-за которой у `ExpressionSpec` есть `reject_equivalent_to`: мягкая
+    проверка приняла бы условие обратно.
+    """
+
+    kind: ClassVar[str] = "logic"
+
+    value: str = ""
+    """Эталон в обозначениях схемы: `not(A) v (B ^ C)`."""
+
+    variables: Tuple[str, ...] = ()
+    """
+    Имена входов. Обязательны: без них опечатка `Q` стала бы новой
+    переменной, и ответ про другую схему прошёл бы как «просто другая
+    функция».
+    """
+
+    mode: CheckMode = DEFAULT_MODE
+    tuning: dict = field(default_factory=dict)
+
+    # ---------- проверка ----------
+
+    def check(self, user_input: str, *,
+              mode: Optional[CheckMode] = None) -> Verdict:
+        from .boolean_text import BooleanTextError, parse_boolean
+
+        active = self.effective_mode(mode)
+        text = normalize(user_input)
+        if not text:
+            return Verdict(False, active, Reason.EMPTY, text,
+                           "Ответ не введён.")
+        try:
+            given = parse_boolean(text, self.variables)
+            expected = parse_boolean(self.value, self.variables)
+        except BooleanTextError as exc:
+            return Verdict(False, active, Reason.UNPARSED, text, str(exc))
+
+        if not self._same(expected, given):
+            return Verdict(False, active, Reason.MISMATCH, text,
+                           "Функция не совпадает с той, что задаёт схема.")
+        if active is not CheckMode.SOFT and not self._minimal(expected, given):
+            return Verdict(False, active, Reason.WRONG_FORM, text,
+                           "Функция верна, но запись не упрощена.")
+        return Verdict(True, active, Reason.EQUIVALENT, text)
+
+    @staticmethod
+    def _same(expected, given) -> bool:
+        import sympy
+        from sympy.logic.boolalg import Xor
+
+        return not sympy.satisfiable(Xor(expected, given))
+
+    @staticmethod
+    def _minimal(expected, given) -> bool:
+        """
+        Не длиннее минимальной формы — по числу вхождений переменных.
+
+        Мера грубая намеренно. Требовать совпадения с конкретным выводом
+        `simplify_logic` значило бы отвергать равноправные минимальные
+        формы (у одной функции их бывает несколько), а это худший вид
+        строгости: студент решил задачу и получил отказ за то, что пришёл
+        к другой из правильных записей.
+        """
+        from sympy.logic.boolalg import simplify_logic
+
+        return _literal_count(given) <= _literal_count(simplify_logic(expected))
+
+    # ---------- показ ----------
+
+    def display_blocks(self) -> List[Block]:
+        from .blocks import TextBlock
+
+        return [TextBlock(self.value)]
+
+    def input_fields(self) -> List[InputField]:
+        hint = ("входы: " + ", ".join(self.variables)) if self.variables else ""
+        return [InputField(kind=self.kind, hint=hint)]
+
+    def _candidate_examples(self, mode: CheckMode) -> List[str]:
+        """
+        Эталон и его минимальная форма.
+
+        Минимальная нужна отдельно: в строгом режиме эталон, если он не
+        упрощён, сам не пройдёт собственную проверку — и `accepted_examples`
+        честно его отбросит, оставив преподавателя без единого примера.
+        """
+        from .boolean_text import BooleanTextError, format_boolean, parse_boolean
+        from sympy.logic.boolalg import simplify_logic
+
+        out = [self.value]
+        try:
+            out.append(format_boolean(
+                simplify_logic(parse_boolean(self.value, self.variables))))
+        except (BooleanTextError, Exception):
+            pass
+        return out
+
+    def _candidate_distractors(self, mode: CheckMode) -> List[str]:
+        """
+        Правдоподобно НЕВЕРНЫЕ функции: отрицание всей формулы и подмена
+        одной связки. Такие ошибки студенты и делают, а случайная функция
+        от тех же переменных распознаётся как чужая с одного взгляда и
+        выдала бы верный ответ методом исключения.
+        """
+        from .boolean_text import BooleanTextError, format_boolean, parse_boolean
+
+        try:
+            expected = parse_boolean(self.value, self.variables)
+        except BooleanTextError:
+            return []
+        import sympy
+
+        out = [format_boolean(sympy.Not(expected))]
+        swapped = self.value.replace(" ^ ", " § ").replace(" v ", " ^ ")
+        out.append(swapped.replace(" § ", " v "))
+        return out
+
+    def _payload(self) -> dict:
+        out: dict = {"value": self.value}
+        if self.variables:
+            out["variables"] = list(self.variables)
+        return out
+
+
+def _literal_count(expr) -> int:
+    """Сколько раз в записи встречаются переменные."""
+    import sympy
+
+    if isinstance(expr, sympy.Symbol):
+        return 1
+    if not getattr(expr, "args", ()):
+        return 0
+    return sum(_literal_count(arg) for arg in expr.args)
+
+
+# ======================================================================
 #  Набор слотов
 # ======================================================================
 
@@ -1732,6 +1889,13 @@ def _build_expression(data: dict) -> ExpressionSpec:
         **_common(data))
 
 
+def _build_logic(data: dict) -> LogicSpec:
+    return LogicSpec(
+        value=str(data.get("value", "")),
+        variables=tuple(data.get("variables") or ()),
+        **_common(data))
+
+
 def _build_slots(data: dict) -> SlotsSpec:
     return SlotsSpec(
         slots=tuple(
@@ -1745,6 +1909,7 @@ _REGISTRY = {
     NumberSpec.kind: _build_number,
     TextSpec.kind: _build_text,
     ExpressionSpec.kind: _build_expression,
+    LogicSpec.kind: _build_logic,
     SlotsSpec.kind: _build_slots,
 }
 
@@ -1752,6 +1917,7 @@ _REGISTRY = {
 __all__ = [
     "CheckMode", "DEFAULT_MODE", "Reason", "Verdict", "InputField",
     "normalize", "Tolerance", "ToleranceKind",
-    "AnswerSpec", "NumberSpec", "TextSpec", "ExpressionSpec", "SlotsSpec",
+    "AnswerSpec", "NumberSpec", "TextSpec", "ExpressionSpec", "LogicSpec",
+    "SlotsSpec",
     "ExpressionError", "significant_digits",
 ]

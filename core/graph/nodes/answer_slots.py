@@ -23,11 +23,12 @@
 -----
     имя[:вид][:опция=значение]...
 
-Вид: `number` (по умолчанию), `expr`, `text`.
+Вид: `number` (по умолчанию), `expr`, `text`, `matrix`, `logic`.
 
 Опции числа      : unit=, abs=, rel=, sig=
 Опции выражения  : vars=, reject=
 Опции строки     : alt=, wrong=, case, typos=
+Опции функции    : vars=
 Общие            : label=, mode=, choices=, много
 
 Примеры::
@@ -37,6 +38,7 @@
     city:text:alt=Москва|Moscow:typos=1
     city:text:wrong=Казань|Тверь|Самара:choices=4
     пропуски:text:много:typos=0
+    функция:logic:vars=A,B,C
 
 Сколько полей — знают данные
 ----------------------------
@@ -65,7 +67,7 @@ from ..errors import GraphValidationError, RetryGeneration
 from ..port_types import PortType
 
 
-KINDS = ("number", "expr", "text", "matrix")
+KINDS = ("number", "expr", "text", "matrix", "logic")
 
 #: Опции, осмысленные для каждого вида, плюс общие. Список нужен не для
 #: подсказки, а для отказа: `alt=` у числового слота почти наверняка значит,
@@ -83,6 +85,9 @@ _OPTIONS: Dict[str, Tuple[str, ...]] = {
     # и заводить его значило бы объявить её отдельной сущностью, каковой
     # она не является.
     "matrix": ("abs", "rel", "sig"),
+    # Логическая функция: имена входов. Допусков у неё быть не может —
+    # функция либо та же, либо другая, промежуточного нет.
+    "logic": ("vars",),
 }
 #: `choices=N` — показать ответ ТЕСТОМ из N вариантов. Общая опция, а
 #: не свойство вида: тестом задаётся и число, и выражение, и строка.
@@ -101,6 +106,10 @@ _PORT_TYPES = {
     "expr": PortType.EXPR,
     "text": PortType.STRING,
     "matrix": PortType.MATRIX,
+    # Функция едет ВЫРАЖЕНИЕМ, а не строкой. Строковая запись формулы —
+    # это её оформление; принимать её в слот значило бы проверять показ
+    # вместо величины, с чего вся работа по стандарту и начиналась.
+    "logic": PortType.EXPR,
 }
 
 
@@ -199,6 +208,8 @@ class SlotDecl:
             return self._expression(value, active)
         if self.kind == "matrix":
             return self._matrix(value, active)
+        if self.kind == "logic":
+            return self._logic(value, active)
         return self._text(value, active, wrong)
 
     def _many(self, value: Any, active):
@@ -279,6 +290,32 @@ class SlotDecl:
                 _split_list(self.options.get("reject", ""), sep="|")),
             mode=mode,
         )
+
+    def _logic(self, value: Any, mode):
+        """
+        Булева функция как ответ.
+
+        Эталон хранится в обозначениях схемы (`not(A) v (B ^ C)`), а не в
+        записи sympy: ключ читает тот же человек, который смотрит на
+        чертёж по ГОСТ, и `~A | (B & C)` для него запись из другого мира.
+        """
+        from core.answers import LogicSpec
+        from core.boolean_text import format_boolean
+
+        names = tuple(_split_list(self.options.get("vars", "")))
+        if not names:
+            names = _free_symbols(value)
+        if not names:
+            raise GraphValidationError(
+                f"Слот {self.name!r}: не удалось определить входы функции — "
+                f"перечислите их через vars=.")
+        try:
+            text = format_boolean(value)
+        except Exception:                                  # noqa: BLE001
+            raise GraphValidationError(
+                f"Слот {self.name!r}: на вход пришло {value!r}, а объявлена "
+                f"логическая функция.")
+        return LogicSpec(value=text, variables=names, mode=mode)
 
     def _matrix(self, value: Any, mode):
         """
