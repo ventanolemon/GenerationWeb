@@ -186,6 +186,8 @@ public sealed class GeneratorClient
             {
                 partition_id = request.PartitionId,
                 count = request.Count,
+                variants = request.Variants,
+                answers = request.Answers,
                 with_answers = request.WithAnswers
             },
             ct);

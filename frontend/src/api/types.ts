@@ -204,10 +204,18 @@ export interface TurnResultResponse {
 
 // ─── Запросы ─────────────────────────────────────────────────────────────
 
+/** Куда девать ответы в выгрузке. */
+export type AnswerPlacement = "under" | "variant_end" | "file_end" | "hidden";
+
 export interface ExportRequest {
   partitionId: number;
+  /** Заданий в ОДНОМ варианте. */
   count: number;
-  withAnswers: boolean;
+  /** Сколько вариантов собрать; 1 — обычный случай. */
+  variants?: number;
+  answers?: AnswerPlacement;
+  /** Старый контракт; `answers`, если задан, важнее. */
+  withAnswers?: boolean;
 }
 
 

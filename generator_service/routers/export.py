@@ -24,15 +24,25 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from core import StaticTask
+from typing import Optional
+
+from core import StaticTask, export_api
 
 router = APIRouter(prefix="/export", tags=["export"])
 
 
 class ExportRequest(BaseModel):
     partition_id: int = Field(..., gt=0)
-    count: int = Field(1, ge=1, le=50, description="Сколько заданий сгенерировать")
-    with_answers: bool = Field(True)
+    count: int = Field(1, ge=1, le=50,
+                       description="Заданий в одном варианте")
+    variants: int = Field(1, ge=1, le=50,
+                          description="Сколько вариантов собрать")
+    answers: Optional[str] = Field(
+        None,
+        description="under | variant_end | file_end | hidden")
+    # Старый контракт: его шлют три экрана фронта и десктоп. true —
+    # «под заданием», false — «скрыть».
+    with_answers: Optional[bool] = Field(True)
 
 
 @router.post("")
@@ -50,26 +60,32 @@ def export_tasks(body: ExportRequest, request: Request):
     params = partition.generation_params if partition else {}
     generator = registry.get(body.partition_id, params)
 
+    try:
+        placement = export_api.normalise_placement(body.answers,
+                                                   body.with_answers)
+    except export_api.ExportError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    variants = []
+    for _ in range(body.variants):
+        tasks = []
+        for _ in range(body.count):
+            task = generator.generate()
+            if not isinstance(task, StaticTask):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Export is only available for static tasks",
+                )
+            tasks.append(task)
+        variants.append(tasks)
+
     doc = Document()
     title = partition.name if partition else "Задания"
-    doc.add_heading(title, level=0)
-
-    for i in range(body.count):
-        task = generator.generate()
-        if not isinstance(task, StaticTask):
-            raise HTTPException(
-                status_code=400,
-                detail="Export is only available for static tasks",
-            )
-        doc.add_heading(f"Задание {i + 1}", level=2)
-        for block in task.statement:
-            block.render_docx(doc)
-        if body.with_answers:
-            doc.add_heading(f"Ответ {i + 1}", level=3)
-            for block in task.answer:
-                block.render_docx(doc)
-        if i < body.count - 1:
-            doc.add_page_break()
+    try:
+        export_api.build_document(doc, variants, title=title,
+                                  answers=placement)
+    except export_api.ExportError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     buf = BytesIO()
     doc.save(buf)

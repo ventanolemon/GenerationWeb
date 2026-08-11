@@ -53,9 +53,20 @@ public record SubmitRequest(
 public record AnswerPreviewRequest(JsonElement Spec, string? Mode = null);
 
 /// <summary>
-/// Тело POST /export — параметры пакетной генерации в .docx.
+/// Тело POST /api/export — параметры пакетной генерации в .docx.
+///
+/// Count — заданий В ОДНОМ варианте, Variants — сколько вариантов собрать.
+/// Answers — где печатать ответы: under | variant_end | file_end | hidden.
+/// WithAnswers оставлен для совместимости: его шлют экраны, ещё не
+/// переведённые на выбор размещения (true — «под заданием», false —
+/// «скрыть»); Answers, если задан, важнее.
 /// </summary>
-public record ExportRequest(int PartitionId, int Count = 1, bool WithAnswers = true);
+public record ExportRequest(
+    int PartitionId,
+    int Count = 1,
+    int Variants = 1,
+    string? Answers = null,
+    bool WithAnswers = true);
 
 /// <summary>
 /// Тело POST /api/auth/login.

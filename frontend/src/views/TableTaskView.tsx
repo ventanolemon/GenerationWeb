@@ -1,8 +1,8 @@
 import { useState } from "react";
 import type { Partition, StaticTaskResponse } from "../api/types";
 import { api, ApiError } from "../api/client";
+import ExportDialog from "../components/ExportDialog";
 import { BlockList } from "../blocks/BlockRenderer";
-import { triggerDownload } from "./StaticTaskView";
 import styles from "../styles/views.module.css";
 
 interface Props {
@@ -21,6 +21,7 @@ interface Props {
  */
 export default function TableTaskView({ partition }: Props) {
   const [tasks, setTasks] = useState<StaticTaskResponse[]>([]);
+  const [exporting, setExporting] = useState(false);
   const [showAnswers, setShowAnswers] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,20 +46,9 @@ export default function TableTaskView({ partition }: Props) {
     setTasks((prev) => prev.filter((_, i) => i !== index));
   }
 
-  async function exportAll() {
-    if (tasks.length === 0) return;
-    try {
-      const blob = await api.export({
-        partitionId: partition.id,
-        count: tasks.length,
-        withAnswers: showAnswers,
-      });
-      triggerDownload(blob, `${partition.name}.docx`);
-    } catch (e) {
-      const msg = e instanceof ApiError ? e.message : String(e);
-      setError(`Не удалось экспортировать: ${msg}`);
-    }
-  }
+  // Экспорт открывает диалог: одной галочки «с ответами» мало —
+  // размещений четыре, и лист с ключом под каждым заданием
+  // студентам не раздашь.
 
   return (
     <div className={styles.view}>
@@ -67,7 +57,7 @@ export default function TableTaskView({ partition }: Props) {
         <button onClick={addOne} disabled={loading}>
           {loading ? "Генерация…" : "Сгенерировать"}
         </button>
-        <button onClick={exportAll} disabled={tasks.length === 0}>
+        <button onClick={() => setExporting(true)} disabled={tasks.length === 0}>
           Экспорт в Word ({tasks.length})
         </button>
         <label>
@@ -117,6 +107,14 @@ export default function TableTaskView({ partition }: Props) {
             ))}
           </tbody>
         </table>
+      )}
+          {exporting && (
+        <ExportDialog
+          partitionId={partition.id}
+          partitionName={partition.name}
+          defaultCount={tasks.length}
+          onClose={() => setExporting(false)}
+        />
       )}
     </div>
   );
