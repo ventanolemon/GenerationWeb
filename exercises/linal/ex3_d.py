@@ -253,7 +253,16 @@ def get_exercise():
         7) проекцию точки A1 на грань A2A3A4
         8) длину высоты из вершины A2"""
     res = ""
-    A1, A2, A3, A4 = Point(generate=True), Point(generate=True), Point(generate=True), Point(generate=True)
+    # Пирамида обязана быть НЕВЫРОЖДЕННОЙ. Четыре случайные точки в 2%
+    # случаев ложатся в одну плоскость: смешанное произведение равно нулю,
+    # объём выходит нулевым, и «найдите объём пирамиды» превращается в
+    # задание без пирамиды. Условие проверяется тем же смешанным
+    # произведением, которым потом считается ответ.
+    while True:
+        A1, A2, A3, A4 = (Point(generate=True), Point(generate=True),
+                          Point(generate=True), Point(generate=True))
+        if abs(Vector(A1, A2).mixed_mul(Vector(A1, A3), Vector(A1, A4))) > 1e-9:
+            break
     task += f"\nкоординаты точек A1: {A1}, A2: {A2}, A3: {A3}, A4: {A4}\n"
     A1_A2_A3 = Surface(A1, A2, A3)
     A1_A2, A1_A3, A1_A4 = Vector(A1, A2), Vector(A1, A3), Vector(A1, A4)
@@ -269,7 +278,8 @@ def get_exercise():
     A1H = Line(A1, vector=p_A2_A3_A4.Normal)
     res += f"уравнения A1H: {A1H.get_canon()}\n"
     res += f"проекция точки A1 на грань A2A3A4: {p_A2_A3_A4.get_proection_of_point(A1)}\n"
-    res += f"плоскость A2_A3_A4: {p_A2_A3_A4.get_obch()}\n"
+    # Уравнение плоскости печаталось здесь второй раз — дословный дубль,
+    # такой же, как симметричная точка в ex2_d.
     p_A1_A3_A4 = Surface(A1, A3, A4)
     A2H = Line(A2, p_A1_A3_A4.get_proection_of_point(A2))
     res += f"длина высоты из вершины A2: {A2H.get_len()}\n"

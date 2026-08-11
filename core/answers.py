@@ -1585,6 +1585,143 @@ def _literal_count(expr) -> int:
 
 
 # ======================================================================
+#  Уравнение
+# ======================================================================
+
+
+@dataclass
+class EquationSpec(AnswerSpec):
+    """
+    Ответ — уравнение вида `F(x, y, …) = 0`.
+
+    Отдельный вид, потому что уравнение описывает МНОЖЕСТВО, а не
+    выражение: `3x + 2y - 5 = 0`, `6x + 4y - 10 = 0` и `-3x - 2y + 5 = 0`
+    задают одну прямую. `ExpressionSpec` сравнивает через
+    `simplify(a - b) == 0` и забраковал бы два верных ответа из трёх —
+    молча, и студент не понял бы, за что.
+
+    Режимы. Мягкий принимает любую пропорциональную запись — это ответ на
+    «выпишите уравнение прямой». Строгий требует канонический общий вид:
+    целые взаимно простые коэффициенты, старший положительный, — то есть
+    «приведите к общему виду», где форма записи и есть часть задания.
+    """
+
+    kind: ClassVar[str] = "equation"
+
+    value: str = ""
+    variables: Tuple[str, ...] = ()
+    mode: CheckMode = DEFAULT_MODE
+    tuning: dict = field(default_factory=dict)
+
+    def check(self, user_input: str, *,
+              mode: Optional[CheckMode] = None) -> Verdict:
+        from .equation_text import (
+            EquationTextError, as_expression, normalise, proportional,
+        )
+
+        active = self.effective_mode(mode)
+        text = (user_input or "").strip()
+        if not text:
+            return Verdict(False, active, Reason.EMPTY, "", "Ответ не введён.")
+        try:
+            given = as_expression(text, self.variables)
+            expected = as_expression(self.value, self.variables)
+        except EquationTextError as exc:
+            return Verdict(False, active, Reason.UNPARSED, text, str(exc))
+
+        if not proportional(expected, given, self.variables):
+            return Verdict(False, active, Reason.MISMATCH, text,
+                           "Это уравнение задаёт не то множество.")
+        if active is not CheckMode.SOFT:
+            canonical = normalise(expected, self.variables)
+            import sympy
+
+            if sympy.expand(given - canonical) != 0:
+                return Verdict(False, active, Reason.WRONG_FORM, text,
+                               "Множество верное, но запись не приведена к "
+                               "общему виду с целыми коэффициентами.")
+        return Verdict(True, active, Reason.EQUIVALENT, text)
+
+    def display_blocks(self) -> List[Block]:
+        from .blocks import FormulaBlock, TextBlock
+
+        try:
+            import sympy
+
+            from .equation_text import as_expression
+
+            expr = as_expression(self.value, self.variables)
+            return [FormulaBlock(f"{sympy.latex(expr)} = 0")]
+        except Exception:                                  # noqa: BLE001
+            return [TextBlock(str(self.value))]
+
+    def input_fields(self) -> List[InputField]:
+        hint = ("переменные: " + ", ".join(self.variables)
+                if self.variables else "")
+        return [InputField(kind=self.kind, hint=hint)]
+
+    def _candidate_examples(self, mode: CheckMode) -> List[str]:
+        """
+        Эталон и его удвоение.
+
+        Второй пример здесь не для полноты: он показывает преподавателю,
+        что пропорциональная запись ЗАСЧИТЫВАЕТСЯ. Без этого механизм
+        выглядит строже, чем он есть, — и его выключают (§5). В строгом
+        режиме удвоение отсеется само, потому что не пройдёт `check`.
+        """
+        from .equation_text import EquationTextError, as_expression
+
+        out = [self._canonical_text()]
+        try:
+            import sympy
+
+            doubled = sympy.expand(2 * as_expression(self.value, self.variables))
+            out.append(f"{doubled} = 0")
+        except (EquationTextError, Exception):             # noqa: BLE001
+            pass
+        return out
+
+    def _candidate_distractors(self, mode: CheckMode) -> List[str]:
+        """
+        Ошибки, которые студенты и делают: сбитый знак свободного члена и
+        переставленные коэффициенты при переменных.
+        """
+        from .equation_text import EquationTextError, as_expression
+
+        try:
+            import sympy
+
+            expr = as_expression(self.value, self.variables)
+        except EquationTextError:
+            return []
+
+        symbols = [sympy.Symbol(name) for name in self.variables]
+        constant = expr.subs({symbol: 0 for symbol in symbols})
+        out = [f"{sympy.expand(expr - 2 * constant)} = 0"]
+        if len(symbols) >= 2:
+            swapped = expr.subs(
+                {symbols[0]: symbols[1], symbols[1]: symbols[0]},
+                simultaneous=True)
+            out.append(f"{sympy.expand(swapped)} = 0")
+        return out
+
+    def _canonical_text(self) -> str:
+        from .equation_text import EquationTextError, as_expression, normalise
+
+        try:
+            expr = as_expression(self.value, self.variables)
+        except EquationTextError:
+            return str(self.value)
+        return f"{normalise(expr, self.variables)} = 0"
+
+    def _payload(self) -> dict:
+        out: dict = {"value": self.value}
+        if self.variables:
+            out["variables"] = list(self.variables)
+        return out
+
+
+# ======================================================================
 #  Вывод программы
 # ======================================================================
 
@@ -1951,6 +2088,13 @@ def _build_logic(data: dict) -> LogicSpec:
         **_common(data))
 
 
+def _build_equation(data: dict) -> EquationSpec:
+    return EquationSpec(
+        value=str(data.get("value", "")),
+        variables=tuple(data.get("variables") or ()),
+        **_common(data))
+
+
 def _build_output(data: dict) -> OutputSpec:
     return OutputSpec(value=str(data.get("value", "")), **_common(data))
 
@@ -1969,6 +2113,7 @@ _REGISTRY = {
     TextSpec.kind: _build_text,
     ExpressionSpec.kind: _build_expression,
     LogicSpec.kind: _build_logic,
+    EquationSpec.kind: _build_equation,
     OutputSpec.kind: _build_output,
     SlotsSpec.kind: _build_slots,
 }
@@ -1978,6 +2123,6 @@ __all__ = [
     "CheckMode", "DEFAULT_MODE", "Reason", "Verdict", "InputField",
     "normalize", "Tolerance", "ToleranceKind",
     "AnswerSpec", "NumberSpec", "TextSpec", "ExpressionSpec", "LogicSpec",
-    "OutputSpec", "SlotsSpec",
+    "EquationSpec", "OutputSpec", "SlotsSpec",
     "ExpressionError", "significant_digits",
 ]

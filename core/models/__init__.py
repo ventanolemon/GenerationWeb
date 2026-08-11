@@ -16,10 +16,14 @@ from .base import (
 )
 from .registry import DEFAULT_MODELS, ModelRegistry
 from .linal_eigen import MODEL as LINAL_EIGEN
+from .linal_pyramid import MODEL as LINAL_PYRAMID
+from .linal_triangle import MODEL as LINAL_TRIANGLE
 from .opvs_ccode import MODEL as OPVS_CCODE
 from .opvs_circuit import MODEL as OPVS_CIRCUIT
 
 DEFAULT_MODELS.register(LINAL_EIGEN)
+DEFAULT_MODELS.register(LINAL_TRIANGLE)
+DEFAULT_MODELS.register(LINAL_PYRAMID)
 DEFAULT_MODELS.register(OPVS_CIRCUIT)
 DEFAULT_MODELS.register(OPVS_CCODE)
 

@@ -30,6 +30,7 @@
 Опции выражения  : vars=, reject=
 Опции строки     : alt=, wrong=, case, typos=
 Опции функции    : vars=
+Опции уравнения  : vars=
 Вывод программы  : без опций
 Общие            : label=, mode=, choices=, много
 
@@ -42,6 +43,7 @@
     пропуски:text:много:typos=0
     функция:logic:vars=A,B,C
     вывод:output
+    прямая:equation:vars=x,y
 
 Сколько полей — знают данные
 ----------------------------
@@ -70,7 +72,8 @@ from ..errors import GraphValidationError, RetryGeneration
 from ..port_types import PortType
 
 
-KINDS = ("number", "expr", "text", "matrix", "logic", "output")
+KINDS = ("number", "expr", "text", "matrix", "logic", "output",
+         "equation")
 
 #: Опции, осмысленные для каждого вида, плюс общие. Список нужен не для
 #: подсказки, а для отказа: `alt=` у числового слота почти наверняка значит,
@@ -95,6 +98,9 @@ _OPTIONS: Dict[str, Tuple[str, ...]] = {
     # нечего. Допуск на опечатку здесь был бы прямым вредом — `sum=86`
     # вместо `sum=85` отличается одним символом.
     "output": (),
+    # Уравнение: имена переменных. Допуска нет — множество либо то же,
+    # либо другое.
+    "equation": ("vars",),
 }
 #: `choices=N` — показать ответ ТЕСТОМ из N вариантов. Общая опция, а
 #: не свойство вида: тестом задаётся и число, и выражение, и строка.
@@ -118,6 +124,7 @@ _PORT_TYPES = {
     # вместо величины, с чего вся работа по стандарту и начиналась.
     "logic": PortType.EXPR,
     "output": PortType.STRING,
+    "equation": PortType.EXPR,
 }
 
 
@@ -218,6 +225,8 @@ class SlotDecl:
             return self._matrix(value, active)
         if self.kind == "logic":
             return self._logic(value, active)
+        if self.kind == "equation":
+            return self._equation(value, active)
         if self.kind == "output":
             from core.answers import OutputSpec
             return OutputSpec(value=str(value), mode=active)
@@ -327,6 +336,32 @@ class SlotDecl:
                 f"Слот {self.name!r}: на вход пришло {value!r}, а объявлена "
                 f"логическая функция.")
         return LogicSpec(value=text, variables=names, mode=mode)
+
+    def _equation(self, value: Any, mode):
+        """
+        Уравнение как ответ.
+
+        Эталон хранится приведённым к общему виду с целыми
+        коэффициентами: ключ читает человек, и `-6*x - 4*y + 10 = 0` там,
+        где достаточно `3x + 2y - 5 = 0`, заставляет сверять руками.
+        """
+        from core.answers import EquationSpec
+        from core.equation_text import normalise
+
+        names = tuple(_split_list(self.options.get("vars", "")))
+        if not names:
+            names = _free_symbols(value)
+        if not names:
+            raise GraphValidationError(
+                f"Слот {self.name!r}: не удалось определить переменные "
+                f"уравнения — перечислите их через vars=.")
+        try:
+            text = f"{normalise(value, names)} = 0"
+        except Exception:                                  # noqa: BLE001
+            raise GraphValidationError(
+                f"Слот {self.name!r}: на вход пришло {value!r}, а объявлено "
+                f"уравнение.")
+        return EquationSpec(value=text, variables=names, mode=mode)
 
     def _matrix(self, value: Any, mode):
         """

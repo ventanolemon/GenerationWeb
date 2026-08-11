@@ -146,21 +146,23 @@ class WidgetRegistry:
 TEXT_INPUT = Widget(
     name="text_input",
     title="Поле ввода",
-    kinds=frozenset({"number", "text", "expression", "logic"}),
+    kinds=frozenset({"number", "text", "expression", "logic",
+                     "equation"}),
     hint="Одна строка. Работает для любого одиночного ответа.",
 )
 
 FORMULA_INPUT = Widget(
     name="formula_input",
     title="Поле ввода с палитрой формул",
-    kinds=frozenset({"expression"}),
+    kinds=frozenset({"expression", "equation"}),
     hint="То же поле, плюс палитра конструкций: дробь, корень, степень.",
 )
 
 CHOICE_ONE = Widget(
     name="choice_one",
     title="Выбор одного варианта",
-    kinds=frozenset({"number", "text", "expression", "logic"}),
+    kinds=frozenset({"number", "text", "expression", "logic",
+                     "equation"}),
     hint="Тест: верный ответ среди правдоподобных неверных. Варианты "
          "порождает сама спецификация — та же типизация, что даёт проверку.",
 )
