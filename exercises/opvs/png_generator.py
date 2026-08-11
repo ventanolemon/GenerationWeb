@@ -295,35 +295,91 @@ def make_function(max_attempts: int = 20) -> list:
     )
 
 
+def _shape(gate: "LogicElement") -> tuple:
+    """
+    Структура вентиля: тип и МНОЖЕСТВО подключённых объектов.
+
+    Порядок входов на чертеже не виден — `AND(A,B)` и `AND(B,A)` рисуются
+    одним и тем же прямоугольником, поэтому ключ по множеству, а не по
+    списку. Сравнение по `id`, а не по значению: подключают конкретные
+    объекты схемы, и именно их тождество определяет, один это вентиль или
+    два одинаковых.
+    """
+    return (gate.type, frozenset(id(i) for i in gate.inputs))
+
+
+def _consume(unused: list, gate: "LogicElement") -> None:
+    """
+    Убирает входы вентиля из списка «без потребителя» — ПО ТОЖДЕСТВУ.
+
+    Здесь стояло `unused.remove(e)`, а `list.remove` сравнивает через
+    `__eq__`, который у LogicElement структурный: два одинаково собранных
+    вентиля равны между собой (при этом `__hash__` намеренно оставлен по
+    id — противоречие, на котором всё и держалось). Поэтому при двух
+    одинаковых вентилях удалялся ПЕРВЫЙ похожий, а не тот, который
+    действительно подключили. Последствие видно на чертеже: один вентиль
+    оставался без выходного провода — нарисован и никуда не ведёт, — а
+    другой уходил в схему дважды. На 120 сидах так ломалось 5% схем, и
+    символьная проверка их пропускала: `validate_circuit` смотрит только
+    на дерево от корня, а оторванного элемента в этом дереве нет.
+    """
+    for wanted in gate.inputs:
+        for i, element in enumerate(unused):
+            if element is wanted:
+                del unused[i]
+                break
+
+
 def _build_random_circuit() -> list:
     """Одна попытка стохастической сборки DAG (вызывается из make_function)."""
     n_inputs = random.randint(3, 4)
     inputs   = [LogicElement('INPUT', name=chr(ord('A') + i))
                 for i in range(n_inputs)]
     unused   = list(inputs)    # элементы без потребителя на текущий момент
-    used_not = []              # предотвращаем дублирующиеся NOT-вентили
+    made     = set()           # структуры собранных вентилей — против дублей
+
+    def _random_gate(pool: list) -> LogicElement:
+        """
+        Случайный вентиль с входами из pool.
+
+        AND и OR требуют ДВУХ входов. Раньше здесь стояло
+        `k=min(2, len(pool))`, и на пуле из одного элемента получался
+        «вентиль» с единственным входом — то есть провод, нарисованный
+        как логический элемент: 2% вентилей на 200 прогонах. В схеме это
+        читается как ошибка чертежа, а на деле ещё и лишний уровень в
+        формуле. Если складывать нечего — ставим NOT, у которого один
+        вход осмыслен.
+        """
+        gtype = random.choice(["AND", "AND", "OR", "OR", "NOT"])
+        if gtype != "NOT" and len(pool) < 2:
+            gtype = "NOT"
+        sample = ([random.choice(pool)] if gtype == "NOT"
+                  else random.sample(pool, k=2))
+        return LogicElement(gtype, inputs=sample)
 
     def _make_gate(pool: list) -> LogicElement:
-        """Создаёт случайный вентиль с входами из pool."""
-        gtype = random.choice(["AND", "AND", "OR", "OR", "NOT"])
-        if gtype == "NOT":
-            sample = [random.choice(pool)]
-            if sample in used_not:
-                gtype  = random.choice(["AND", "OR"])
-                sample = random.sample(pool, k=min(2, len(pool)))
-            else:
-                used_not.append(sample)
-        else:
-            sample = random.sample(pool, k=min(2, len(pool)))
-        return LogicElement(gtype, inputs=sample)
+        """
+        Вентиль, которого в схеме ещё нет.
+
+        Дубликат — это два одинаковых прямоугольника на чертеже от одних и
+        тех же проводов: студент видит лишний элемент, не несущий смысла.
+        Прежде так отсеивались только повторные NOT; проверка по структуре
+        покрывает и AND с OR. Если за несколько попыток свежего вентиля не
+        нашлось (пул мал — все комбинации разобраны), берём что вышло:
+        повтор в схеме избыточен, но не сломан.
+        """
+        for _ in range(8):
+            gate = _random_gate(pool)
+            if _shape(gate) not in made:
+                break
+        made.add(_shape(gate))
+        return gate
 
     # Слой 1
     first_layer = []
     for _ in range(random.randint(2, 3)):
         gate = _make_gate(inputs)
-        for e in gate.inputs:
-            try: unused.remove(e)
-            except ValueError: pass
+        _consume(unused, gate)
         first_layer.append(gate)
         unused.append(gate)
 
@@ -331,17 +387,26 @@ def _build_random_circuit() -> list:
     second_layer = []
     for _ in range(random.randint(1, 2)):
         gate = _make_gate(first_layer)
-        for e in gate.inputs:
-            try: unused.remove(e)
-            except ValueError: pass
+        _consume(unused, gate)
         second_layer.append(gate)
         unused.append(gate)
 
-    # Выходной вентиль: принимает все узлы без потребителя
+    # Выходной вентиль: принимает все узлы без потребителя.
+    #
+    # Если такой узел ОДИН, он и есть выход схемы — оборачивать его в
+    # AND с единственным входом нельзя: это провод, нарисованный как
+    # вентиль, и лишний уровень скобок в формуле. Именно так и появлялась
+    # большая часть вырожденных элементов.
+    rest = inputs + first_layer + second_layer
+    if len(unused) == 1:
+        output = unused[0]
+        # Выход обязан быть последним: вызывающие берут формулу как
+        # `elements[-1].get_logic_str()`.
+        return [e for e in rest if e is not output] + [output]
+
     root_type = random.choice(["AND", "OR"])
     root      = LogicElement(root_type, inputs=list(unused))
-
-    return inputs + first_layer + second_layer + [root]
+    return rest + [root]
 
 
 # ─── Разметка уровней ─────────────────────────────────────────────────────────

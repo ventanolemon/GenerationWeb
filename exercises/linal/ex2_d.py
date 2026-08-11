@@ -218,7 +218,16 @@ def get_exercise():
     3) расстояние от точки A1 до прямой (A2A3);
     4) точку A1′, симметричную точке A1 относительно прямой (A2A3)."""
     res = ""
-    a, b, c = Point(generate=True), Point(generate=True), Point(generate=True)
+    # Треугольник обязан быть НЕВЫРОЖДЕННЫМ. Три случайные точки в 2% случаев
+    # ложились на одну прямую, тогда AC и BC совпадали, и пересечение
+    # `ac.union(bc)` делило на ноль — /generate отвечал 500 примерно на
+    # каждый пятидесятый запрос. Условие проверяется по площади: у
+    # вырожденного треугольника векторное произведение равно нулю.
+    while True:
+        a, b, c = (Point(generate=True), Point(generate=True),
+                   Point(generate=True))
+        if abs(Vector(a, b).vector_mul(Vector(a, c))) > 1e-9:
+            break
     ab, ac, bc = Line(a, b), Line(a, c), Line(b, c)
     task += f"координаты точек A: {a}, B: {b}\n"
     task += f"уравнения AB: {ab.get_obch()}, AC: {ac.get_obch()}\n"
@@ -237,12 +246,23 @@ def get_exercise():
 
     m = ab.get_center()
     cm = Line(c, m)
+    # Высота, проведённая ЧЕРЕЗ ВЕРШИНУ A3 (задание, п. 2), — это отрезок
+    # от A3 до основания на A1A2. Раньше под именем «длина высоты»
+    # печаталась длина `ah` — перпендикуляра из A1 на A2A3, то есть
+    # расстояние из пункта 3, которое двумя строками ниже выводилось ещё
+    # раз под своим именем. Ключ уходил преподавателю с неверным числом:
+    # на треугольнике A(5,-1) B(7,-4) C(-3,-2) вместо 7.2111 стояло
+    # 2.5495. Сходимость проверяется площадью: 0.5·|A1A2|·h = S.
     h = Line(c, vector=ab.get_perpendicular())
+    height = Line(c, h.union(ab))
+    res += f"длина высоты из A3: {height.get_len(for_text=True)}\n"
+
+    # Перпендикуляр из A1 на A2A3 — это пункт 3 задания, и печатается он
+    # ниже под своим именем. Раньше он же выводился выше как «длина
+    # высоты», то есть одно число стояло под двумя разными именами.
     ah = Line(a, vector=bc.get_perpendicular())
     ah = Line(a, ah.union(bc))
-    res += f"длина высоты: {ah.get_len(for_text=True)}\n"
 
-    res += f"симметричная точка: {bc.get_simmetric_point(a)}\n"
     res += f"A1A2 уравнения: {ab.get_canon()}\n{ab.get_param()}\n{ab.get_obch()}\n"
 
     res += f"A3M уравнения: {cm.get_canon()}\n{cm.get_param()}\n{cm.get_obch()}\n"
