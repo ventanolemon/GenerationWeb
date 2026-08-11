@@ -129,6 +129,21 @@ class InputField:
 
     hint: str = ""
 
+    tokens: Tuple[str, ...] = ()
+    """
+    Элементы, из которых собирают ответ.
+
+    Нужны виджетам, которые не печатают, а СОБИРАЮТ: холст логической
+    схемы должен знать имена входов, «собери предложение» — слова. Всё
+    это и так есть в условии (входы подписаны на чертеже), поэтому
+    свойство «здесь нет ответа» не нарушается: холст получает алфавит, а
+    не то, что из него сложить.
+
+    Отдельное поле, а не разбор `hint`: подсказка это ТЕКСТ для человека
+    («входы: A, B, C»), и вытаскивать из неё данные значило бы запретить
+    когда-либо её переписать.
+    """
+
     def to_dict(self) -> dict:
         out: dict = {"kind": self.kind}
         if self.name:
@@ -137,6 +152,8 @@ class InputField:
             out["label"] = self.label
         if self.hint:
             out["hint"] = self.hint
+        if self.tokens:
+            out["tokens"] = list(self.tokens)
         return out
 
 
@@ -1525,7 +1542,10 @@ class LogicSpec(AnswerSpec):
 
     def input_fields(self) -> List[InputField]:
         hint = ("входы: " + ", ".join(self.variables)) if self.variables else ""
-        return [InputField(kind=self.kind, hint=hint)]
+        # `tokens` — алфавит для собирающих виджетов: холсту схемы нужны
+        # имена входов, чтобы было из чего строить. Ответа они не
+        # содержат: те же имена подписаны на чертеже в условии.
+        return [InputField(kind=self.kind, hint=hint, tokens=self.variables)]
 
     def _candidate_examples(self, mode: CheckMode) -> List[str]:
         """

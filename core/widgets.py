@@ -167,6 +167,14 @@ CHOICE_ONE = Widget(
          "порождает сама спецификация — та же типизация, что даёт проверку.",
 )
 
+CIRCUIT_CANVAS = Widget(
+    name="circuit_canvas",
+    title="Холст логической схемы",
+    kinds=frozenset({"logic"}),
+    hint="Собрать схему из вентилей И/ИЛИ/НЕ вместо того, чтобы выписывать "
+         "формулу. Проверка та же: сравниваются ФУНКЦИИ, а не чертежи.",
+)
+
 TEXT_AREA = Widget(
     name="text_area",
     title="Многострочное поле",
@@ -199,8 +207,12 @@ SLOT_INLINE = Widget(
 
 
 def _register_builtin(registry: "WidgetRegistry") -> "WidgetRegistry":
+    # Порядок значим: первый совместимый становится умолчанием. Холст
+    # стоит ПОСЛЕ поля ввода намеренно — собирать схему мышью дольше, чем
+    # написать формулу, и навязывать это всем заданиям неправильно. Холст
+    # включается автором явно (`widget: circuit_canvas` у узла задания).
     for widget in (TEXT_INPUT, FORMULA_INPUT, CHOICE_ONE, TEXT_AREA,
-                   SLOT_FIELDS, GRID_FIELDS, SLOT_INLINE):
+                   CIRCUIT_CANVAS, SLOT_FIELDS, GRID_FIELDS, SLOT_INLINE):
         registry.register(widget)
     return registry
 

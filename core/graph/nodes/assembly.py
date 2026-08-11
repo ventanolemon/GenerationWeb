@@ -201,8 +201,15 @@ class TaskNode(Node):
         decl = decls[0]
         if decl.many or decl.kind == "matrix":
             return "slots"
+        # Карта, а не `decl.kind` как есть: у слота и у спецификации имена
+        # видов совпадают не везде (`expr` против `expression`).
+        # Умолчание обязательно: без него новый вид слота роняет узел
+        # голым KeyError при ЛЮБОМ заданном виджете — так и случилось,
+        # когда появились logic/output/equation. Автор графа увидел бы
+        # внутреннюю ошибку вместо внятного отказа, а падало бы на
+        # сохранении, то есть далеко от места, где это можно понять.
         return {"number": "number", "expr": "expression",
-                "text": "text"}[decl.kind]
+                "text": "text"}.get(decl.kind, decl.kind)
 
     def validate_params(self) -> None:
         decls = self._slots()

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Block, InputField, TextBlock } from "../api/types";
 import BlockRenderer from "../blocks/BlockRenderer";
+import CircuitCanvas from "../circuit/CircuitCanvas";
 import FormulaInput from "../formula/FormulaInput";
 import { hasHoles } from "../formula/fields";
 import styles from "../styles/views.module.css";
@@ -184,6 +185,36 @@ export default function AnswerInput({
           Ответить
         </button>
       </form>
+    );
+  }
+
+  // Холст логической схемы. Тот же приём, что у теста и у палитры
+  // формул: способ ВВОДА, а не отдельный вид ответа. Холст собирает ту
+  // же строку, которую студент написал бы руками, и проверяет её та же
+  // спецификация — сравнением ФУНКЦИЙ, а не чертежей.
+  //
+  // Имена входов приходят полем (`tokens`), а не разбором подсказки:
+  // подсказка — текст для человека, и вытаскивать из неё данные значило
+  // бы запретить её когда-либо переписать.
+  if (widget === "circuit_canvas" && list.length === 1) {
+    const key = list[0].name ?? "";
+    const variables = list[0].tokens ?? [];
+    return (
+      <div className={styles.answerForm}>
+        <CircuitCanvas
+          key={`${resetKey ?? 0}:${variables.join(",")}`}
+          variables={variables}
+          disabled={disabled}
+          onFormula={(text) => set(key, text)}
+        />
+        <button
+          type="button"
+          onClick={submit}
+          disabled={disabled || !(values[key] ?? "").trim()}
+        >
+          Ответить
+        </button>
+      </div>
     );
   }
 
