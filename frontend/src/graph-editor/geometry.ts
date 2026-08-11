@@ -72,3 +72,37 @@ export function wirePath(x1: number, y1: number, x2: number, y2: number): string
   const dx = Math.max(40, Math.abs(x2 - x1) / 2);
   return `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
 }
+
+/**
+ * Середина того же безье (t = ½) — куда сажать подпись провода.
+ *
+ * Считается по кривой, а не как середина отрезка между концами: при
+ * обратном проводе (справа налево) кривая уходит далеко в сторону, и
+ * подпись по отрезку висела бы в пустоте отдельно от своего провода.
+ */
+export function wireMidpoint(
+  x1: number, y1: number, x2: number, y2: number,
+): [number, number] {
+  const dx = Math.max(40, Math.abs(x2 - x1) / 2);
+  // B(½) = (P₀ + 3P₁ + 3P₂ + P₃) / 8
+  return [
+    (x1 + 3 * (x1 + dx) + 3 * (x2 - dx) + x2) / 8,
+    (y1 + 3 * y1 + 3 * y2 + y2) / 8,
+  ];
+}
+
+/**
+ * Цвета веток «условие»/«ответ» (model.branchMap).
+ *
+ * Намеренно не пересекаются с палитрой типов портов выше: подсветка
+ * веток включается поверх той же картинки, и совпадение цвета читалось
+ * бы как «этот провод такого типа».
+ */
+export const BRANCH_COLORS: Record<string, string> = {
+  statement: "#3f7fd0",
+  answer: "#2e9e6b",
+  both: "#a06cd5",
+};
+
+/** Провод, не доходящий до финала: он ни на что не влияет. */
+export const BRANCH_UNUSED = "rgba(140, 140, 140, 0.45)";

@@ -16,6 +16,7 @@ import type {
   CorpusListResponse,
   CorpusRecordDetail,
   Curation,
+  DeploymentState,
   ExportRequest,
   GenerateResponse,
   Group,

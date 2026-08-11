@@ -141,7 +141,7 @@ export function addNode(
 export function removeNode(g: GraphSpecJson, nodeId: string): GraphSpecJson {
   const layout = { ...layoutOf(g) };
   delete layout[nodeId];
-  return {
+  return dropOrphanNotes({
     ...g,
     nodes: g.nodes.filter((n) => n.id !== nodeId),
     edges: g.edges.filter((e) => {
@@ -150,7 +150,7 @@ export function removeNode(g: GraphSpecJson, nodeId: string): GraphSpecJson {
       return fn !== nodeId && tn !== nodeId;
     }),
     meta: { ...g.meta, layout },
-  };
+  });
 }
 
 export function moveNode(
@@ -181,17 +181,19 @@ export function setParams(
 export function addEdge(
   g: GraphSpecJson, from: string, to: string,
 ): GraphSpecJson {
-  return {
+  // Вытесненный провод уносит с собой и свою подпись: она была написана
+  // про него, а не про порт, в который он приходил.
+  return dropOrphanNotes({
     ...g,
     edges: [...g.edges.filter((e) => e.to !== to), { from, to }],
-  };
+  });
 }
 
 export function removeEdge(g: GraphSpecJson, edge: GraphEdgeJson): GraphSpecJson {
-  return {
+  return dropOrphanNotes({
     ...g,
     edges: g.edges.filter((e) => !(e.from === edge.from && e.to === edge.to)),
-  };
+  });
 }
 
 export function pruneInvalidEdges(g: GraphSpecJson, catalog: Catalog): GraphSpecJson {
@@ -207,7 +209,60 @@ export function pruneInvalidEdges(g: GraphSpecJson, catalog: Catalog): GraphSpec
     const [tn, tp] = e.to.split(":");
     return outPorts.get(fn)?.has(fp) && inPorts.get(tn)?.has(tp);
   });
-  return edges.length === g.edges.length ? g : { ...g, edges };
+  return edges.length === g.edges.length
+    ? g
+    : dropOrphanNotes({ ...g, edges });
+}
+
+// ─── Подписи проводов ────────────────────────────────────────────────────
+//
+// Жалоба из july_language_wishlist (§7): подписи есть только у узлов, а
+// объяснять в большом графе чаще нужно именно провод — почему величина
+// уходит именно сюда. Живут в `meta`, рядом с `layout` и `comments`:
+// движка не касаются, синк на них не конфликтует.
+//
+// Ключ — `${from}->${to}`, то есть сама пара портов. Не индекс в списке
+// рёбер: порядок рёбер меняется при каждом переподключении, и подписи
+// молча переехали бы на чужие провода.
+
+export function edgeKey(edge: GraphEdgeJson): string {
+  return `${edge.from}->${edge.to}`;
+}
+
+export function edgeNotesOf(g: GraphSpecJson): Record<string, string> {
+  const raw = g.meta?.edge_notes;
+  return raw && typeof raw === "object" ? (raw as Record<string, string>) : {};
+}
+
+export function edgeNote(g: GraphSpecJson, edge: GraphEdgeJson): string {
+  return edgeNotesOf(g)[edgeKey(edge)] ?? "";
+}
+
+export function setEdgeNote(
+  g: GraphSpecJson, edge: GraphEdgeJson, text: string,
+): GraphSpecJson {
+  const notes = { ...edgeNotesOf(g) };
+  const value = text.trim();
+  if (value) notes[edgeKey(edge)] = value;
+  else delete notes[edgeKey(edge)];
+  return { ...g, meta: { ...g.meta, edge_notes: notes } };
+}
+
+/**
+ * Выбросить подписи проводов, которых больше нет.
+ *
+ * Иначе подпись пережила бы удаление провода и всплыла бы на новом
+ * проводе между теми же портами — с текстом, написанным про другое.
+ */
+function dropOrphanNotes(g: GraphSpecJson): GraphSpecJson {
+  const notes = edgeNotesOf(g);
+  const keys = Object.keys(notes);
+  if (keys.length === 0) return g;
+  const alive = new Set(g.edges.map(edgeKey));
+  if (keys.every((k) => alive.has(k))) return g;
+  const kept: Record<string, string> = {};
+  for (const k of keys) if (alive.has(k)) kept[k] = notes[k];
+  return { ...g, meta: { ...g.meta, edge_notes: kept } };
 }
 
 export function layoutOf(g: GraphSpecJson): Record<string, [number, number]> {
@@ -502,6 +557,134 @@ export function taskSinkIds(catalog: Catalog, g: GraphSpecJson): string[] {
 export function typeHasTaskOutput(catalog: Catalog, typeId: string): boolean {
   const cn = catalogNode(catalog, typeId);
   return !!cn?.outputs.some((o) => o.type === "task");
+}
+
+// ─── Ветки «условие» и «ответ» ───────────────────────────────────────────
+//
+// Жалоба из july_language_wishlist (§8): в большом графе не видно, что
+// готовит условие, а что — ответ; они «различаются лишь тем, куда в итоге
+// приходит провод».
+//
+// Ключевое решение: это НЕ авторская пометка и не поле в meta. Куда
+// приходит провод — уже известно из самого графа, поэтому принадлежность
+// ВЫЧИСЛЯЕТСЯ обратным обходом от финала. Хранимая пометка на второй
+// правке разошлась бы с проводами и врала бы ровно там, где читатель ей
+// доверяет; вычисленная — не может устареть в принципе.
+//
+// Узел, питающий обе ветки, помечен отдельно (`both`): общая величина в
+// условии и в ответе — не путаница, а самый частый и самый важный случай.
+
+export type Branch = "statement" | "answer" | "both";
+
+export interface BranchMap {
+  /** id узла → ветка. Узлы вне достижимости финала отсутствуют. */
+  nodes: Map<string, Branch>;
+  /** `${from}->${to}` → ветка. */
+  edges: Map<string, Branch>;
+  /** Финал, от которого считали; null — финала нет или их несколько. */
+  sink: string | null;
+}
+
+/**
+ * Как входы ФИНАЛА делятся на условие и ответ.
+ *
+ * Знание точечное: финальных узлов в языке единицы, и у каждого деление
+ * своё. У `task` ответ — объявленные слоты и маркеры шаблона ответа,
+ * условие — маркеры текста условия; у `static_task` это прямо два порта.
+ * Незнакомый финал не угадывается по имени порта: пусть лучше подсветки
+ * не будет, чем она покажет неправду.
+ */
+function sinkPortBranches(
+  node: GraphNodeJson, ports: PortDef[],
+): Map<string, Branch> {
+  const out = new Map<string, Branch>();
+  const p = node.params ?? {};
+  if (node.type === "task") {
+    const slots = new Set(parseAnswerSlots(p).map((s) => s.name));
+    const inAnswer = new Set(markerNames(String(p.answer_template ?? "")));
+    const inStatement = new Set(markerNames(String(p.statement ?? "")));
+    for (const port of ports) {
+      if (slots.has(port.name)) out.set(port.name, "answer");
+      else if (inStatement.has(port.name)) {
+        out.set(port.name, inAnswer.has(port.name) ? "both" : "statement");
+      } else if (inAnswer.has(port.name)) out.set(port.name, "answer");
+      // `vars` и `blocks` идут в условие: первый подставляется в его
+      // текст, второй дописывается к нему блоками.
+      else if (port.name === "vars" || port.name === "blocks") {
+        out.set(port.name, "statement");
+      }
+    }
+  } else if (node.type === "static_task") {
+    for (const port of ports) {
+      if (port.name === "statement" || port.name === "answer") {
+        out.set(port.name, port.name);
+      }
+    }
+  }
+  return out;
+}
+
+function mergeBranch(was: Branch | undefined, add: Branch): Branch {
+  if (was === undefined) return add;
+  return was === add ? was : "both";
+}
+
+/**
+ * Раскрасить граф ветками обратным обходом от финала.
+ *
+ * Обход идёт по РЁБРАМ, а не по узлам: ветку получает и провод, и то, что
+ * в него приходит. Иначе провод от общей величины пришлось бы красить по
+ * узлу-источнику, и оба его конца выглядели бы одинаково — а интересно
+ * как раз то, что один и тот же узел уходит в две стороны.
+ */
+export function branchMap(catalog: Catalog, g: GraphSpecJson): BranchMap {
+  const nodes = new Map<string, Branch>();
+  const edges = new Map<string, Branch>();
+  const sinks = taskSinkIds(catalog, g);
+  // Ноль финалов — граф не дособран; больше одного — он уже ошибочен, и
+  // подсветка веток от произвольно выбранного финала вводила бы в
+  // заблуждение поверх настоящей проблемы.
+  if (sinks.length !== 1) return { nodes, edges, sink: null };
+  const sinkId = sinks[0];
+  const sinkNode = g.nodes.find((n) => n.id === sinkId);
+  if (!sinkNode) return { nodes, edges, sink: null };
+
+  const incoming = new Map<string, GraphEdgeJson[]>();
+  for (const e of g.edges) {
+    const target = e.to.split(":")[0];
+    const list = incoming.get(target);
+    if (list) list.push(e);
+    else incoming.set(target, [e]);
+  }
+
+  const byPort = sinkPortBranches(sinkNode, derivePorts(catalog, sinkNode).inputs);
+  const queue: { edge: GraphEdgeJson; branch: Branch }[] = [];
+  for (const e of incoming.get(sinkId) ?? []) {
+    const branch = byPort.get(e.to.split(":")[1]);
+    if (branch) queue.push({ edge: e, branch });
+  }
+
+  // Обход с ослаблением: узел переобходится, только если его ветка
+  // РАСШИРИЛАСЬ (statement + answer → both). Циклов в графе нет, но
+  // ромбы есть, и без этого условия общий предок обходился бы заново на
+  // каждом пути к нему.
+  while (queue.length > 0) {
+    const { edge, branch } = queue.pop()!;
+    const key = `${edge.from}->${edge.to}`;
+    const wasEdge = edges.get(key);
+    const nextEdge = mergeBranch(wasEdge, branch);
+    edges.set(key, nextEdge);
+    const source = edge.from.split(":")[0];
+    const wasNode = nodes.get(source);
+    const nextNode = mergeBranch(wasNode, branch);
+    nodes.set(source, nextNode);
+    if (wasNode === nextNode && wasEdge === nextEdge) continue;
+    for (const up of incoming.get(source) ?? []) {
+      queue.push({ edge: up, branch: nextNode });
+    }
+  }
+  nodes.set(sinkId, "both");
+  return { nodes, edges, sink: sinkId };
 }
 
 // ─── Сериализация ────────────────────────────────────────────────────────

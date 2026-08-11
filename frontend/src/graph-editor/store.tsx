@@ -33,6 +33,7 @@ import {
   normalizeGraph,
   removeEdge,
   removeNode,
+  setEdgeNote,
   setParams,
   updateAtPath,
 } from "./model";
@@ -52,6 +53,7 @@ export type EditorAction =
   | { kind: "set_params"; nodeId: string; params: Record<string, unknown>; catalog: Catalog }
   | { kind: "add_edge"; from: string; to: string }
   | { kind: "remove_edge"; edge: GraphEdgeJson }
+  | { kind: "set_edge_note"; edge: GraphEdgeJson; text: string }
   | { kind: "select"; nodeId: string | null }
   | { kind: "enter_subgraph"; nodeId: string; paramKey: string }
   | { kind: "exit_subgraph" }        // на уровень вверх
@@ -98,6 +100,8 @@ export function editorReducer(state: EditorState, a: EditorAction): EditorState 
       return inCurrent(state, (g) => addEdge(g, a.from, a.to));
     case "remove_edge":
       return inCurrent(state, (g) => removeEdge(g, a.edge));
+    case "set_edge_note":
+      return inCurrent(state, (g) => setEdgeNote(g, a.edge, a.text));
     case "select":
       return { ...state, selection: a.nodeId };
     case "enter_subgraph":

@@ -7,14 +7,24 @@ import { useMemo, useRef, useState } from "react";
 import type { Catalog, GraphEdgeJson } from "./types";
 import { useEditor } from "./store";
 import {
+  branchMap,
   catalogNode,
   derivePorts,
+  edgeKey,
+  edgeNote,
   findConverter,
   isCompatible,
   nodePos,
   taskSinkIds,
 } from "./model";
-import { portColor, portPoint, wirePath } from "./geometry";
+import {
+  BRANCH_COLORS,
+  BRANCH_UNUSED,
+  portColor,
+  portPoint,
+  wireMidpoint,
+  wirePath,
+} from "./geometry";
 import NodeItem from "./NodeItem";
 import styles from "../styles/graph-editor.module.css";
 
@@ -46,8 +56,16 @@ export default function Canvas({ catalog, onStatus }: Props) {
   const [zoom, setZoom] = useState(1);
   const [drag, setDrag] = useState<DragState>(null);
   const [selectedEdge, setSelectedEdge] = useState<GraphEdgeJson | null>(null);
+  // Подсветка веток — режим ЧТЕНИЯ, поэтому включается, а не живёт всегда:
+  // при разводке проводов нужнее цвет типа порта, при разборе чужого графа —
+  // «что готовит условие, а что ответ». Совмещать оба в одном цвете нельзя.
+  const [showBranches, setShowBranches] = useState(false);
 
   const sinks = useMemo(() => taskSinkIds(catalog, current), [catalog, current]);
+  const branches = useMemo(
+    () => (showBranches ? branchMap(catalog, current) : null),
+    [showBranches, catalog, current],
+  );
 
   function toWorld(e: { clientX: number; clientY: number }): [number, number] {
     const rect = viewportRef.current!.getBoundingClientRect();
@@ -223,8 +241,16 @@ export default function Canvas({ catalog, onStatus }: Props) {
     if (!a || !b) return null;
     const isSel =
       selectedEdge && selectedEdge.from === e.from && selectedEdge.to === e.to;
+    const branch = branches?.edges.get(edgeKey(e));
+    const stroke = isSel
+      ? "#ff5252"
+      : branches
+        ? (branch ? BRANCH_COLORS[branch] : BRANCH_UNUSED)
+        : portColor(a.port.type);
+    const note = edgeNote(current, e);
+    const [mx, my] = wireMidpoint(a.x, a.y, b.x, b.y);
     return (
-      <g key={`${e.from}->${e.to}`}>
+      <g key={edgeKey(e)}>
         {/* Широкий прозрачный штрих — зона клика */}
         <path
           d={wirePath(a.x, a.y, b.x, b.y)}
@@ -240,14 +266,63 @@ export default function Canvas({ catalog, onStatus }: Props) {
         />
         <path
           d={wirePath(a.x, a.y, b.x, b.y)}
-          stroke={isSel ? "#ff5252" : portColor(a.port.type)}
+          stroke={stroke}
           strokeWidth={isSel ? 3 : 2}
           fill="none"
           style={{ pointerEvents: "none" }}
         />
+        {note && !isSel && (
+          // Подложка под текстом: провод проходит ровно под подписью, и
+          // без неё текст читается только на светлых участках холста.
+          <text
+            className={styles.wireNote}
+            x={mx}
+            y={my}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            paintOrder="stroke"
+            style={{ pointerEvents: "none" }}
+          >
+            {note}
+          </text>
+        )}
       </g>
     );
   });
+
+  /** Поле подписи выделенного провода — правка на месте, у самого провода. */
+  let noteEditor = null;
+  if (selectedEdge) {
+    const [fn, fp] = selectedEdge.from.split(":");
+    const [tn, tp] = selectedEdge.to.split(":");
+    const srcNode = current.nodes.find((n) => n.id === fn);
+    const dstNode = current.nodes.find((n) => n.id === tn);
+    const a = srcNode && portPoint(catalog, current, srcNode, fp, "out");
+    const b = dstNode && portPoint(catalog, current, dstNode, tp, "in");
+    if (a && b) {
+      const [mx, my] = wireMidpoint(a.x, a.y, b.x, b.y);
+      noteEditor = (
+        <input
+          className={styles.wireNoteInput}
+          style={{ left: mx - 80, top: my - 11 }}
+          placeholder="подпись провода"
+          value={edgeNote(current, selectedEdge)}
+          onChange={(ev) =>
+            dispatch({
+              kind: "set_edge_note",
+              edge: selectedEdge,
+              text: ev.target.value,
+            })
+          }
+          onMouseDown={(ev) => ev.stopPropagation()}
+          onKeyDown={(ev) => {
+            if (ev.key === "Escape") setSelectedEdge(null);
+            ev.stopPropagation();
+          }}
+        />
+      );
+    }
+  }
 
   let tempWire = null;
   if (drag?.kind === "wire") {
@@ -292,6 +367,7 @@ export default function Canvas({ catalog, onStatus }: Props) {
           {wires}
           {tempWire}
         </svg>
+        {noteEditor}
         {current.nodes.map((n) => {
           const [x, y] = nodePos(current, n.id);
           return (
@@ -302,6 +378,7 @@ export default function Canvas({ catalog, onStatus }: Props) {
               x={x}
               y={y}
               selected={state.selection === n.id}
+              branch={branches ? branches.nodes.get(n.id) ?? "unused" : null}
               sinkBadge={
                 sinks.includes(n.id)
                   ? sinks.length === 1 ? "out" : "conflict"
@@ -315,6 +392,37 @@ export default function Canvas({ catalog, onStatus }: Props) {
             />
           );
         })}
+      </div>
+      <div className={styles.branchPanel}>
+        <label className={styles.branchToggle}>
+          <input
+            type="checkbox"
+            checked={showBranches}
+            onChange={(e) => setShowBranches(e.target.checked)}
+          />
+          Ветки
+        </label>
+        {branches && (
+          <div className={styles.branchLegend}>
+            {branches.sink === null ? (
+              // Молчать здесь нельзя: без финала подсветка не покажет
+              // ничего, и это выглядело бы как «веток нет», а не как
+              // «не от чего считать».
+              <span className={styles.branchHint}>
+                {sinks.length > 1
+                  ? "финалов несколько — ветки не определены"
+                  : "нет финального узла"}
+              </span>
+            ) : (
+              <>
+                <span style={{ color: BRANCH_COLORS.statement }}>■ условие</span>
+                <span style={{ color: BRANCH_COLORS.answer }}>■ ответ</span>
+                <span style={{ color: BRANCH_COLORS.both }}>■ общее</span>
+                <span style={{ color: BRANCH_UNUSED }}>■ не в задании</span>
+              </>
+            )}
+          </div>
+        )}
       </div>
       <div className={styles.zoomLabel}>{Math.round(zoom * 100)}%</div>
     </div>

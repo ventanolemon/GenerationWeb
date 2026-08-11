@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Partition, StaticTaskResponse } from "../api/types";
-import { api, ApiError } from "../api/client";
+import { api } from "../api/client";
 import ExportDialog from "../components/ExportDialog";
 import { BlockList } from "../blocks/BlockRenderer";
 import styles from "../styles/views.module.css";
