@@ -66,6 +66,19 @@ def build_catalog(registry: NodeRegistry = DEFAULT_REGISTRY) -> dict:
     }
 
 
+def build_resources() -> dict:
+    """
+    Поставочные ресурсы для файловых параметров (core/graph/resources.py).
+
+    Отдаётся отдельной ручкой, а не внутри каталога узлов: каталог
+    описывает ЯЗЫК и меняется вместе с кодом (клиент кэширует его по
+    `catalog_version`), а список файлов — состояние конкретной установки
+    и может измениться без единой правки в коде.
+    """
+    from core.graph.resources import available
+    return {"resources": [r._asdict() for r in available()]}
+
+
 def validate_graph(spec_dict: dict) -> dict:
     """
     Обёртка над сборкой GraphExecutor. Возвращает {ok, errors, result_node,

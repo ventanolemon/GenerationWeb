@@ -69,7 +69,7 @@ class ImageFileNode(Node):
     description = ("Картинка из файла (PNG/JPG). Источник. Выход: IMAGE.")
     OUTPUTS = [Port("out", PortType.IMAGE)]
     PARAMS_SCHEMA = {
-        "file": {"type": "file", "default": "",
+        "file": {"type": "file", "default": "", "resource": "images",
                  "filter": "Изображения (*.png *.jpg *.jpeg *.bmp *.gif)"},
     }
 
@@ -80,12 +80,13 @@ class ImageFileNode(Node):
             )
 
     def compute(self, inputs, ctx: ExecContext):
-        from pathlib import Path
         from PIL import Image
+        from ..resources import describe, resolve
         path = str(self.params.get("file", "")).strip()
-        p = Path(path)
+        p = resolve(path)
         if not p.exists():
-            raise GraphValidationError(f"Файл изображения не найден: {path!r}")
+            raise GraphValidationError(
+                f"Файл изображения не найден: {describe(path)}")
         try:
             img = Image.open(p)
             img.load()                      # прочитать сразу (файл может закрыться)

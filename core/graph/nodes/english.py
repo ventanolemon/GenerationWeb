@@ -39,28 +39,30 @@ from ..port_types import PortType
 
 def _load_words_file(path: str) -> dict[str, str]:
     """Прочитать файл и привести к dict[str, str] (через english.generators)."""
-    from pathlib import Path
     from exercises.english.generators import (
         _read_json_lenient, WordsTrainerGenerator,
     )
-    p = Path(path)
+    from ..resources import describe, resolve
+    p = resolve(path)
     if not p.exists():
-        raise GraphValidationError(f"Файл со словами не найден: {path!r}")
+        raise GraphValidationError(
+            f"Файл со словами не найден: {describe(path)}")
     data = _read_json_lenient(p)
     return WordsTrainerGenerator._flatten_words(data)
 
 
 def _load_sentences_file(path: str) -> list[dict]:
     """Прочитать JSON с предложениями-пропусками (список объектов template/answers)."""
-    from pathlib import Path
     from exercises.english.generators import _read_json_lenient
-    p = Path(path)
+    from ..resources import describe, resolve
+    p = resolve(path)
     if not p.exists():
-        raise GraphValidationError(f"Файл предложений не найден: {path!r}")
+        raise GraphValidationError(
+            f"Файл предложений не найден: {describe(path)}")
     data = _read_json_lenient(p)
     if not isinstance(data, list):
         raise GraphValidationError(
-            f"Файл предложений {path!r}: ожидался список объектов "
+            f"Файл предложений {describe(path)}: ожидался список объектов "
             f"{{template, answers, translation}}."
         )
     return data
@@ -82,7 +84,7 @@ class WordsFileNode(Node):
                    "Источник. Выход: WORDS.")
     OUTPUTS = [Port("out", PortType.WORDS)]
     PARAMS_SCHEMA = {
-        "file": {"type": "file", "default": "",
+        "file": {"type": "file", "default": "", "resource": "words",
                  "filter": "JSON (*.json)", "preview": "words"},
         # Встроенный словарь (правки из предпросмотра). Не редактируется как
         # обычное поле — хранится графом; пусто → читаем file.
@@ -254,7 +256,8 @@ class SentencesFileNode(Node):
                    "Источник. Выход: SENTENCES.")
     OUTPUTS = [Port("out", PortType.SENTENCES)]
     PARAMS_SCHEMA = {
-        "file": {"type": "file", "default": "", "filter": "JSON (*.json)"},
+        "file": {"type": "file", "default": "", "resource": "sentences",
+                 "filter": "JSON (*.json)"},
     }
 
     def validate_params(self) -> None:

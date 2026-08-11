@@ -6,9 +6,11 @@
 // спрашивают, кто куда попал, — если бы ветка была авторской пометкой,
 // проверять было бы нечего.
 
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+// Импортом, а не чтением файла: файл лежит вне корня фронтенда — он
+// принадлежит движку, а не веб-клиенту, и это правильное место. Сборщик
+// разрешает его сам, лишних зависимостей на файловую систему не нужно.
+import branchCases from "../../../core/graph/branch_cases.json";
 import {
   addEdge,
   branchMap,
@@ -279,11 +281,7 @@ describe("общие ожидания с движком (core/graph/branch_cases
   // TypeScript ничего не знает. Один файл ожиданий на обе стороны:
   // разойдясь, они уронят тест той стороны, которая отстала.
   //
-  // Читается через fs, а не import: файл лежит вне корня фронтенда —
-  // он принадлежит движку, а не веб-клиенту, и это правильное место.
-  const raw = readFileSync(
-    resolve(__dirname, "../../../core/graph/branch_cases.json"), "utf-8");
-  const cases = JSON.parse(raw).cases as SharedCase[];
+  const cases = branchCases.cases as unknown as SharedCase[];
 
   it("файл случаев не пуст", () => {
     // Пустой файл прошёл бы все остальные проверки, не проверив ничего.

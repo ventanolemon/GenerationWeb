@@ -4,6 +4,7 @@
 
 import type {
   Catalog,
+  GraphResource,
   GraphSpecJson,
   PreviewResponse,
   ValidateResponse,
@@ -30,6 +31,15 @@ export const graphApi = {
       throw new Error(`каталог узлов недоступен: ${resp.status}`);
     }
     return (await resp.json()) as Catalog;
+  },
+
+  /** Поставочные файлы для файловых параметров. Отдельно от каталога:
+   * каталог описывает язык и кэшируется по catalog_version, а список
+   * файлов — состояние установки и меняется без правок в коде. */
+  async resources(): Promise<GraphResource[]> {
+    const resp = await fetch("/api/graph/resources");
+    if (!resp.ok) return [];
+    return ((await resp.json()) as { resources: GraphResource[] }).resources;
   },
 
   validate(graph: GraphSpecJson): Promise<ValidateResponse> {

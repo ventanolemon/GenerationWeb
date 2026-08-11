@@ -1,12 +1,20 @@
 // Инспектор параметров: ОДНА общая форма, генерируемая из params_schema
 // каталога ({type, default, optional, values}) — кастомных форм под типы
 // узлов нет (по брифу скелета). Тип "subgraph" — кнопка «Открыть тело…»
-// (вход во вложенный холст); "file"/"hidden" на вебе — заглушка (ресурсный
-// API — вне контракта §4.3).
+// (вход во вложенный холст); "hidden" не показывается.
+//
+// Файловый параметр — выбор из ПОСТАВКИ по идентификатору `res:…`, а не
+// ввод пути. Путь верен ровно на той машине, где его выбрали: граф с
+// путём, собранный на десктопе, на сервере падает «файл не найден»
+// (замер — core/graph/resources.py). Идентификатор разрешается
+// относительно resources/ той машины, которая исполняет граф, поэтому
+// работает всюду. Путь, пришедший из старого графа, показывается как
+// есть и помечается непереносимым — молча стирать чужую работу нельзя.
 
 import { useEffect, useState } from "react";
-import type { Catalog, ParamSchema } from "./types";
+import type { Catalog, GraphResource, ParamSchema } from "./types";
 import { catalogNode } from "./model";
+import { graphApi } from "./api";
 import { useEditor } from "./store";
 import styles from "../styles/graph-editor.module.css";
 
@@ -23,6 +31,18 @@ export default function ParamInspector({ catalog }: Props) {
   // меняют входы узла — это дорогая правка).
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   useEffect(() => setDrafts({}), [state.selection]);
+
+  // Список поставочных файлов: один запрос на открытие редактора. Пустой
+  // список — не ошибка: установка может не поставлять ресурсов вовсе,
+  // и тогда файловый параметр честно говорит, что выбирать нечего.
+  const [resources, setResources] = useState<GraphResource[] | null>(null);
+  useEffect(() => {
+    let alive = true;
+    graphApi.resources()
+      .then((list) => { if (alive) setResources(list); })
+      .catch(() => { if (alive) setResources([]); });
+    return () => { alive = false; };
+  }, []);
 
   if (!node) {
     return (
@@ -82,6 +102,47 @@ export default function ParamInspector({ catalog }: Props) {
     return String(v);
   }
 
+  /**
+   * Файловый параметр: выпадающий список поставочных файлов.
+   *
+   * Список отбирается по `resource` из СХЕМЫ параметра, а не по типу
+   * узла: какие файлы кому подходят, знает язык, и повторять это здесь
+   * значило бы завести второй источник правды, расходящийся с первым.
+   */
+  function renderFile(key: string, s: ParamSchema) {
+    const current = String(params[key] ?? s.default ?? "");
+    const kind = s.resource;
+    const list = (resources ?? []).filter((r) => !kind || r.kind === kind);
+    const foreign = current !== "" && !current.startsWith("res:");
+    return (
+      <div className={styles.fileParam}>
+        <select
+          value={foreign ? "" : current}
+          onChange={(e) => commit(key, e.target.value || undefined)}
+        >
+          <option value="">— не выбрано —</option>
+          {list.map((r) => (
+            <option key={r.id} value={r.id}>{r.title}</option>
+          ))}
+        </select>
+        {resources !== null && list.length === 0 && (
+          <span className={styles.inspectorNote}>
+            в поставке нет файлов этого вида
+          </span>
+        )}
+        {foreign && (
+          // Путь не стираем: это чужая работа, и графы с локальными
+          // файлами на десктопе работают. Но и молчать нельзя — на
+          // сервере такой граф упадёт «файл не найден».
+          <span className={styles.inspectorWarn} title={current}>
+            путь с другой машины: <code>{current}</code> — на сервере не
+            откроется, выберите файл из поставки
+          </span>
+        )}
+      </div>
+    );
+  }
+
   function renderField(key: string, s: ParamSchema) {
     switch (s.type) {
       case "subgraph": {
@@ -121,10 +182,11 @@ export default function ParamInspector({ catalog }: Props) {
           />
         );
       case "file":
+        return renderFile(key, s);
       case "hidden":
         return (
           <span className={styles.inspectorNote}>
-            (серверный ресурс — вне скелета)
+            (служебный параметр — правится не здесь)
           </span>
         );
       case "text":

@@ -91,11 +91,11 @@ def _read_file(path: str, columns: list[str]) -> list[list[str]]:
     него кавычек с квадратными скобками незачем.
     """
     import json
-    from pathlib import Path
+    from ..resources import describe, resolve
 
-    file = Path(path)
+    file = resolve(path)
     if not file.exists():
-        raise GraphValidationError(f"Файл пула не найден: {path!r}")
+        raise GraphValidationError(f"Файл пула не найден: {describe(path)}")
     text = file.read_text(encoding="utf-8")
     stripped = text.lstrip()
     if stripped.startswith("[") or stripped.startswith("{"):
@@ -103,7 +103,8 @@ def _read_file(path: str, columns: list[str]) -> list[list[str]]:
             data = json.loads(text)
         except json.JSONDecodeError as exc:
             raise GraphValidationError(
-                f"Файл пула {path!r}: не разбирается как JSON ({exc.msg}).")
+                f"Файл пула {describe(path)}: не разбирается как JSON "
+                f"({exc.msg}).")
         if isinstance(data, dict):
             # Словарь — таблица из двух столбцов: так уже лежат словари
             # английского, и переделывать их ради пула не нужно.
@@ -132,6 +133,7 @@ class PoolNode(Node):
         "columns": {"type": "list", "default": []},
         "rows": {"type": "list", "default": []},
         "file": {"type": "file", "default": "", "optional": True,
+                 "resource": "pools",
                  "filter": "Таблица (*.json *.txt *.csv)"},
     }
 
