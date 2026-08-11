@@ -31,6 +31,13 @@ public static class DashboardEndpoints
             Send(HttpMethod.Post, c, $"/admin/users/{Uri.EscapeDataString(login)}/role", req, ct))
             .WithTags("admin");
 
+        // Состояние развёртывания: переходные режимы, заданные окружением.
+        // Кто это видит, решает FastAPI (только суперадминистратор) — здесь
+        // проброс, как и везде в этом слое.
+        app.MapGet("/api/admin/deployment", (HttpRequest req, GeneratorClient c, CancellationToken ct) =>
+            Get(c, "/admin/deployment", req, ct))
+            .WithTags("admin");
+
         // ─── Организации (§8) ────────────────────────────────────────────
         // Кто что может, решает FastAPI: заводить организации и раздавать
         // флаг администратора развёртывания — только is_superuser, принимать

@@ -376,12 +376,22 @@ class SyncScopeTests(GrantsTestBase):
         self.assertEqual(self._subject_ids(self._pull("stud", role="student")),
                          {self.builtin})
 
-    def test_anonymous_scope_still_sees_everything(self):
+    def test_anonymous_device_gets_only_builtins(self):
+        """
+        Раньше здесь стояло обратное утверждение — «аноним видит всё», — и
+        оно фиксировало dev-заглушку тех времён, когда web_layer не
+        пробрасывал личность. Заглушка пережила auth-фазу и оказалась
+        дырой: синк принимает неопознанное устройство, а свежая установка
+        до входа — это ровно оно, и она вытягивала приватные предметы
+        чужих преподавателей.
+
+        Пустой скоуп был бы другой крайностью: без общего каталога клиент
+        не работает офлайн до входа. Граница — та же, что во всей §8:
+        встроенное принадлежит продукту, остальное требует имени.
+        """
         self._default_access("none")
         out = sync_api.pull(self.repo, device_id="d", user_id=None, cursors={})
-        self.assertEqual(self._subject_ids(out),
-                         {self.builtin, self.alla_subject,
-                          self.boris_subject})
+        self.assertEqual(self._subject_ids(out), {self.builtin})
 
     def test_tombstones_ignore_scope(self):
         # Удаление обязано доехать, даже если предмет выпал из области.

@@ -2,6 +2,7 @@
 GET  /admin/users              — список пользователей (admin-only)
 POST /admin/users/{login}/role — сменить роль (admin-only; без self-elevation,
                                   без понижения последнего администратора)
+GET  /admin/deployment         — состояние развёртывания (только суперадмин)
 
 Логика — core/admin_api.py (headless), роутер адаптирует HTTP. Личность и
 роль приходят из generator_service/identity.py — одного резолвера на весь
@@ -16,7 +17,7 @@ from pydantic import BaseModel, Field
 
 from core import admin_api
 
-from ..identity import AdminUser
+from ..identity import AdminUser, SuperUser
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -48,3 +49,23 @@ def post_change_role(
         )
     except admin_api.AdminActionError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/deployment")
+def get_deployment(request: Request, who: SuperUser) -> dict[str, Any]:
+    """
+    Состояние развёртывания: то, что задано окружением, а не данными.
+
+    Пока здесь одна запись, и она же — причина ручку завести. Флаг
+    `GEN_TRUST_IDENTITY_HEADERS` выключен по умолчанию, но развёртыванию с
+    необновлёнными десктопами его можно включить «ненадолго». Единственным
+    следом этого была строка в логе сервера — а лог никто не перечитывает,
+    и «ненадолго» становится навсегда. Теперь режим видно оттуда, откуда
+    им управляют.
+
+    Только суперадминистратор: это свойство развёртывания, а не
+    организации, и администратору кафедры оно не адресовано.
+    """
+    from core.auth_sessions import trust_headers
+
+    return {"trust_identity_headers": trust_headers()}

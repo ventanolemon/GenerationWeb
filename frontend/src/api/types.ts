@@ -156,6 +156,16 @@ export interface AnswerSpec {
   [key: string]: unknown;
 }
 
+/** Переходные режимы развёртывания — то, что задано окружением. */
+export interface DeploymentState {
+  /**
+   * Сервер принимает личность из заголовков, которые пишет клиент.
+   * Переходный режим для необновлённых десктопов; в рабочем
+   * развёртывании должен быть выключен.
+   */
+  trust_identity_headers: boolean;
+}
+
 export interface WidgetInfo {
   name: string;
   title: string;
@@ -210,6 +220,12 @@ export interface TurnResultResponse {
   feedback: Block[];
   next_prompt: Block[] | null;
   is_finished: boolean;
+  /**
+   * Вопрос не закрыт: ответ неверен, но попытки остались. Тогда набранное
+   * стирать нельзя — по одному лишь `next_prompt` повторную попытку от
+   * следующего вопроса не отличить.
+   */
+  same_question?: boolean;
 }
 
 

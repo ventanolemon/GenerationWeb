@@ -153,5 +153,68 @@ class RouterTests(AdminApiTestBase):
         self.assertEqual(r.json(), {"login": "alla", "role": "admin"})
 
 
+class DeploymentStateTests(AdminApiTestBase):
+    """
+    Состояние развёртывания видно оттуда, откуда им управляют.
+
+    Раньше единственным следом включённого доверия заголовкам была строка
+    в логе сервера. Лог никто не перечитывает, и «включим ненадолго»
+    становилось навсегда, потому что напоминать было нечему.
+    """
+
+    def _client(self):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from generator_service.routers import admin as admin_router
+
+        app = FastAPI()
+        app.include_router(admin_router.router)
+        app.state.repo = self.repo
+        return TestClient(app)
+
+    def setUp(self):
+        super().setUp()
+        from core import organizations_api
+
+        # `root` создаётся первым и по правилу bootstrap становится
+        # администратором развёртывания; `alla` — админ своей организации
+        # и только.
+        self.repo.create_user("root", "p", "Админ", "", role="admin")
+        organizations_api.ensure_bootstrapped(self.repo)
+        self.repo.create_user("alla", "p", "Алла", "", role="admin")
+
+    def _h(self, login):
+        token = auth_sessions.issue(self.repo, login)["token"]
+        return {"Authorization": f"Bearer {token}"}
+
+    def test_401_without_identity(self):
+        self.assertEqual(self._client().get("/admin/deployment").status_code,
+                         401)
+
+    def test_403_for_organization_admin(self):
+        """
+        Это свойство РАЗВЁРТЫВАНИЯ, а не организации: администратору
+        кафедры оно не адресовано и управлять им он всё равно не может.
+        """
+        r = self._client().get("/admin/deployment", headers=self._h("alla"))
+        self.assertEqual(r.status_code, 403)
+
+    def test_reports_the_flag_as_it_is(self):
+        import os
+        from unittest import mock
+
+        client = self._client()
+        with mock.patch.dict(os.environ,
+                             {"GEN_TRUST_IDENTITY_HEADERS": "0"}):
+            r = client.get("/admin/deployment", headers=self._h("root"))
+            self.assertEqual(r.status_code, 200)
+            self.assertIs(r.json()["trust_identity_headers"], False)
+
+        with mock.patch.dict(os.environ,
+                             {"GEN_TRUST_IDENTITY_HEADERS": "1"}):
+            r = client.get("/admin/deployment", headers=self._h("root"))
+            self.assertIs(r.json()["trust_identity_headers"], True)
+
+
 if __name__ == "__main__":
     unittest.main()

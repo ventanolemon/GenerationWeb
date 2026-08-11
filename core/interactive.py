@@ -287,10 +287,13 @@ class SpecSession(InteractiveTask):
         if retry_left:
             # Вопрос не закрыт: итог не пишем, иначе одна попытка из
             # нескольких попала бы в статистику как отдельный результат.
+            # Тем же признаком помечаем ход для клиента — ему на нём
+            # решать, стирать ли набранное (см. TurnResult.same_question).
             return TurnResult(
                 False,
                 self._feedback(question, verdict, closing=False),
-                list(question.statement))
+                list(question.statement),
+                same_question=True)
 
         self._outcomes.append(Outcome(
             index=self._index,

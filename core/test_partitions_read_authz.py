@@ -258,5 +258,47 @@ class ReadScopeMatchesPullTests(ReadAuthzTestBase):
                               ).status_code, expected)
 
 
+class AnonymousDeviceScopeTests(ReadAuthzTestBase):
+    """
+    Устройство без входа видит только встроенное.
+
+    Настоящая дыра, пережившая auth-фазу. `visible_scope` возвращал
+    «видно всё» при отсутствии identity — заглушка с тех времён, когда
+    web_layer не пробрасывал личность. Синк принимает неопознанное
+    устройство (`MaybeUser`), а свежая установка до входа — это ровно оно,
+    и она вытягивала приватные предметы чужих преподавателей.
+
+    Пустой скоуп был бы другой крайностью: без общего каталога клиент не
+    работает офлайн до входа. Граница — та же, что во всей §8: встроенное
+    принадлежит продукту, остальное требует имени.
+    """
+
+    def test_authored_subjects_do_not_leak(self):
+        scope = sync_api.visible_scope(self.repo, None, "student")
+        self.assertIsNotNone(scope, "скоуп без identity снова «видно всё»")
+        self.assertNotIn(self.alla_subject, scope)
+        self.assertNotIn(self.boris_subject, scope)
+
+    def test_builtin_subjects_stay_available(self):
+        with self.repo.transaction() as conn:
+            conn.execute(
+                "INSERT INTO Subjects (subject_name, pra_subject, "
+                "owner_user_id) VALUES ('Встроенный', 'Встроенный', NULL)")
+            builtin = conn.execute(
+                "SELECT id FROM Subjects WHERE owner_user_id IS NULL"
+            ).fetchone()[0]
+        self.assertIn(builtin,
+                      sync_api.visible_scope(self.repo, None, "student"))
+
+    def test_pull_returns_only_builtins_without_identity(self):
+        """Проверка на самом синке, а не только на функции скоупа."""
+        pulled = sync_api.pull(self.repo, device_id="fresh", user_id=None,
+                               role="student", cursors={}, limit=100,
+                               scope_version=0)
+        owners = {row.get("owner_user_id") for row in pulled["subjects"]}
+        self.assertEqual(owners - {None}, set(),
+                         "неопознанное устройство получило авторский предмет")
+
+
 if __name__ == "__main__":
     unittest.main()

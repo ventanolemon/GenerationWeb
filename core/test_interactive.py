@@ -333,6 +333,35 @@ class RetryTests(unittest.TestCase):
         session.submit("7")
         self.assertTrue(session.is_finished())
 
+    def test_repeat_is_marked_as_the_same_question(self):
+        """
+        Клиенту надо отличать повторную попытку от следующего вопроса, а
+        по `next_prompt` этого не видно: у повторной попытки условие то же
+        по определению, да и у соседних вопросов оно бывает одинаковым.
+        Цена молчания видна на холсте схемы — собранная руками схема
+        стиралась после каждого неверного ответа.
+        """
+        session = SpecSession([number_question(), number_question()],
+                              max_attempts=2)
+        self.assertTrue(session.submit("5").same_question)
+
+    def test_closing_the_question_is_not_the_same_question(self):
+        session = SpecSession([number_question(), number_question()],
+                              max_attempts=2)
+        session.submit("5")
+        self.assertFalse(session.submit("7").same_question)
+
+    def test_correct_answer_is_not_the_same_question(self):
+        session = SpecSession([number_question(), number_question()],
+                              max_attempts=2)
+        self.assertFalse(session.submit("2").same_question)
+
+    def test_flag_reaches_the_client(self):
+        session = SpecSession([number_question(), number_question()],
+                              max_attempts=2)
+        self.assertIs(session.submit("5").to_dict()["same_question"], True)
+        self.assertIs(session.submit("2").to_dict()["same_question"], False)
+
     def test_one_outcome_per_question_not_per_attempt(self):
         # Иначе одна попытка из нескольких попала бы в статистику как
         # отдельный результат, и «8 из 10» стало бы неинтерпретируемым.

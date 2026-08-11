@@ -14,6 +14,14 @@ interface SessionState {
   sessionId: string;
   prompt: Block[];
   history: Block[][];  // массив "feedback" с прошлых ходов
+  /**
+   * Номер ВОПРОСА, а не хода. Растёт только когда вопрос сменился, и
+   * этим отличается от `history.length`, который растёт на каждой
+   * попытке. По нему форма ответа решает, стирать ли набранное:
+   * повторная попытка не должна отнимать у студента введённое, а
+   * собранную на холсте схему — тем более.
+   */
+  questionKey: number;
   score: { correct: number; total: number };
   finished: boolean;
   supportsTolerant: boolean;
@@ -86,6 +94,7 @@ export default function InteractiveTaskView({ partition, userId }: Props) {
         sessionId: result.session_id,
         prompt: result.prompt,
         history: [],
+        questionKey: 0,
         score: { correct: 0, total: 0 },
         finished: result.is_finished,
         supportsTolerant: result.supports_tolerant ?? false,
@@ -124,6 +133,7 @@ export default function InteractiveTaskView({ partition, userId }: Props) {
         return {
           ...prev,
           history: [...prev.history, result.feedback],
+          questionKey: prev.questionKey + (result.same_question ? 0 : 1),
           score: {
             correct: prev.score.correct + (result.correct ? 1 : 0),
             total: prev.score.total + 1,
@@ -211,7 +221,7 @@ export default function InteractiveTaskView({ partition, userId }: Props) {
                   options={session.options}
                   prompt={session.prompt}
                   disabled={loading}
-                  resetKey={session.history.length}
+                  resetKey={session.questionKey}
                   onAnswer={(values) => void submit(values)}
                 />
               ) : (
