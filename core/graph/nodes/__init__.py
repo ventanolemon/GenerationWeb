@@ -137,6 +137,14 @@ def build_default_registry() -> NodeRegistry:
     reg = NodeRegistry()
     for cls in _ALL_NODES:
         reg.register(cls)
+    # Узлы моделей не перечисляются здесь поимённо: они собираются из
+    # объявлений моделей (core/models), и дописывать сюда строку значило
+    # бы требовать от автора предметного модуля правки в графе — ровно
+    # того, чего стандарт и избегает.
+    from ...models import DEFAULT_MODELS
+    from .model_nodes import model_node_classes
+    for cls in model_node_classes(DEFAULT_MODELS):
+        reg.register(cls)
     from .descriptions import apply_descriptions
     apply_descriptions(reg)
     return reg

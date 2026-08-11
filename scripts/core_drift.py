@@ -39,6 +39,23 @@ EXPECTED = {
     "task.py", "__init__.py",
 }
 
+# Каталоги, которые обе стороны ИСПОЛНЯЮТ: движок графа и модели. Здесь
+# файл, существующий только с одной стороны, — уже расхождение, даже если
+# его содержимое сравнивать не с чем. Для модели это громкий случай:
+# граф, собранный на десктопе вокруг модели, которой нет на сервере,
+# уронит /generate — а сравнение «файл против файла» такую пропажу молча
+# пропускает, потому что сравнивать нечего.
+#
+# По остальному ядру такой проверки нет намеренно: стороны законно
+# разные (у сервера слой БД и API, у десктопа клиенты и Qt), и список
+# «только с одной стороны» там состоит из полусотни ожидаемых имён,
+# в которых настоящее расхождение утонет.
+SHARED_DIRS = ("graph", "models")
+
+# Серверные адаптации внутри общих каталогов: изоляция и воркер исполняют
+# граф в отдельном процессе — на десктопе этого слоя нет по построению.
+SERVER_ONLY = {"graph/isolation.py", "graph/worker.py"}
+
 
 def node_classes(core: pathlib.Path) -> dict[str, dict]:
     """type_id → {file, src} по каталогу узлов."""
@@ -62,6 +79,30 @@ def node_classes(core: pathlib.Path) -> dict[str, dict]:
                         "file": path.name,
                         "src": ast.get_source_segment(text, cls) or "",
                     }
+    return out
+
+
+def shared_gaps(server_core: pathlib.Path,
+                desktop_core: pathlib.Path) -> list[str]:
+    """Файлы общих каталогов, существующие лишь с одной стороны."""
+
+    def listing(root: pathlib.Path) -> set[str]:
+        out: set[str] = set()
+        for name in SHARED_DIRS:
+            base = root / name
+            if not base.exists():
+                continue
+            for path in base.rglob("*.py"):
+                rel = path.relative_to(root)
+                if rel.name.startswith("test_"):
+                    continue
+                out.add(rel.as_posix())
+        return out
+
+    srv, dsk = listing(server_core), listing(desktop_core)
+    out = [f"{rel} — только на сервере" for rel in sorted(srv - dsk)
+           if rel not in SERVER_ONLY]
+    out += [f"{rel} — только на десктопе" for rel in sorted(dsk - srv)]
     return out
 
 
@@ -132,6 +173,11 @@ def main() -> int:
         print(f"\nФайлы движка с расхождением ({len(files)}):\n  "
               + "\n  ".join(files))
 
+    missing = shared_gaps(server_core, desktop_core)
+    if missing:
+        print(f"\nФайлы движка, которых нет со второй стороны "
+              f"({len(missing)}):\n  " + "\n  ".join(missing))
+
     if args.detail and differ:
         parts = ["# Диффы расходящихся узлов\n"]
         for name, pair in differ.items():
@@ -140,7 +186,7 @@ def main() -> int:
         pathlib.Path(args.detail).write_text("\n".join(parts), encoding="utf-8")
         print(f"\nДиффы: {args.detail}")
 
-    drifted = bool(only_dsk or only_srv or differ or files)
+    drifted = bool(only_dsk or only_srv or differ or files or missing)
     print("\n" + ("ДРЕЙФ ЕСТЬ" if drifted else "Расхождений нет"))
     return 1 if drifted else 0
 
