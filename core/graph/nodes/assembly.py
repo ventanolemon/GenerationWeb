@@ -22,6 +22,8 @@ StaticTask из core.task — чистый dataclass (без Qt), поэтому
 
 from __future__ import annotations
 
+import re
+
 from core.task import StaticTask
 
 from ..errors import GraphValidationError
@@ -134,12 +136,28 @@ class TaskNode(Node):
         "check_mode": {"type": "enum", "values": ["soft", "strict"],
                        "default": "soft"},
         "widget": {"type": "str", "default": "", "optional": True},
+        "styles": {"type": "list", "default": [], "optional": True},
     }
 
     # ---------- параметры ----------
 
     def _statement(self) -> str:
         return str(self.params.get("statement", "") or "")
+
+    def _styles(self) -> list[str]:
+        """
+        Оформление абзацев условия — по строке на абзац, как `slots`.
+
+        Отдельным параметром, а не разметкой внутри текста: `#имя#` в
+        условии уже занято маркерами входов, и второй язык внутри той же
+        строки означал бы, что содержание задания начинает зависеть от
+        того, какие символы в него попали. Здесь оформление лежит рядом с
+        текстом и на него не влияет.
+        """
+        raw = self.params.get("styles") or []
+        if isinstance(raw, str):
+            raw = raw.splitlines()
+        return [str(line or "").strip().lower() for line in raw]
 
     def _answer_template(self) -> str:
         return str(self.params.get("answer_template", "") or "")
@@ -253,7 +271,7 @@ class TaskNode(Node):
         ports.append(Port("blocks", PortType.BLOCK_LIST, required=False))
         return ports
 
-    # ---------- исполнение ----------
+# ---------- исполнение ----------
 
     def compute(self, inputs, ctx: ExecContext):
         from core.answers import SlotsSpec
@@ -268,8 +286,7 @@ class TaskNode(Node):
 
         statement: list = []
         text = _fill_template(self._statement(), inputs)
-        if text.strip():
-            statement.append(TextBlock(text))
+        statement.extend(_statement_blocks(text, self._styles()))
         extra = inputs.get("blocks")
         if extra:
             statement.extend(extra if isinstance(extra, list) else [extra])
@@ -415,3 +432,45 @@ class StaticTaskNode(Node):
             answer=list(answer),
             meta={"source": "graph"},
         )}
+
+
+def parse_style(line: str) -> dict:
+    """
+    Строка оформления → аргументы TextBlock. Слова через пробел, порядок
+    не важен: «крупный жирный» и «жирный крупный» — одно и то же.
+
+    Неизвестное слово молча игнорируется, а не роняет граф: оформление —
+    не смысл задания, и терять сгенерированное задание из-за опечатки в
+    стиле было бы несоразмерно.
+    """
+    words = set((line or "").replace(",", " ").split())
+    size = ("small" if words & {"мелкий", "small"}
+            else "large" if words & {"крупный", "large"}
+            else "normal")
+    return {"size": size,
+            "bold": bool(words & {"жирный", "bold"}),
+            "italic": bool(words & {"курсив", "italic"})}
+
+
+def _statement_blocks(text: str, styles: list) -> list:
+    """
+    Текст условия → абзацы, по одному блоку на абзац.
+
+    Абзацы разделяются ПУСТОЙ строкой, а не переводом строки: перенос
+    внутри абзаца — обычное дело в условии (формула с новой строки,
+    перечисление), и разрывать по нему значило бы плодить блоки там, где
+    автор просто отформатировал текст.
+
+    Стилей может быть меньше, чем абзацев, — остальные обычные. Это не
+    послабление, а нормальный случай: оформляют обычно один-два абзаца из
+    пяти.
+    """
+    from core.blocks import TextBlock
+
+    chunks = [c.strip() for c in re.split(r"\n\s*\n", text)]
+    chunks = [c for c in chunks if c]
+    out = []
+    for index, chunk in enumerate(chunks):
+        style = styles[index] if index < len(styles) else ""
+        out.append(TextBlock(chunk, **parse_style(style)))
+    return out

@@ -41,16 +41,38 @@ class FakeDoc:
         self.events.append(("break",))
 
     def add_paragraph(self, text="", style=None):
-        self.events.append(("b", text))
-        return self
+        # TextBlock создаёт пустой абзац и добавляет run — так задаётся
+        # начертание. Подделка повторяет эту форму, иначе тест проверял бы
+        # вызов, которого в бою уже нет.
+        para = FakeParagraph(self)
+        if text:
+            para.add_run(text)
+        return para
 
-    # TextBlock.render_docx зовёт add_paragraph; этого достаточно.
 
     def headings(self):
         return [e[2] for e in self.events if e[0] == "h"]
 
     def texts(self):
         return [e[1] for e in self.events if e[0] == "b"]
+
+
+class FakeParagraph:
+    def __init__(self, doc):
+        self._doc = doc
+
+    def add_run(self, text=""):
+        self._doc.events.append(("b", text))
+        return FakeRun()
+
+
+class FakeRun:
+    """Начертание записывается в run — подделка его принимает и хранит."""
+
+    def __init__(self):
+        self.bold = False
+        self.italic = False
+        self.font = type("F", (), {"size": None})()
 
 
 def _task(n: int) -> StaticTask:

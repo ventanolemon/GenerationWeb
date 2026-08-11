@@ -11,6 +11,11 @@
 export interface TextBlock {
   type: "text";
   content: string;
+  // Оформление абзаца. Полей нет у обычного текста — ядро добавляет их
+  // только оформленному блоку, поэтому старые ответы читаются как были.
+  size?: "small" | "normal" | "large";
+  bold?: boolean;
+  italic?: boolean;
 }
 
 export interface FormulaBlock {

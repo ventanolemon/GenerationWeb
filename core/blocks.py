@@ -35,11 +35,42 @@ def _b64(data: bytes) -> str:
 
 # ---------- Блоки ----------
 
-class TextBlock(Block):
-    """Обычный текстовый абзац."""
+#: Кегли абзаца. Три, а не произвольное число: набор задан списком, потому
+#: что «формат» здесь — стиль, а не вёрстка. Свободный размер в пунктах
+#: означал бы, что автор верстает документ вручную, и два задания в одной
+#: работе выглядели бы по-разному без всякой причины.
+TEXT_SIZES = ("small", "normal", "large")
 
-    def __init__(self, text: str):
+#: Кегль → пункты в .docx. В вебе размер задаётся классом, поэтому там
+#: пунктов нет: у экрана своя типографика.
+_DOCX_POINTS = {"small": 9, "normal": 11, "large": 14}
+
+
+class TextBlock(Block):
+    """
+    Текстовый абзац с необязательным начертанием.
+
+    Стиль появился ради редактора формата задания: условие бывает из
+    нескольких абзацев, и заголовок раздела, само условие и примечание
+    мелким шрифтом — это три разных абзаца, а не один слипшийся текст.
+
+    Умолчания подобраны так, что `TextBlock("текст")` ведёт себя ровно как
+    прежде: обычный кегль, без начертания. Это важно — конструктор зовут
+    из полутора десятков мест, включая генераторы, которых стиль не
+    касается вовсе.
+    """
+
+    def __init__(self, text: str, *, size: str = "normal",
+                 bold: bool = False, italic: bool = False):
         self.text = text
+        self.size = size if size in TEXT_SIZES else "normal"
+        self.bold = bool(bold)
+        self.italic = bool(italic)
+
+    @property
+    def styled(self) -> bool:
+        """Отличается ли абзац от обычного — нужно и docx, и JSON."""
+        return self.size != "normal" or self.bold or self.italic
 
     def render_qt(self, parent: "QWidget") -> "QWidget":
         from PyQt6.QtCore import Qt
@@ -47,16 +78,40 @@ class TextBlock(Block):
         lbl = QLabel(self.text, parent)
         lbl.setWordWrap(True)
         lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        if self.styled:
+            font = lbl.font()
+            font.setBold(self.bold)
+            font.setItalic(self.italic)
+            base = font.pointSize()
+            if base > 0:
+                font.setPointSize(
+                    {"small": max(1, base - 2), "normal": base,
+                     "large": base + 3}[self.size])
+            lbl.setFont(font)
         return lbl
 
     def render_plain(self) -> str:
         return self.text
 
     def render_docx(self, doc) -> None:
-        doc.add_paragraph(self.text)
+        para = doc.add_paragraph()
+        run = para.add_run(self.text)
+        run.bold = self.bold
+        run.italic = self.italic
+        if self.size != "normal":
+            from docx.shared import Pt
+            run.font.size = Pt(_DOCX_POINTS[self.size])
 
     def to_dict(self) -> dict:
-        return {"type": "text", "content": self.text}
+        out = {"type": "text", "content": self.text}
+        # Поля добавляются только у оформленных абзацев: обычный блок
+        # обязан сериализоваться байт в байт как раньше — его форму читают
+        # десктоп, фронт и замороженные контрактные тесты.
+        if self.styled:
+            out["size"] = self.size
+            out["bold"] = self.bold
+            out["italic"] = self.italic
+        return out
 
 
 class FormulaBlock(Block):
