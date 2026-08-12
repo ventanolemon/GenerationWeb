@@ -8,6 +8,7 @@ import {
 } from "./session";
 import type { SessionValue } from "./session";
 import LandingPage from "./views/LandingPage";
+import GuidePage from "./guide/GuidePage";
 import AppLayout from "./layouts/AppLayout";
 import GeneratorPage from "./pages/GeneratorPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
@@ -148,7 +149,17 @@ export default function App() {
   if (!authChecked) return null;
 
   if (!authenticated || session === null) {
-    return <LandingPage onLogin={handleLogin} />;
+    // База знаний открыта ГОСТЮ: инструкция, которую видно только после
+    // входа, не помогает тому, кто как раз и не понимает, как войти и
+    // зачем. Всё остальное по-прежнему за лендингом.
+    return (
+      <Routes>
+        <Route path="/guide" element={<GuidePage />} />
+        <Route path="/guide/:pageId" element={<GuidePage />} />
+        <Route path="/guide/:pageId/:sectionId" element={<GuidePage />} />
+        <Route path="*" element={<LandingPage onLogin={handleLogin} />} />
+      </Routes>
+    );
   }
 
   return (
@@ -204,6 +215,10 @@ export default function App() {
               </RequireUser>
             }
           />
+          <Route path="/guide" element={<GuidePage />} />
+          <Route path="/guide/:pageId" element={<GuidePage />} />
+          <Route path="/guide/:pageId/:sectionId" element={<GuidePage />} />
+        <Route path="/guide/:pageId/:sectionId" element={<GuidePage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
