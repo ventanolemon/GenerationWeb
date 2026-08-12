@@ -29,6 +29,7 @@ import time
 from pathlib import Path
 from typing import Callable, List, Optional
 
+from core import word_tolerance
 from core import (
     TaskGenerator, InteractiveTask, TurnResult, Capability,
     Block, TextBlock, StaticTask, STATIC_DEFAULT,
@@ -96,7 +97,14 @@ def _levenshtein(a: str, b: str) -> int:
 
 
 def _tolerant_threshold(word: str) -> int:
-    """Порог расстояния Левенштейна для слова: 1 при длине ≤ 6, иначе 2."""
+    """
+    УСТАРЕЛО: порог по одной длине слова (1 при ≤ 6 символов, иначе 2).
+
+    Оставлено ради существующих вызовов и как предмет регрессионного
+    теста. Правило заменено на словарное (`core.word_tolerance`): порог
+    по длине не знает, что рядом в словаре лежит другой термин, и на
+    поставочных словарях принимал 17 пар разных слов друг за друга.
+    """
     return 1 if len(word) <= 6 else 2
 
 
@@ -144,6 +152,11 @@ class WordsSession(InteractiveTask):
     ):
         # _remaining: {english: russian}
         self._remaining: dict[str, str] = dict(words_dict)
+        # Словарь сессии ЦЕЛИКОМ и неизменно. Не `_remaining`: он тает по
+        # ходу диктанта, и допуск, посчитанный по нему, рос бы к концу —
+        # один и тот же ответ принимался бы или отвергался в зависимости
+        # от того, когда его дали.
+        self._vocabulary_words: tuple[str, ...] = tuple(words_dict)
         self._total: int = len(self._remaining)
         self._current: str | None = None
 
@@ -295,6 +308,17 @@ class WordsSession(InteractiveTask):
             "tolerant": bool(self.tolerant),
         }
 
+    def _vocabulary(self) -> list:
+        """
+        Слова ЭТОЙ сессии — окрестность, по которой считается допуск.
+
+        Именно словарь сессии, а не весь набор поставки: диктант идёт по
+        конкретному юниту, и различать надо то, что в нём есть. Более
+        широкий словарь ужал бы допуск из-за слов, которых студент сейчас
+        не проходит.
+        """
+        return list(self._vocabulary_words)
+
     def restore(self, state: dict) -> None:
         """Вернуть снимок в свежесобранную сессию."""
         remaining = state.get("remaining")
@@ -338,10 +362,16 @@ class WordsSession(InteractiveTask):
 
         strict_ok = user.lower() == expected.lower()
         # tolerant_accept — приняли благодаря мягкому режиму, посимвольно не равно.
+        #
+        # Допуск считается ПО СЛОВАРЮ этой сессии, а не по длине слова.
+        # Замер на поставочных словарях: политика «≤1 правки, ≤2 для
+        # длинных» давала 17 пар, неразличимых проверкой, и пары не
+        # случайные — LAN принимал MAN, WAN и WLAN, все три есть в том же
+        # словаре. Студент, написавший WAN вместо LAN, не опечатался.
         tolerant_accept = False
         if self.tolerant and not strict_ok and user:
-            distance = _levenshtein(user.lower(), expected.lower())
-            tolerant_accept = distance <= _tolerant_threshold(expected)
+            tolerant_accept = word_tolerance.accepts(
+                expected, user, self._vocabulary())
         ok = strict_ok or tolerant_accept
 
         # Feedback с подсветкой ошибок: новый блок WordCorrectionBlock
