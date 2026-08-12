@@ -3,7 +3,9 @@ import type { ReactElement } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import type { Role, UserInfo } from "./api/types";
 import { api } from "./api/client";
-import { SessionProvider, effectiveRole, useSession } from "./session";
+import {
+  SessionProvider, effectiveRole, readActingRole, useSession, writeActingRole,
+} from "./session";
 import type { SessionValue } from "./session";
 import LandingPage from "./views/LandingPage";
 import AppLayout from "./layouts/AppLayout";
@@ -46,6 +48,11 @@ export default function App() {
   const [user, setUser] = useState<UserInfo | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [guestId] = useState<string>(getOrCreateGuestId);
+  // Примерка роли (режим разработчика). Начальное значение читается из
+  // sessionStorage: перезагрузка посреди отладки не должна молча вернуть
+  // разработчика к собственной картине.
+  const [actingRole, setActingRole] = useState<Role | null>(readActingRole);
+  const [canTryOn, setCanTryOn] = useState(false);
 
   useEffect(() => {
     const stored = loadStoredUser();
@@ -55,6 +62,22 @@ export default function App() {
     }
     setAuthChecked(true);
   }, []);
+
+  // Право примерять роль спрашиваем у СЕРВЕРА, один раз на вход. Не из
+  // сохранённого профиля: флаг разработчика в нём не лежит, а угадывать
+  // его по роли неверно — «админ организации» и «администратор
+  // развёртывания» это разные оси (§8.2).
+  useEffect(() => {
+    if (!user?.token) {
+      setCanTryOn(false);
+      return;
+    }
+    let alive = true;
+    api.me({ login: user.login, role: user.role, token: user.token })
+      .then((who) => { if (alive) setCanTryOn(who.can_try_on); })
+      .catch(() => { if (alive) setCanTryOn(false); });
+    return () => { alive = false; };
+  }, [user?.login, user?.token, user?.role]);
 
   function handleLogin(userInfo: UserInfo | null) {
     setUser(userInfo);
@@ -72,6 +95,10 @@ export default function App() {
     setAuthenticated(false);
     setUser(null);
     localStorage.removeItem(USER_STORAGE_KEY);
+    // Выход снимает примерку: иначе следующий вошедший в этой же вкладке
+    // получит чужой режим отладки и не поймёт, почему интерфейс урезан.
+    writeActingRole(null);
+    setActingRole(null);
   }
 
   function updateUser(updated: UserInfo) {
@@ -86,21 +113,37 @@ export default function App() {
 
   const session = useMemo<SessionValue | null>(() => {
     if (!authenticated) return null;
-    const role = effectiveRole(user);
+    const trueRole = effectiveRole(user);
+    // Примерка подменяет роль ЦЕЛИКОМ, а не добавляется рядом: витрины
+    // гейтятся по `role`, и оставь мы здесь настоящую — интерфейс менялся
+    // бы только там, где о примерке отдельно вспомнили.
+    const role: Role = actingRole ?? trueRole;
     return {
       user,
       guestId,
       role,
-      identity: user ? { login: user.login, role, token: user.token } : null,
+      identity: user
+        ? {
+            login: user.login, role, token: user.token,
+            actingRole: actingRole ?? undefined,
+          }
+        : null,
       effectiveUserId: user?.login ?? guestId,
       logout: handleLogout,
       updateUser,
       // Регистрация из профиля обрабатывается в AppLayout (открывает
       // AuthModal); поле требуется контрактом сессии — здесь no-op.
       requestRegister: () => {},
+      canTryOn,
+      actingRole,
+      trueRole: actingRole ? trueRole : null,
+      tryOnRole: (next: Role | null) => {
+        writeActingRole(next);
+        setActingRole(next);
+      },
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authenticated, user, guestId]);
+  }, [authenticated, user, guestId, actingRole, canTryOn]);
 
   if (!authChecked) return null;
 

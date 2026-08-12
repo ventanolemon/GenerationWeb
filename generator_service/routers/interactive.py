@@ -25,6 +25,8 @@ from typing import Dict, Optional
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from ..identity import MaybeUser
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/interactive", tags=["interactive"])
@@ -45,7 +47,8 @@ class SubmitRequest(BaseModel):
 
 
 @router.post("/submit")
-def submit_answer(body: SubmitRequest, request: Request) -> dict:
+def submit_answer(body: SubmitRequest, request: Request,
+                  who: MaybeUser = None) -> dict:
     sessions = request.app.state.sessions
     task = sessions.get(body.session_id)
     if task is None:
@@ -69,7 +72,8 @@ def submit_answer(body: SubmitRequest, request: Request) -> dict:
             detail=f"submit() failed: {e}",
         )
 
-    _record_attempts(request, body.session_id, task)
+    _record_attempts(request, body.session_id, task,
+                     trying_on=bool(who and who.trying_on))
 
     response = result.to_dict()
     if response["next_prompt"] is None:
@@ -83,7 +87,8 @@ def submit_answer(body: SubmitRequest, request: Request) -> dict:
     return response
 
 
-def _record_attempts(request: Request, session_id: str, task) -> None:
+def _record_attempts(request: Request, session_id: str, task, *,
+                     trying_on: bool = False) -> None:
     """
     Записать попытки по закрытым вопросам, если сценарий это предписывает.
 
@@ -95,6 +100,13 @@ def _record_attempts(request: Request, session_id: str, task) -> None:
     Ошибка записи не роняет ход. Телеметрия — улучшение, а не условие
     работы: уронить из-за неё ответ студента было бы обменом ценного на
     дешёвое.
+
+    `trying_on` — ход сделан в примерке роли (режим разработчика). Попытка
+    ВСЁ РАВНО пишется, но не идёт в статистику. Не писать вовсе было бы
+    неверно: разработчик действительно отвечал, и ход обязан остаться в
+    журнале под его собственным логином — примерка меняет взгляд, а не
+    того, кто действует. Считать её в успеваемость курса тоже нельзя: это
+    отладочное прохождение, и в среднем по группе ему не место.
     """
     scenario = getattr(task, "scenario", None)
     if scenario is None or not scenario.contract.records_attempts:
@@ -116,6 +128,7 @@ def _record_attempts(request: Request, session_id: str, task) -> None:
             session_id=session_id,
             user_id=user_id or "",
             partition_id=partition_id,
+            trying_on=trying_on,
         ))
     except Exception:
         logger.exception("не удалось записать попытки сессии %s", session_id)

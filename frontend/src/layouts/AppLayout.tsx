@@ -6,6 +6,7 @@ import { initials, avatarBackground } from "../utils/user";
 import ThemeToggle from "../components/ThemeToggle";
 import ProfileModal from "../components/ProfileModal";
 import AuthModal from "../components/AuthModal";
+import RoleTryOnBar from "../components/RoleTryOnBar";
 import styles from "../styles/appshell.module.css";
 
 const ROLE_RU: Record<Role, string> = {
@@ -68,6 +69,10 @@ export default function AppLayout() {
 
   return (
     <div className={styles.shell}>
+      {/* Над шапкой, а не под ней: примерка меняет ВЕСЬ интерфейс ниже,
+          и предупреждение о ней должно стоять выше того, что оно
+          объясняет. */}
+      <RoleTryOnBar />
       <header className={styles.topbar}>
         <NavLink to="/" className={styles.brand} end>
           <span className={styles.brandMark}>Λ+</span>

@@ -38,21 +38,25 @@ trust_headers = auth_sessions.trust_headers
 
 def resolve(request: Request, authorization: Optional[str] = None,
             x_user_id: Optional[str] = None,
-            x_user_role: Optional[str] = None) -> Optional[Identity]:
+            x_user_role: Optional[str] = None,
+            x_acting_role: Optional[str] = None) -> Optional[Identity]:
     """Личность запроса или None. Правило — в core, здесь только перевод
     отказа в HTTP-статус."""
     try:
         return auth_sessions.resolve_identity(
-            request.app.state.repo, authorization, x_user_id, x_user_role)
+            request.app.state.repo, authorization, x_user_id, x_user_role,
+            acting_role=x_acting_role)
     except auth_sessions.AuthError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc))
 
 
 def require(request: Request, authorization: Optional[str] = None,
             x_user_id: Optional[str] = None,
-            x_user_role: Optional[str] = None) -> Identity:
+            x_user_role: Optional[str] = None,
+            x_acting_role: Optional[str] = None) -> Identity:
     """Личность обязательна. Нет — 401 («неизвестно кто»), не 403."""
-    who = resolve(request, authorization, x_user_id, x_user_role)
+    who = resolve(request, authorization, x_user_id, x_user_role,
+                  x_acting_role)
     if who is None:
         raise HTTPException(
             status_code=401,
@@ -62,7 +66,8 @@ def require(request: Request, authorization: Optional[str] = None,
 
 def require_admin(request: Request, authorization: Optional[str] = None,
                   x_user_id: Optional[str] = None,
-                  x_user_role: Optional[str] = None) -> Identity:
+                  x_user_role: Optional[str] = None,
+                  x_acting_role: Optional[str] = None) -> Identity:
     """
     Гейт администратора — один на сервис.
 
@@ -70,7 +75,8 @@ def require_admin(request: Request, authorization: Optional[str] = None,
     (её кладут в бизнес-операцию), а собирать её заново из заголовков —
     ровно то расхождение, ради устранения которого модуль и написан.
     """
-    who = require(request, authorization, x_user_id, x_user_role)
+    who = require(request, authorization, x_user_id, x_user_role,
+                  x_acting_role)
     if who.role != "admin":
         raise HTTPException(status_code=403,
                             detail="Доступно только администратору.")
@@ -91,8 +97,10 @@ def _headers(
     authorization: Optional[str] = Header(default=None),
     x_user_id: Optional[str] = Header(default=None),
     x_user_role: Optional[str] = Header(default=None),
+    x_acting_role: Optional[str] = Header(default=None),
 ) -> Optional[Identity]:
-    return resolve(request, authorization, x_user_id, x_user_role)
+    return resolve(request, authorization, x_user_id, x_user_role,
+                   x_acting_role)
 
 
 def _required(
@@ -100,13 +108,16 @@ def _required(
     authorization: Optional[str] = Header(default=None),
     x_user_id: Optional[str] = Header(default=None),
     x_user_role: Optional[str] = Header(default=None),
+    x_acting_role: Optional[str] = Header(default=None),
 ) -> Identity:
-    return require(request, authorization, x_user_id, x_user_role)
+    return require(request, authorization, x_user_id, x_user_role,
+                   x_acting_role)
 
 
 def require_superuser(request: Request, authorization: Optional[str] = None,
                       x_user_id: Optional[str] = None,
-                      x_user_role: Optional[str] = None) -> Identity:
+                      x_user_role: Optional[str] = None,
+                      x_acting_role: Optional[str] = None) -> Identity:
     """
     Гейт администратора РАЗВЁРТЫВАНИЯ.
 
@@ -116,11 +127,17 @@ def require_superuser(request: Request, authorization: Optional[str] = None,
     уровня развёртывания. Набор установленных пакетов один на всех — иначе
     вопрос «какой код здесь исполняется» переходит к организации.
     """
-    who = require(request, authorization, x_user_id, x_user_role)
+    who = require(request, authorization, x_user_id, x_user_role,
+                  x_acting_role)
     if not who.is_superuser:
+        # Во время примерки `is_superuser` снят намеренно: примеряющий
+        # студента не должен управлять развёртыванием, иначе примерка
+        # показывает не студента. Выйти из неё — перестать слать заголовок.
         raise HTTPException(
             status_code=403,
-            detail="Доступно только администратору развёртывания.")
+            detail=("Идёт примерка роли — выйдите из неё."
+                    if who.trying_on else
+                    "Доступно только администратору развёртывания."))
     return who
 
 
@@ -129,8 +146,10 @@ def _superuser(
     authorization: Optional[str] = Header(default=None),
     x_user_id: Optional[str] = Header(default=None),
     x_user_role: Optional[str] = Header(default=None),
+    x_acting_role: Optional[str] = Header(default=None),
 ) -> Identity:
-    return require_superuser(request, authorization, x_user_id, x_user_role)
+    return require_superuser(request, authorization, x_user_id, x_user_role,
+                             x_acting_role)
 
 
 def _admin(
@@ -138,8 +157,10 @@ def _admin(
     authorization: Optional[str] = Header(default=None),
     x_user_id: Optional[str] = Header(default=None),
     x_user_role: Optional[str] = Header(default=None),
+    x_acting_role: Optional[str] = Header(default=None),
 ) -> Identity:
-    return require_admin(request, authorization, x_user_id, x_user_role)
+    return require_admin(request, authorization, x_user_id, x_user_role,
+                         x_acting_role)
 
 
 def actor(who: Optional[Identity]) -> tuple[Optional[str], str]:

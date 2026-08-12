@@ -90,18 +90,32 @@ def logout(request: Request,
 def me(request: Request,
        authorization: Optional[str] = Header(default=None),
        x_user_id: Optional[str] = Header(default=None),
-       x_user_role: Optional[str] = Header(default=None)) -> dict:
+       x_user_role: Optional[str] = Header(default=None),
+       x_acting_role: Optional[str] = Header(default=None)) -> dict:
     """
     Кто я — по мнению СЕРВЕРА.
 
     Нужна фронту, чтобы гейтить витрины по роли из БД, а не по той, что он
     сам про себя помнит в localStorage. `verified` говорит прямо, заверена
     личность токеном или пока лишь заявлена заголовком.
+
+    `trying_on` и `true_role` — режим разработчика. Отдаются ОТСЮДА, а не
+    выводятся клиентом из того, что он сам же и послал: примерка обязана
+    быть видимой, а видимость, построенная на памяти клиента, врёт ровно
+    тогда, когда клиент и сервер разошлись — то есть когда она нужнее
+    всего. `can_try_on` — право примерять, по настоящей записи в БД:
+    иначе интерфейс либо прячет кнопку у того, кому она положена, либо
+    показывает её тому, кто получит 403.
     """
-    who = identity.require(request, authorization, x_user_id, x_user_role)
-    profile = request.app.state.repo.get_user_profile(who.login)
+    who = identity.require(request, authorization, x_user_id, x_user_role,
+                           x_acting_role)
+    repo = request.app.state.repo
+    profile = repo.get_user_profile(who.login)
     return {"login": who.login, "role": who.role,
             "verified": who.verified, "source": who.source,
+            "trying_on": who.trying_on,
+            "true_role": who.true_role,
+            "can_try_on": repo.is_superuser(who.login),
             "profile": profile.to_dict() if profile else None}
 
 

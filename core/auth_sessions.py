@@ -32,7 +32,7 @@ import logging
 import os
 import secrets
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Optional
 
 from .repository import Repository
@@ -74,10 +74,25 @@ class Identity:
     #: публичный API. Ортогонален роли: `admin` теперь значит «админ своей
     #: организации», а решения уровня развёртывания остаются здесь (§8.2).
     is_superuser: bool = False
+    #: Настоящая роль из БД, когда включена ПРИМЕРКА (режим разработчика).
+    #: None — примерки нет и `role` настоящая.
+    #:
+    #: Поле именно такое, а не «acting_role» рядом с настоящей ролью, и это
+    #: главное решение примерки: `role` ВСЕГДА эффективная. Иначе каждая из
+    #: двух с лишним десятков проверок роли обязана была бы помнить, какую
+    #: из двух брать, и примерка показывала бы половину продукта чужими
+    #: глазами, а половину — своими. Забытая проверка при таком устройстве
+    #: даёт не дыру, а несовпадение: примерка идёт только ВНИЗ.
+    true_role: Optional[str] = None
 
     @property
     def verified(self) -> bool:
         return self.source == "session"
+
+    @property
+    def trying_on(self) -> bool:
+        """Роль примеряется — это не настоящий её носитель."""
+        return self.true_role is not None
 
 
 def hash_token(raw_token: str) -> str:
@@ -183,7 +198,8 @@ def _warn_once() -> None:
 
 def resolve_identity(repo: Repository, authorization: Optional[str] = None,
                      x_user_id: Optional[str] = None,
-                     x_user_role: Optional[str] = None) -> Optional[Identity]:
+                     x_user_role: Optional[str] = None,
+                     acting_role: Optional[str] = None) -> Optional[Identity]:
     """
     Личность запроса или None, если её нет. Бросает AuthError на негодном
     токене — переводить в HTTP-статус адаптеру сервиса.
@@ -192,10 +208,15 @@ def resolve_identity(repo: Repository, authorization: Optional[str] = None,
     предъявивший настоящую сессию, мог бы дописать себе роль заголовком.
     Негодный токен — отказ, а не повод откатиться к заголовкам: молчаливый
     откат означал бы, что протухшая сессия даёт больше прав, чем свежая.
+
+    `acting_role` — примерка роли (режим разработчика). Заголовку здесь
+    верить МОЖНО, и это не противоречие с абзацем выше: личность по-прежнему
+    заверяет токен, а заголовок лишь просит показать продукт чужими
+    глазами — просьбу проверяет `try_on_role` по настоящей записи в БД.
     """
     token = bearer_token(authorization)
     if token:
-        return resolve(repo, token)
+        return try_on_role(resolve(repo, token), acting_role)
 
     if not trust_headers():
         return None
@@ -207,9 +228,55 @@ def resolve_identity(repo: Repository, authorization: Optional[str] = None,
     role = (x_user_role or "").strip().lower() or STRICTEST_ROLE
     # Организацию и флаг администратора развёртывания клиент не заявляет
     # даже здесь: их читаем из БД.
-    return Identity(login=login, role=role, source="header",
-                    organization_id=repo.user_organization_id(login),
-                    is_superuser=repo.is_superuser(login))
+    return try_on_role(
+        Identity(login=login, role=role, source="header",
+                 organization_id=repo.user_organization_id(login),
+                 is_superuser=repo.is_superuser(login)),
+        acting_role)
+
+
+#: Роли от слабой к сильной. Порядок нужен ровно для одного правила:
+#: примерять можно только роль НЕ СИЛЬНЕЕ своей.
+ROLE_ORDER = ("student", "teacher", "admin")
+
+
+def try_on_role(who: Identity, acting_role: Optional[str]) -> Identity:
+    """
+    Примерить роль: увидеть продукт глазами студента, не переставая быть
+    собой.
+
+    Три правила, и каждое отвечает на свой вопрос.
+
+    КТО. Только администратор развёртывания (`is_superuser`). Не «админ
+    организации»: примерка — инструмент того, кто продукт делает, а не
+    того, кто им управляет.
+
+    ЧТО. Только роль не сильнее собственной, и вместе с примеркой
+    снимается `is_superuser`. Иначе «примерил студента» показывало бы
+    студента, который при этом администрирует развёртывание, — то есть не
+    показывало бы ничего.
+
+    КЕМ ОСТАЁШЬСЯ. `login` не меняется НИКОГДА. Примерка — это другой
+    взгляд, а не другой человек: всё, что запишется (попытки, правки,
+    журнал), останется записанным на самого разработчика. Подмена логина
+    дала бы возможность действовать от чужого имени, а это уже не отладка.
+    """
+    wanted = (acting_role or "").strip().lower()
+    if not wanted:
+        return who
+    if not who.is_superuser:
+        raise AuthError("Примерка роли доступна только разработчику.",
+                        status=403)
+    if wanted not in ROLE_ORDER:
+        raise AuthError(
+            f"Неизвестная роль {wanted!r}; допустимы "
+            f"{', '.join(ROLE_ORDER)}.", status=400)
+    own = who.role if who.role in ROLE_ORDER else ROLE_ORDER[-1]
+    if ROLE_ORDER.index(wanted) > ROLE_ORDER.index(own):
+        raise AuthError(
+            f"Примерить можно только роль не сильнее своей: у вас "
+            f"{own!r}, запрошена {wanted!r}.", status=403)
+    return replace(who, role=wanted, true_role=who.role, is_superuser=False)
 
 
 def bearer_token(header_value: Optional[str]) -> str:
@@ -237,6 +304,7 @@ def revoke_all(repo: Repository, login: str) -> int:
 
 
 __all__ = ["Identity", "AuthError", "issue", "resolve", "resolve_identity",
+           "try_on_role", "ROLE_ORDER",
            "revoke", "revoke_all", "hash_token", "bearer_token",
            "ttl_seconds", "trust_headers", "STRICTEST_ROLE",
            "DEFAULT_TTL_SECONDS"]

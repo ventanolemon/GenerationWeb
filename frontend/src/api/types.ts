@@ -252,6 +252,23 @@ export interface ExportRequest {
 // (та же, что в core/repository.py ROLES). Приходит из профиля FastAPI.
 export type Role = "student" | "teacher" | "admin";
 
+/**
+ * Ответ `GET /auth/me` — кто я ПО МНЕНИЮ СЕРВЕРА.
+ *
+ * Нужен ровно там, где локальный профиль врать не должен: право примерять
+ * роль (`can_try_on`) читается из БД, а не выводится из того, что клиент
+ * помнит о себе, — иначе кнопка появляется у того, кто получит 403.
+ */
+export interface WhoAmI {
+  login: string;
+  role: Role;
+  verified: boolean;
+  source: string;
+  trying_on: boolean;
+  true_role: Role | null;
+  can_try_on: boolean;
+}
+
 export interface UserInfo {
   login: string;
   fio: string;

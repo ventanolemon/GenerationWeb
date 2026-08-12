@@ -103,6 +103,7 @@ def attempts_from_session(
     assignment_id: Optional[int] = None,
     device_id: Optional[str] = None,
     now: Optional[float] = None,
+    trying_on: bool = False,
 ) -> List[AttemptRecord]:
     """
     Собрать попытки по итогам сессии — или НЕ собрать, если режим не пишет.
@@ -114,6 +115,13 @@ def attempts_from_session(
     Записываются только ЗАКРЫТЫЕ вопросы (`session.outcomes`). Незакрытый
     вопрос — это вопрос, на котором студент сейчас находится, и писать по
     нему результат не о чем.
+
+    `trying_on` — ход сделан в примерке роли (режим разработчика). Попытка
+    пишется, но НЕ идёт в статистику, и решение это принимается здесь, а
+    не у вызывающего: `counts_toward_stats` — часть контракта режима, и
+    второе место, где его назначают, разошлось бы с первым. Обратите
+    внимание: примерка может только СНЯТЬ зачёт в статистику, но не
+    поставить его там, где сценарий его не даёт.
     """
     contract = scenario.contract
     if not contract.records_attempts:
@@ -134,7 +142,7 @@ def attempts_from_session(
             session_mode=scenario.mode.value,
             adaptive=scenario.adaptive,
             attempts_used=outcome.attempts,
-            counts_toward_stats=contract.counts_toward_stats,
+            counts_toward_stats=contract.counts_toward_stats and not trying_on,
             assignment_id=assignment_id,
             device_id=device_id,
             created_at=stamp,

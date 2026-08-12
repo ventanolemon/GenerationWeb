@@ -29,6 +29,7 @@ import type {
   RegisterRequest,
   Role,
   Subject,
+  WhoAmI,
   TeachingAssignment,
   TurnResultResponse,
   UpdateProfileRequest,
@@ -47,6 +48,8 @@ export interface Identity {
   login: string;
   role?: Role;
   token?: string;
+  /** Примеряемая роль (режим разработчика); пусто — примерки нет. */
+  actingRole?: Role;
 }
 
 function idHeaders(id: Identity): Record<string, string> {
@@ -55,6 +58,11 @@ function idHeaders(id: Identity): Record<string, string> {
     "X-User-Role": id.role ?? "student",
   };
   if (id.token) headers["Authorization"] = `Bearer ${id.token}`;
+  // Примерка роли (режим разработчика). Заголовок ЗАЯВЛЯЕТ желание, а не
+  // даёт право: сервер проверяет его по настоящей записи в БД и откажет
+  // 403, если примерять некому. Поэтому слать его безопасно отсюда —
+  // из единственного места, где вообще собираются заголовки личности.
+  if (id.actingRole) headers["X-Acting-Role"] = id.actingRole;
   return headers;
 }
 
@@ -176,6 +184,11 @@ export const api = {
   // Выход гасит сессию на сервере, а не только забывает её в браузере.
   // Ошибку глотаем: пользователь всё равно выходит локально, и держать его
   // в приложении из-за недоступной сети было бы хуже.
+  /** Кто я по мнению сервера (роль из БД, право на примерку). */
+  me(id: Identity): Promise<WhoAmI> {
+    return request<WhoAmI>("/api/auth/me", { headers: idHeaders(id) });
+  },
+
   async logout(id: Identity): Promise<void> {
     try {
       await request<void>("/api/auth/logout", {
