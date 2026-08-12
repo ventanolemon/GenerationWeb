@@ -59,6 +59,10 @@ function renderBody(body: string, pageId: string): React.ReactNode[] {
   const lines = body.split("\n");
   let paragraph: string[] = [];
   let list: string[] = [];
+  // Нумерованный список — отдельный вид, а не «список с цифрами»:
+  // порядок в нём несёт смысл (шаги делаются по очереди), и показывать
+  // его точками значило бы потерять ровно это.
+  let ordered = false;
   let code: string[] | null = null;
 
   const flushParagraph = (key: string) => {
@@ -69,14 +73,12 @@ function renderBody(body: string, pageId: string): React.ReactNode[] {
   };
   const flushList = (key: string) => {
     if (list.length === 0) return;
-    out.push(
-      <ul key={key}>
-        {list.map((item, i) => (
-          <li key={`${key}-${i}`}>{inline(item, `${key}-${i}`)}</li>
-        ))}
-      </ul>,
-    );
+    const items = list.map((item, i) => (
+      <li key={`${key}-${i}`}>{inline(item, `${key}-${i}`)}</li>
+    ));
+    out.push(ordered ? <ol key={key}>{items}</ol> : <ul key={key}>{items}</ul>);
     list = [];
+    ordered = false;
   };
 
   lines.forEach((raw, index) => {
@@ -130,9 +132,15 @@ function renderBody(body: string, pageId: string): React.ReactNode[] {
     }
 
     const bullet = raw.match(/^[*-]\s+(.*)$/);
-    if (bullet) {
+    const numbered = raw.match(/^\d+\.\s+(.*)$/);
+    if (bullet || numbered) {
       flushParagraph(key);
-      list.push(bullet[1]);
+      const wantOrdered = numbered !== null;
+      // Смена вида списка закрывает предыдущий: маркированный и
+      // нумерованный подряд — два списка, а не один вперемешку.
+      if (list.length > 0 && wantOrdered !== ordered) flushList(`${key}-prev`);
+      ordered = wantOrdered;
+      list.push((bullet ?? numbered)![1]);
       return;
     }
 

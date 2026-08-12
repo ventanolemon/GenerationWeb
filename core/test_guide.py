@@ -82,6 +82,53 @@ class FormatTests(unittest.TestCase):
                 guide.parse_page(path)
 
 
+class MarkupTests(unittest.TestCase):
+    """
+    Разметка — закрытый набор, и это проверяется.
+
+    Без проверки формат «расширяется» молча: автор пишет таблицу,
+    рендерер про таблицы не знает, и в документации появляется абзац из
+    палок. Поймано ровно так — нумерованный список схлопнулся в один
+    абзац, и увидеть это можно было только глазами на собранной странице.
+    """
+
+    def _parse(self, body: str):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "x.md"
+            path.write_text(f"---\nid: x\ntitle: X\n---\n\n{body}\n",
+                            encoding="utf-8")
+            return guide.parse_page(path)
+
+    def test_unsupported_markup_is_refused(self):
+        cases = {
+            "таблица": "| а | б |",
+            "цитата": "> цитата",
+            "глубокий заголовок": "#### Слишком глубоко {#x}",
+            "заголовок первого уровня": "# Заголовок",
+            "картинка по пути": "![подпись](/img/x.png)",
+            "внешняя ссылка": "[текст](https://example.com)",
+        }
+        for name, body in cases.items():
+            with self.subTest(case=name):
+                with self.assertRaises(guide.GuideError):
+                    self._parse(body)
+
+    def test_supported_markup_passes(self):
+        page = self._parse(
+            "## Раздел {#s}\n\nАбзац с **жирным** и `кодом`.\n\n"
+            "* пункт\n\n1. шаг\n\n[ссылка](guide:x/s)\n\n"
+            "![снимок](shot:generator-main)")
+        self.assertEqual([s.id for s in page.sections], ["s"])
+        self.assertEqual(page.shots, ["generator-main"])
+        self.assertEqual(page.links, ["x/s"])
+
+    def test_code_fence_may_contain_anything(self):
+        # Во врезке кода живут примеры разметки и путей — запрещать их
+        # там значило бы запретить документации показывать формат.
+        page = self._parse("```\n| таблица |\n> цитата\n#### глубина\n```")
+        self.assertTrue(page.body)
+
+
 class AnchorRegistryTests(unittest.TestCase):
     """
     Реестр адресов. Смысл не в порядке ради порядка: опубликованный адрес
