@@ -1,7 +1,9 @@
 import { useState } from "react";
 import type { Partition, StaticTaskResponse } from "../api/types";
-import { api, ApiError } from "../api/client";
+import { api } from "../api/client";
+import ExportDialog from "../components/ExportDialog";
 import { BlockList } from "../blocks/BlockRenderer";
+import AcceptedAnswers from "./AcceptedAnswers";
 import styles from "../styles/views.module.css";
 
 interface Props {
@@ -14,6 +16,7 @@ interface Props {
  */
 export default function StaticTaskView({ partition }: Props) {
   const [task, setTask] = useState<StaticTaskResponse | null>(null);
+  const [exporting, setExporting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showingAnswer, setShowingAnswer] = useState(false);
@@ -39,20 +42,9 @@ export default function StaticTaskView({ partition }: Props) {
     }
   }
 
-  async function exportOne() {
-    if (!task) return;
-    try {
-      const blob = await api.export({
-        partitionId: partition.id,
-        count: 1,
-        withAnswers: true,
-      });
-      triggerDownload(blob, `${partition.name}.docx`);
-    } catch (e) {
-      const msg = e instanceof ApiError ? e.message : String(e);
-      setError(`Не удалось экспортировать: ${msg}`);
-    }
-  }
+  // Экспорт открывает диалог: одной галочки «с ответами» мало —
+  // размещений четыре, и лист с ключом под каждым заданием
+  // студентам не раздашь.
 
   return (
     <div className={styles.view}>
@@ -66,7 +58,7 @@ export default function StaticTaskView({ partition }: Props) {
             <button onClick={() => setShowingAnswer((s) => !s)}>
               {showingAnswer ? "Показать условие" : "Показать ответ"}
             </button>
-            <button onClick={exportOne}>Экспорт в Word</button>
+            <button onClick={() => setExporting(true)}>Экспорт в Word</button>
           </>
         )}
       </div>
@@ -76,21 +68,24 @@ export default function StaticTaskView({ partition }: Props) {
       {task && (
         <div className={styles.content}>
           <BlockList blocks={showingAnswer ? task.answer : task.statement} />
+          {/* Предпросмотр «что примут» показываем только вместе с
+              ответом. Список засчитываемых ответов — это ответ и есть,
+              и рядом с условием ему не место. */}
+          {showingAnswer && task.answer_spec && (
+            <AcceptedAnswers spec={task.answer_spec} />
+          )}
         </div>
+      )}
+          {exporting && (
+        <ExportDialog
+          partitionId={partition.id}
+          partitionName={partition.name}
+          defaultCount={1}
+          onClose={() => setExporting(false)}
+        />
       )}
     </div>
   );
 }
 
 /** Сохранить Blob как файл, инициировав скачивание. */
-export function triggerDownload(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  // Освобождаем blob URL — браузер иначе будет держать его до перезагрузки.
-  URL.revokeObjectURL(url);
-}

@@ -24,7 +24,9 @@ def get_2_perfect():
     else:
         result = (first_ev / zero_ev) ** second_ev
     res = r"\lim_{x \to \infty} {" + sp.latex(result) + "}"
-    return ("formula", res),  ("formula", sp.latex(sp.limit(result, x, sp.oo)))
+    answer = sp.limit(result, x, sp.oo)
+    return (("formula", res), ("formula", sp.latex(answer)),
+            ("answer", answer))
 
 
 if __name__ == "__main__":

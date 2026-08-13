@@ -33,6 +33,7 @@ from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from core import sync_api  # noqa: E402
+from core import auth_sessions  # noqa: E402
 from core.repository import Repository  # noqa: E402
 from generator_service import errors  # noqa: E402
 from generator_service.routers import partitions as partitions_router  # noqa: E402
@@ -73,14 +74,18 @@ class PartitionAuthzTestBase(unittest.TestCase):
 
     # ---------- помощники ----------
 
-    @staticmethod
-    def _headers(login=None, role=None) -> dict:
-        headers = {}
-        if login is not None:
-            headers["X-User-Id"] = login
-        if role is not None:
-            headers["X-User-Role"] = role
-        return headers
+    def _headers(self, login=None, role=None) -> dict:
+        """
+        Заголовки личности: настоящая сессия, а не заявление.
+
+        `login=None` — гость (заголовков нет вовсе). Роль игнорируется:
+        сервер читает её из БД по токену. Раньше её можно было заявить, и
+        именно поэтому преподаватель мог назвать себя админом.
+        """
+        if login is None:
+            return {}
+        token = auth_sessions.issue(self.repo, login)["token"]
+        return {"Authorization": f"Bearer {token}"}
 
     def _post(self, subject_id: int, name="Раздел", login=None, role=None):
         return self.client.post("/partitions", json={
@@ -109,16 +114,31 @@ class UpsertAuthzTests(PartitionAuthzTestBase):
         self.assertEqual(resp.status_code, 403)
         self.assertIn("teacher", resp.json()["error"]["message"])
 
-    def test_unknown_role_header_is_not_a_free_pass(self):
-        # Роль приходит от релея; неизвестное значение обязано быть отказом,
-        # а не «ну ладно».
-        self.assertEqual(
-            self._post(self.shared, login="alla", role="superuser").status_code,
-            403)
+    def test_garbage_role_header_changes_nothing(self):
+        """
+        Прежде роль приходила от релея, и неизвестное значение обязано было
+        быть отказом. Теперь заголовок роли не читается вовсе: у «alla» в
+        БД teacher, ей встроенный каталог открыт, и мусор рядом с токеном
+        этого не меняет — ни в плюс, ни в минус.
+        """
+        headers = {**self._headers(login="alla"), "X-User-Role": "superuser"}
+        r = self.client.post("/partitions", json={
+            "subject_id": self.shared, "name": "Раздел",
+            "constracted": 0, "generation_params": {}}, headers=headers)
+        self.assertEqual(r.status_code, 200)
 
-    def test_missing_role_header_defaults_to_no_rights(self):
-        # Заголовок роли может не доехать; умолчание обязано быть строгим.
-        self.assertEqual(self._post(self.shared, login="alla").status_code, 403)
+    def test_role_comes_from_the_database_not_from_the_header(self):
+        """
+        Прежде здесь проверялось, что при потерянном заголовке роли прав
+        не прибавляется. Теперь заявить роль нечем вовсе: у «alla» в БД
+        роль teacher, и что бы ни стояло в X-User-Role, сервер возьмёт её.
+        """
+        headers = {**self._headers(login="alla"), "X-User-Role": "admin"}
+        foreign = self.client.post("/partitions", json={
+            "subject_id": self.boris_subject, "name": "Захват",
+            "constracted": 0, "generation_params": {}}, headers=headers)
+        self.assertEqual(foreign.status_code, 403,
+                         "заголовок роли дал права, которых нет в БД")
 
     def test_teacher_writes_into_the_shared_catalog(self):
         # Встроенные предметы преподавателю открыты — это сознательное

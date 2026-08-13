@@ -113,6 +113,30 @@ class Node(ABC):
         """
         return set()
 
+    def node_ref(self) -> str:
+        """
+        Как называть ЭТОТ узел в текстах ошибок автору графа.
+
+        Автор графа не знает type_id — на холсте и в палитре узел подписан
+        display_name, а сам узел на холсте помечен node_id (это то, что
+        реально можно найти глазами в графе). Поэтому сообщение должно
+        вести с display_name, а не с type_id (см.
+        docs/architecture/july_language_russification.md, §1.6) — но и не
+        терять type_id вовсе: он остаётся вторым, в скобках, потому что
+        полезен в логах и при обращении в поддержку.
+
+        Все `raise RetryGeneration(...)`/`raise GraphValidationError(...)`
+        в узлах используют этот метод вместо самодельного форматирования —
+        единый источник формы обращения к узлу, а не 200 копий одной идеи.
+        """
+        name = self.display_name or self.type_id or self.__class__.__name__
+        if self.type_id and self.type_id != name:
+            return f"«{name}» ({self.node_id}, {self.type_id})"
+        # Пустой (или отсутствующий) display_name — не должно случаться у
+        # зарегистрированных узлов, но полагаться на это не будем: тогда
+        # просто нечего дублировать в скобках, кроме id.
+        return f"«{name}» ({self.node_id})"
+
     @classmethod
     def type_param_key_for(cls, port_type: PortType) -> str | None:
         """Значение TYPE_PARAM, дающее port_type — обратный поиск по
@@ -158,7 +182,6 @@ class Node(ABC):
     def _require_param(self, key: str) -> Any:
         if key not in self.params:
             raise GraphValidationError(
-                f"Узел {self.node_id!r} ({self.type_id}): "
-                f"не задан обязательный параметр {key!r}."
+                f"{self.node_ref()}: не задан обязательный параметр {key!r}."
             )
         return self.params[key]

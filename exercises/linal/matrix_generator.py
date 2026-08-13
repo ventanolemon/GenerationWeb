@@ -109,7 +109,6 @@ class Matrix:
             operation = random.choice(things)
             if operation == "transponirovat" and operations and operations[-1] != "transponirovat":
                 sp = transponirovat(sp)
-                print(sp)
                 cnt_now += 1
             elif operation == 'add line':
                 sp = add_line(sp)

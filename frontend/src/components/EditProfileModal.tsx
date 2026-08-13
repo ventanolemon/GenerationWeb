@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { UserInfo } from "../api/types";
 import { api } from "../api/client";
+import { useSession } from "../session";
 import Modal from "./Modal";
 import { AVATAR_COLORS } from "../utils/user";
 import mstyles from "../styles/modal.module.css";
@@ -14,6 +15,7 @@ interface Props {
 
 /** Редактирование полей профиля: ФИО, группа, email, о себе, цвет аватара. */
 export default function EditProfileModal({ user, onSaved, onClose }: Props) {
+  const { identity } = useSession();
   const [fio, setFio] = useState(user.fio ?? "");
   const [group, setGroup] = useState(user.group ?? "");
   const [email, setEmail] = useState(user.email ?? "");
@@ -27,7 +29,8 @@ export default function EditProfileModal({ user, onSaved, onClose }: Props) {
     setSaving(true);
     setError(null);
     try {
-      const updated = await api.updateProfile(user.login, {
+      if (!identity) { setError("Сессия истекла — войдите заново."); return; }
+      const updated = await api.updateProfile(identity, user.login, {
         fio: fio.trim(),
         group: group.trim(),
         email: email.trim(),

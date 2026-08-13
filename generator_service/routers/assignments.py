@@ -19,6 +19,8 @@ from pydantic import BaseModel, Field
 
 from core import assignments_api
 
+from ..identity import CurrentUser
+
 router = APIRouter(prefix="/assignments", tags=["assignments"])
 
 
@@ -27,12 +29,6 @@ class CreateAssignmentRequest(BaseModel):
     group_id: int = Field(..., gt=0)
     due_at: Optional[float] = None
 
-
-def _identity(x_user_id: Optional[str], x_user_role: Optional[str]):
-    uid = (x_user_id or "").strip()
-    if not uid:
-        raise HTTPException(status_code=401, detail="Нет заголовка X-User-Id.")
-    return uid, (x_user_role or "student").strip().lower()
 
 
 def _guard(fn):
@@ -46,10 +42,9 @@ def _guard(fn):
 def create_assignment(
     body: CreateAssignmentRequest,
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: CurrentUser,
 ) -> dict[str, Any]:
-    uid, role = _identity(x_user_id, x_user_role)
+    uid, role = who.login, who.role
     return _guard(lambda: assignments_api.create(
         request.app.state.repo, actor_login=uid, role=role,
         partition_id=body.partition_id, group_id=body.group_id,
@@ -59,10 +54,9 @@ def create_assignment(
 @router.get("/teaching")
 def teaching(
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: CurrentUser,
 ) -> dict[str, Any]:
-    uid, _role = _identity(x_user_id, x_user_role)
+    uid = who.login
     return {"assignments": assignments_api.list_teaching(
         request.app.state.repo, actor_login=uid)}
 
@@ -71,10 +65,9 @@ def teaching(
 def progress(
     assignment_id: int,
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: CurrentUser,
 ) -> dict[str, Any]:
-    uid, role = _identity(x_user_id, x_user_role)
+    uid, role = who.login, who.role
     return _guard(lambda: assignments_api.progress(
         request.app.state.repo, actor_login=uid, role=role,
         assignment_id=assignment_id))
@@ -83,10 +76,9 @@ def progress(
 @router.get("/mine")
 def mine(
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: CurrentUser,
 ) -> dict[str, Any]:
-    uid, _role = _identity(x_user_id, x_user_role)
+    uid = who.login
     return {"assignments": assignments_api.list_mine(
         request.app.state.repo, actor_login=uid)}
 
@@ -95,10 +87,9 @@ def mine(
 def delete_assignment(
     assignment_id: int,
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: CurrentUser,
 ) -> dict[str, Any]:
-    uid, role = _identity(x_user_id, x_user_role)
+    uid, role = who.login, who.role
     return _guard(lambda: assignments_api.delete(
         request.app.state.repo, actor_login=uid, role=role,
         assignment_id=assignment_id))

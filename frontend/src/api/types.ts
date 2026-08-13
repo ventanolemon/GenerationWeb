@@ -11,6 +11,11 @@
 export interface TextBlock {
   type: "text";
   content: string;
+  // Оформление абзаца. Полей нет у обычного текста — ядро добавляет их
+  // только оформленному блоку, поэтому старые ответы читаются как были.
+  size?: "small" | "normal" | "large";
+  bold?: boolean;
+  italic?: boolean;
 }
 
 export interface FormulaBlock {
@@ -92,7 +97,11 @@ export interface Partition {
   constracted: number; // 0 single, 1 fisic constructor, 2 group, 3 test
   has_generator: boolean;
   view_kind: "single" | "table" | "test";
+  // Два разных вопроса. is_interactive — «можно ли здесь отвечать»;
+  // is_checkable — «есть ли у задания статическая форма помимо сессии».
+  // У тренажёра слов только первое, у физики — оба.
   is_interactive: boolean;
+  is_checkable?: boolean;
 }
 
 
@@ -105,6 +114,11 @@ export interface StaticTaskResponse {
   statement: Block[];
   answer: Block[];
   meta: Record<string, unknown>;
+  // Появляется, когда у задания есть проверяемая форма ответа. Ответ при
+  // этом остаётся отрендеренными блоками — spec лежит РЯДОМ, а не вместо.
+  is_checkable?: boolean;
+  answer_spec?: AnswerSpec;
+  widgets?: WidgetInfo[];
 }
 
 export interface InteractiveStartResponse {
@@ -114,9 +128,89 @@ export interface InteractiveStartResponse {
   prompt: Block[];
   is_finished: boolean;
   supports_tolerant: boolean;
+  // Появляются у сессии над заданием со спецификацией ответа. widget —
+  // чем рисовать, fields — сколько полей и что подписать; спецификации
+  // здесь НЕТ, и это осознанно: она содержит ответ.
+  widget?: string;
+  fields?: InputField[];
+  // [строк, столбцов] — если ответ сетка. Поля идут построчно.
+  shape?: [number, number] | null;
+  // Варианты теста. Верный ответ среди них; порядок задан сервером и
+  // устойчив — перетасовывать его на клиенте нельзя, студент запоминает
+  // позицию между ходами.
+  options?: string[] | null;
+  scenario?: Scenario;
 }
 
 export type GenerateResponse = StaticTaskResponse | InteractiveStartResponse;
+
+
+// ─── Ответ как данные ────────────────────────────────────────────────────
+// Спецификация ответа приходит целиком только туда, где и так виден ответ
+// (статическое задание). Структура её внутренностей фронту не нужна: он
+// пересылает её в /answers/preview и показывает, что вернули.
+
+export interface AnswerSpec {
+  kind: "number" | "text" | "expression" | "slots" | string;
+  mode: "soft" | "strict";
+  [key: string]: unknown;
+}
+
+/** Переходные режимы развёртывания — то, что задано окружением. */
+export interface DeploymentState {
+  /**
+   * Сервер принимает личность из заголовков, которые пишет клиент.
+   * Переходный режим для необновлённых десктопов; в рабочем
+   * развёртывании должен быть выключен.
+   */
+  trust_identity_headers: boolean;
+}
+
+export interface WidgetInfo {
+  name: string;
+  title: string;
+  kinds: string[];
+  hint?: string;
+}
+
+/** Одно поле ввода. Ответа не содержит — только подпись и подсказку. */
+export interface InputField {
+  kind: "number" | "text" | "expression" | string;
+  name?: string;
+  label?: string;
+  hint?: string;
+  /**
+   * Элементы, из которых собирают ответ: имена входов для холста схемы,
+   * слова для «собери предложение». Ответа не содержат — всё это и так
+   * подписано в условии.
+   */
+  tokens?: string[];
+}
+
+/**
+ * Сценарий прохождения. Зеркало Scenario.to_dict: у каждой настройки не
+ * только значение, но и кто её поставил и заперта ли она — каскад
+ * «умолчание задания → выдача → выбор студента» виден целиком, иначе
+ * интерфейс не сможет отличить «студент выбрал 3 попытки» от «выдача
+ * запретила менять».
+ */
+export interface ScenarioSetting {
+  value: string | number | boolean;
+  set_by: string;
+  locked: boolean;
+}
+
+export interface Scenario {
+  mode: string;
+  settings: Record<string, ScenarioSetting>;
+}
+
+export interface AnswerPreview {
+  mode: "soft" | "strict";
+  examples: string[];
+  fields: InputField[];
+  tolerance: string;
+}
 
 
 // ─── Интерактив ──────────────────────────────────────────────────────────
@@ -126,15 +220,29 @@ export interface TurnResultResponse {
   feedback: Block[];
   next_prompt: Block[] | null;
   is_finished: boolean;
+  /**
+   * Вопрос не закрыт: ответ неверен, но попытки остались. Тогда набранное
+   * стирать нельзя — по одному лишь `next_prompt` повторную попытку от
+   * следующего вопроса не отличить.
+   */
+  same_question?: boolean;
 }
 
 
 // ─── Запросы ─────────────────────────────────────────────────────────────
 
+/** Куда девать ответы в выгрузке. */
+export type AnswerPlacement = "under" | "variant_end" | "file_end" | "hidden";
+
 export interface ExportRequest {
   partitionId: number;
+  /** Заданий в ОДНОМ варианте. */
   count: number;
-  withAnswers: boolean;
+  /** Сколько вариантов собрать; 1 — обычный случай. */
+  variants?: number;
+  answers?: AnswerPlacement;
+  /** Старый контракт; `answers`, если задан, важнее. */
+  withAnswers?: boolean;
 }
 
 
@@ -143,6 +251,23 @@ export interface ExportRequest {
 // Роль пользователя. Иерархия аддитивна: admin ⊃ teacher ⊃ student
 // (та же, что в core/repository.py ROLES). Приходит из профиля FastAPI.
 export type Role = "student" | "teacher" | "admin";
+
+/**
+ * Ответ `GET /auth/me` — кто я ПО МНЕНИЮ СЕРВЕРА.
+ *
+ * Нужен ровно там, где локальный профиль врать не должен: право примерять
+ * роль (`can_try_on`) читается из БД, а не выводится из того, что клиент
+ * помнит о себе, — иначе кнопка появляется у того, кто получит 403.
+ */
+export interface WhoAmI {
+  login: string;
+  role: Role;
+  verified: boolean;
+  source: string;
+  trying_on: boolean;
+  true_role: Role | null;
+  can_try_on: boolean;
+}
 
 export interface UserInfo {
   login: string;
@@ -154,6 +279,11 @@ export interface UserInfo {
   // как "student" (наименьшие права для UX-гейтинга; сервер всё равно
   // авторитетен и вернёт 403 при попытке лишнего).
   role?: Role;
+  // Токен сессии: приходит ТОЛЬКО с ответа на вход и хранится вместе с
+  // профилем. Именно он теперь заверяет личность — роль в этом объекте
+  // осталась для гейтинга витрин, но сервер её больше не спрашивает.
+  token?: string;
+  expires_at?: number;
   // Расширенные поля профиля (приходят при GET /profile, могут отсутствовать при login)
   email?: string;
   about?: string;
@@ -302,10 +432,50 @@ export interface AnalyticsOverview {
 
 // ─── Администрирование (/admin/*) ──────────────────────────────────────────
 
+/** Предмет в редакторе: с владельцем и числом разделов. */
+export interface ManagedSubject {
+  id: number;
+  name: string;
+  parent_name: string;
+  owner: string | null;
+  partition_count: number;
+  organization_id: number | null;
+  // Встроенный принадлежит продукту и виден всем организациям — менять
+  // его может только администратор развёртывания (§8.1).
+  is_builtin: boolean;
+  is_mine: boolean;
+}
+
+export interface Organization {
+  id: number;
+  name: string;
+  // §8.3: форма заложена, наследования нет — иерархия показывается, но
+  // никаких прав по ней не каскадирует.
+  parent_id: number | null;
+  owner_login: string | null;
+  default_subject_access: "all" | "none";
+  created_at: number;
+  member_count?: number;
+  members?: string[];
+}
+
+export interface MyOrganization {
+  login: string;
+  role: Role;
+  // Администратор РАЗВЁРТЫВАНИЯ: пакеты узлов, ключи, выпуски, публичный
+  // API. Другая ось, а не «роль на уровень выше» — см. §8.2.
+  is_superuser: boolean;
+  organization: Organization | null;
+  is_owner: boolean;
+}
+
 export interface AdminUser {
   id: number;
   login: string;
+  // Роль ВНУТРИ организации. Глобальные полномочия — is_superuser.
   role: Role;
+  organization_id?: number | null;
+  is_superuser?: boolean;
   fio: string;
   group: string;
   email: string;

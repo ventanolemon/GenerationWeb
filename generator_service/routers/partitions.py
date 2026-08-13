@@ -54,17 +54,13 @@ from pydantic import BaseModel, Field
 from bootstrap import build_registry
 from const import WORDS_DIR
 from core import content_authz
+
+from .. import identity
+from ..identity import Identity, MaybeUser
 from ..context import current_user_id as current_user_id_var
 
 router = APIRouter(prefix="/partitions", tags=["partitions"])
 
-
-def _identity(x_user_id: Optional[str],
-              x_user_role: Optional[str]) -> tuple[Optional[str], str]:
-    """Заголовки → (актор, роль). Пустая роль — самая строгая, не самая
-    удобная: заголовок может не доехать, и умолчание обязано быть строгим."""
-    return ((x_user_id or "").strip() or None,
-            (x_user_role or "").strip().lower() or "student")
 
 
 def _refuse(refusal) -> None:
@@ -73,18 +69,18 @@ def _refuse(refusal) -> None:
         raise HTTPException(status_code=status, detail=reason)
 
 
-def _require_write(request: Request, subject_ids, x_user_id: Optional[str],
-                   x_user_role: Optional[str]) -> None:
+def _require_write(request: Request, subject_ids,
+                   who: Optional[Identity]) -> None:
     """Пропустить или отказать 401/403. Правило — общее с синком."""
-    actor, role = _identity(x_user_id, x_user_role)
+    actor, role = identity.actor(who)
     _refuse(content_authz.check_subject_write(
         request.app.state.repo, subject_ids, actor, role))
 
 
-def _require_read(request: Request, subject_ids, x_user_id: Optional[str],
-                  x_user_role: Optional[str]) -> None:
+def _require_read(request: Request, subject_ids,
+                  who: Optional[Identity]) -> None:
     """Пропустить или отказать 401/403/404 на чтение авторского содержимого."""
-    actor, role = _identity(x_user_id, x_user_role)
+    actor, role = identity.actor(who)
     _refuse(content_authz.check_authoring_read(
         request.app.state.repo, subject_ids, actor, role))
 
@@ -110,8 +106,7 @@ def _rebuild(request: Request) -> None:
 def get_candidates(
     subject_id: int,
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: MaybeUser,
 ) -> dict:
     """
     Разделы своего предмета + разделы «дочерних» (тех, у кого parent_name ==
@@ -123,8 +118,8 @@ def get_candidates(
     окажется». Свой предмет проверяется отказом, чужие соседи — молча
     выпадают: их отсутствие и есть правильный ответ, а не ошибка.
     """
-    _require_read(request, [subject_id], x_user_id, x_user_role)
-    actor, role = _identity(x_user_id, x_user_role)
+    _require_read(request, [subject_id], who)
+    actor, role = identity.actor(who)
     repo = request.app.state.repo
     readable = content_authz.readable_subject_ids(repo, actor, role)
 
@@ -151,8 +146,7 @@ def get_candidates(
 def get_partition(
     partition_id: int,
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: MaybeUser,
 ) -> dict:
     """
     Раздел вместе с `generation_params` — то есть с его устройством. Это
@@ -163,7 +157,7 @@ def get_partition(
     скоупа обязана идти после чтения; наружу оба исхода выглядят одинаково
     — 404, чтобы перебор id ничего не рассказывал.
     """
-    _require_read(request, [], x_user_id, x_user_role)
+    _require_read(request, [], who)
     repo = request.app.state.repo
     part = repo.get_partition(partition_id)
     if part is None:
@@ -171,7 +165,7 @@ def get_partition(
         # Разные формулировки на одном статусе сводили бы всю затею на нет:
         # перебор различал бы «нет такого» и «есть, но не ваш» по сообщению.
         raise HTTPException(status_code=404, detail="Раздел не найден.")
-    _require_read(request, [part.subject_id], x_user_id, x_user_role)
+    _require_read(request, [part.subject_id], who)
     d = part.to_dict()
     d["generation_params"] = part.generation_params
     return d
@@ -181,8 +175,7 @@ def get_partition(
 def upsert_partition(
     body: UpsertPartitionRequest,
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: MaybeUser,
 ) -> dict:
     """
     Upsert совпадает по (subject_id, name), то есть перенести раздел в
@@ -190,7 +183,7 @@ def upsert_partition(
     и проверяется он один, в отличие от синка, где перенос возможен и
     проверяются оба.
     """
-    _require_write(request, [body.subject_id], x_user_id, x_user_role)
+    _require_write(request, [body.subject_id], who)
     repo = request.app.state.repo
     pid = repo.upsert_partition(
         subject_id=body.subject_id,
@@ -206,8 +199,7 @@ def upsert_partition(
 def delete_partition(
     partition_id: int,
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: MaybeUser,
 ) -> dict:
     """
     Порядок проверок: сперва идентичность и роль (их видно, не читая базу),
@@ -215,13 +207,13 @@ def delete_partition(
     из строки, поэтому проверка владельца обязана идти после 404 — иначе
     проверять было бы нечего.
     """
-    _require_write(request, [], x_user_id, x_user_role)
+    _require_write(request, [], who)
     repo = request.app.state.repo
     part = repo.get_partition(partition_id)
     if part is None:
         raise HTTPException(status_code=404,
                             detail=f"Partition {partition_id} not found")
-    _require_write(request, [part.subject_id], x_user_id, x_user_role)
+    _require_write(request, [part.subject_id], who)
     repo.delete_partition(partition_id)
     _rebuild(request)
     return {"deleted": partition_id}

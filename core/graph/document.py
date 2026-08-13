@@ -43,6 +43,15 @@ class DocEdge:
         return (self.from_node, self.from_port, self.to_node, self.to_port)
 
 
+def _edge_key(src_node: str, src_port: str, dst_node: str, dst_port: str) -> str:
+    """
+    Ключ ребра для meta-хранилищ, завязанных на конкретный провод (bends).
+    Не индекс в списке DocEdge: индексы едут при вставке/удалении рёбер, и
+    данные, привязанные к позиции в списке, молча уехали бы на чужой провод.
+    """
+    return f"{src_node}:{src_port}->{dst_node}:{dst_port}"
+
+
 class GraphDocument:
     """Изменяемый граф (узлы + рёбра + meta). Источник правды для редактора."""
 
@@ -82,6 +91,9 @@ class GraphDocument:
         self.nodes.pop(node_id, None)
         self.edges = [e for e in self.edges
                       if e.from_node != node_id and e.to_node != node_id]
+        # Перегибы и подписи рёбер узла — вслед за самими рёбрами: иначе
+        # осиротевший ключ переживёт узел и всплывёт, если id переиспользуют.
+        self._drop_orphan_edge_meta()
         self.set_node_expanded(node_id, False)
 
     def set_params(self, node_id: str, params: dict) -> None:
@@ -102,6 +114,9 @@ class GraphDocument:
                       if not (e.to_node == to_node and e.to_port == to_port)]
         edge = DocEdge(from_node, from_port, to_node, to_port)
         self.edges.append(edge)
+        # Вытесненный провод уносит свои перегибы и подпись: они были
+        # сделаны про него, а не про вход, в который он приходил.
+        self._drop_orphan_edge_meta()
         # Новый провод мог подключить типизированный вход к источнику другого
         # типа — протолкнуть тип по цепочке (см. propagate_types_from_node).
         self.propagate_types_from_node(from_node)
@@ -109,6 +124,9 @@ class GraphDocument:
 
     def remove_edge(self, edge: DocEdge) -> None:
         self.edges = [e for e in self.edges if e.as_tuple() != edge.as_tuple()]
+        # Перегиб и подпись без ребра — мусор, который никогда не
+        # отрисуется заново.
+        self._drop_orphan_edge_meta()
 
     def edges_for(self, node_id: str) -> list[DocEdge]:
         return [e for e in self.edges
@@ -283,6 +301,7 @@ class GraphDocument:
             if e.from_node in valid_out and e.from_port in valid_out[e.from_node]
             and e.to_node in valid_in and e.to_port in valid_in[e.to_node]
         ]
+        self._drop_orphan_edge_meta()
 
     # ---------- Сериализация ----------
 
@@ -471,6 +490,113 @@ class GraphDocument:
         items = [c for c in self.comments() if c.get("id") != comment_id]
         self._set_comments(items)
 
+    # ---------- Ручные точки перегиба провода (meta, вне соединения) ----------
+    #
+    # Трассировщик кладёт провода сам; ручная поправка — точки перегиба —
+    # живёт в meta["bends"] = {edge_key: [[x, y], ...]}, РЯДОМ с layout и
+    # comments, а не в самом DocEdge. Причина — синк: конфликт по
+    # РАСПОЛОЖЕНИЮ безвреден (LWW по проводу — просто взять чью-то версию),
+    # конфликт по ЛОГИКЕ (кто с кем соединён) осмыслен и требует разбора.
+    # Смешать значило бы ловить LWW-конфликты из-за того, что двое просто
+    # подвигали провод. Ключ строится _edge_key — не индексом в self.edges,
+    # см. её докстроку.
+
+    def bends(self) -> dict[str, list]:
+        raw = self.meta.get("bends")
+        return raw if isinstance(raw, dict) else {}
+
+    def edge_bends(self, src_node: str, src_port: str,
+                   dst_node: str, dst_port: str) -> list[list[float]]:
+        """
+        Точки перегиба провода. Мусорная запись (не список пар чисел)
+        читается как «перегибов нет», а не роняет вызов: meta приходит по
+        синку от чужого клиента и из файлов, сохранённых старой версией.
+        """
+        raw = self.bends().get(_edge_key(src_node, src_port, dst_node, dst_port))
+        if not isinstance(raw, list):
+            return []
+        points: list[list[float]] = []
+        for p in raw:
+            if isinstance(p, (list, tuple)) and len(p) == 2:
+                try:
+                    points.append([float(p[0]), float(p[1])])
+                except (TypeError, ValueError):
+                    continue      # одна кривая точка не должна топить весь провод
+        return points
+
+    def set_edge_bends(self, src_node: str, src_port: str,
+                       dst_node: str, dst_port: str,
+                       points: list) -> None:
+        """Пустой points СТИРАЕТ ключ, а не оставляет []: иначе meta пухнет
+        мусором и диффы синка шумят на пустом месте."""
+        key = _edge_key(src_node, src_port, dst_node, dst_port)
+        bends = dict(self.bends())
+        if points:
+            bends[key] = [[float(x), float(y)] for x, y in points]
+        else:
+            bends.pop(key, None)
+        if bends:
+            self.meta["bends"] = bends
+        else:
+            self.meta.pop("bends", None)
+
+    def clear_bends(self) -> None:
+        self.meta.pop("bends", None)
+
+    # ---------- Подписи проводов (meta, рядом с bends) ----------
+    #
+    # Пожелание §7 июльского разбора: подписи есть только у узлов, а
+    # объяснять в большом графе чаще нужно как раз провод — почему
+    # величина уходит именно сюда. Хранение — то же, что у bends, и по
+    # тем же причинам: meta, ключ по паре портов, движок не читает.
+
+    def edge_notes(self) -> dict[str, str]:
+        raw = self.meta.get("edge_notes")
+        return raw if isinstance(raw, dict) else {}
+
+    def edge_note(self, src_node: str, src_port: str,
+                  dst_node: str, dst_port: str) -> str:
+        raw = self.edge_notes().get(
+            _edge_key(src_node, src_port, dst_node, dst_port))
+        return raw if isinstance(raw, str) else ""
+
+    def set_edge_note(self, src_node: str, src_port: str,
+                      dst_node: str, dst_port: str, text: str) -> None:
+        """Пустая подпись СТИРАЕТ ключ (как set_edge_bends)."""
+        key = _edge_key(src_node, src_port, dst_node, dst_port)
+        notes = dict(self.edge_notes())
+        value = str(text or "").strip()
+        if value:
+            notes[key] = value
+        else:
+            notes.pop(key, None)
+        if notes:
+            self.meta["edge_notes"] = notes
+        else:
+            self.meta.pop("edge_notes", None)
+
+    def _drop_orphan_edge_meta(self) -> None:
+        """
+        Выбросить перегибы и подписи проводов, которых больше нет.
+
+        Нужно там, где рёбра исчезают НЕ через remove_edge: обрезка по
+        пропавшим портам и вытеснение провода на занятом входе. Осиротевший
+        ключ пережил бы своё ребро и всплыл на новом проводе между теми же
+        портами — с текстом и изгибами, сделанными про другое.
+        """
+        alive = {_edge_key(*e.as_tuple()) for e in self.edges}
+        for field in ("bends", "edge_notes"):
+            raw = self.meta.get(field)
+            if not isinstance(raw, dict):
+                continue
+            kept = {k: v for k, v in raw.items() if k in alive}
+            if len(kept) == len(raw):
+                continue
+            if kept:
+                self.meta[field] = kept
+            else:
+                self.meta.pop(field, None)
+
     # ---------- Валидация ----------
 
     def validate(self) -> None:
@@ -512,6 +638,23 @@ class GraphDocument:
             if any((nid, port) not in consumed
                    for port in self._task_output_ports(nid))
         ]
+
+    def branches(self):
+        """
+        Ветки «условие»/«ответ» по всему графу (core/graph/branches.py).
+
+        Не хранится и не кэшируется: считается по графу, который тут же и
+        лежит, а любой кэш пришлось бы сбрасывать на каждой правке —
+        включая те, о которых холст узнаёт не сразу.
+        """
+        from .branches import EdgeRef, compute_branches
+        return compute_branches(
+            node_types={nid: n.type for nid, n in self.nodes.items()},
+            node_params={nid: n.params for nid, n in self.nodes.items()},
+            edges=[EdgeRef(*e.as_tuple()) for e in self.edges],
+            sinks=self.task_sink_ids(),
+            input_ports=lambda nid: [p.name for p in self.ports(nid)[0]],
+        )
 
     def type_has_task_output(self, type_id: str) -> bool:
         """Есть ли у типа узла (с параметрами по умолчанию) выход TASK."""

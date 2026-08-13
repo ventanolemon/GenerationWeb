@@ -13,6 +13,37 @@ from typing import List, Optional
 
 class RuntimeMixin:
     """Сессии тренажёров и накопленная статистика."""
+    # ---------- Попытки ----------
+
+    def save_attempts(self, records) -> int:
+        """
+        Записать попытки, вернуть число реально вставленных строк.
+
+        Идемпотентно по `client_uuid`: повтор той же сессии не создаёт
+        вторую строку про тот же ответ. Расхождение между длиной списка и
+        результатом при повторе — норма, а не потеря.
+
+        Разбор того, ЧТО писать и писать ли вообще, живёт в
+        `core.attempts`: это контракт режима прохождения, а не дело слоя
+        доступа. Сюда приходят уже готовые записи.
+
+        Сам SQL здесь, а не в `core.attempts`, потому что таблица
+        серверная: у десктопа её нет, он отправляет попытки синком, и
+        общее ядро не должно возить туда обращение к несуществующей
+        таблице.
+        """
+        from ..attempts import ATTEMPT_COLUMNS
+        if not records:
+            return 0
+        placeholders = ", ".join("?" for _ in ATTEMPT_COLUMNS)
+        sql = (f"INSERT OR IGNORE INTO attempts "
+               f"({', '.join(ATTEMPT_COLUMNS)}) VALUES ({placeholders})")
+        inserted = 0
+        with self.transaction() as conn:
+            for record in records:
+                inserted += conn.execute(sql, record.as_row()).rowcount
+        return inserted
+
     # ---------- Интерактивные сессии ----------
     #
     # Состояние живого тренажёра между HTTP-ходами. Лежит в БД, а не в

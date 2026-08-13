@@ -21,12 +21,14 @@
 """
 
 from __future__ import annotations
-from typing import Any, Optional
+from typing import Any
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from core import api_clients
+
+from ..identity import SuperUser
 
 router = APIRouter(prefix="/admin/api-clients", tags=["admin"])
 
@@ -54,16 +56,6 @@ class StatusRequest(BaseModel):
     status: str = Field(..., description="active | suspended")
 
 
-def _require_admin(x_user_id: Optional[str],
-                   x_user_role: Optional[str]) -> str:
-    uid = (x_user_id or "").strip()
-    if not uid:
-        raise HTTPException(status_code=401, detail="Нет заголовка X-User-Id.")
-    if (x_user_role or "").strip().lower() != "admin":
-        raise HTTPException(status_code=403,
-                            detail="Доступно только администратору.")
-    return uid
-
 
 def _run(fn, *args, **kwargs) -> Any:
     try:
@@ -75,10 +67,8 @@ def _run(fn, *args, **kwargs) -> Any:
 @router.get("")
 def list_clients(
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: SuperUser,
 ) -> dict[str, Any]:
-    _require_admin(x_user_id, x_user_role)
     return {"clients": api_clients.list_clients(request.app.state.repo)}
 
 
@@ -86,12 +76,10 @@ def list_clients(
 def create_client(
     body: CreateClientRequest,
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: SuperUser,
 ) -> dict[str, Any]:
-    actor = _require_admin(x_user_id, x_user_role)
     return _run(api_clients.create_client, request.app.state.repo,
-                name=body.name, owner_login=actor,
+                name=body.name, owner_login=who.login,
                 daily_quota=body.daily_quota)
 
 
@@ -99,10 +87,8 @@ def create_client(
 def get_client(
     client_id: int,
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: SuperUser,
 ) -> dict[str, Any]:
-    _require_admin(x_user_id, x_user_role)
     return _run(api_clients.describe_client, request.app.state.repo, client_id)
 
 
@@ -110,10 +96,8 @@ def get_client(
 def delete_client(
     client_id: int,
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: SuperUser,
 ) -> dict[str, Any]:
-    _require_admin(x_user_id, x_user_role)
     return _run(api_clients.delete_client, request.app.state.repo,
                 client_id=client_id)
 
@@ -123,12 +107,10 @@ def issue_key(
     client_id: int,
     body: IssueKeyRequest,
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: SuperUser,
 ) -> dict[str, Any]:
     """Открытое значение ключа возвращается ЕДИНСТВЕННЫЙ раз — дальше в базе
     только хэш. Потерян — выпустите новый и отзовите старый."""
-    _require_admin(x_user_id, x_user_role)
     return _run(api_clients.issue_key, request.app.state.repo,
                 client_id=client_id, kind=body.kind,
                 allowed_origins=body.allowed_origins)
@@ -139,10 +121,8 @@ def revoke_key(
     client_id: int,
     prefix: str,
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: SuperUser,
 ) -> dict[str, Any]:
-    _require_admin(x_user_id, x_user_role)
     return _run(api_clients.revoke_key, request.app.state.repo,
                 client_id=client_id, prefix=prefix)
 
@@ -152,12 +132,10 @@ def set_subjects(
     client_id: int,
     body: SubjectsRequest,
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: SuperUser,
 ) -> dict[str, Any]:
     """Пустой список = клиенту доступны все встроенные предметы и только они
     (авторский контент наружу без явного решения не уходит)."""
-    _require_admin(x_user_id, x_user_role)
     return _run(api_clients.set_subjects, request.app.state.repo,
                 client_id=client_id, subject_ids=body.subject_ids)
 
@@ -167,10 +145,8 @@ def set_quota(
     client_id: int,
     body: QuotaRequest,
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: SuperUser,
 ) -> dict[str, Any]:
-    _require_admin(x_user_id, x_user_role)
     return _run(api_clients.set_quota, request.app.state.repo,
                 client_id=client_id, daily_quota=body.daily_quota)
 
@@ -180,9 +156,7 @@ def set_status(
     client_id: int,
     body: StatusRequest,
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: SuperUser,
 ) -> dict[str, Any]:
-    _require_admin(x_user_id, x_user_role)
     return _run(api_clients.set_status, request.app.state.repo,
                 client_id=client_id, status=body.status)

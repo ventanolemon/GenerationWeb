@@ -118,5 +118,7 @@ def get_taylor_limit_task():
     return (
         ("text", " 8.\tВычислить предел, используя разложения функций по формуле Тейлора\n"),
         ("formula", limit_expr_clean),   # ← теперь чистый для Word
-        ("formula", clean_answer)        # ← тоже чистый
+        ("formula", clean_answer),       # ← тоже чистый
+        # Значение рядом с его отрисовкой: латех разобрать обратно нечем.
+        ("answer", limit_value),
     )

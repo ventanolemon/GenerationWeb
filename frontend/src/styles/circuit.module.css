@@ -1,0 +1,133 @@
+/* Холст логической схемы.
+ *
+ * Чертёж намеренно похож на тот, что в условии (ГОСТ 2.743-91):
+ * прямоугольник с «&» или «1», кружок инверсии у НЕ. Студент собирает то
+ * же, что видит, и не переводит одно обозначение в другое. */
+
+.canvas {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.palette button {
+  padding: 0.3rem 0.7rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+.clear {
+  margin-left: auto;
+}
+
+.board {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border, #ccc);
+  border-radius: 4px;
+  background: var(--surface, #fff);
+}
+
+.gate {
+  fill: var(--surface, #fff);
+  stroke: var(--text, #222);
+  stroke-width: 2;
+}
+
+/* Выход схемы подсвечен: у собранной схемы он один, и видеть который —
+ * половина понимания того, что получилось. */
+.gateEnd {
+  stroke-width: 3;
+  stroke: var(--accent, #2b6cb0);
+}
+
+.input {
+  fill: var(--surface, #fff);
+  stroke: var(--text, #222);
+  stroke-width: 2;
+}
+
+.glyph {
+  font-size: 15px;
+  font-weight: 600;
+  fill: var(--text, #222);
+  user-select: none;
+  pointer-events: none;
+}
+
+.bubble {
+  fill: var(--surface, #fff);
+  stroke: var(--text, #222);
+  stroke-width: 2;
+}
+
+.wire {
+  fill: none;
+  stroke: var(--text, #222);
+  stroke-width: 2;
+}
+
+.pinEmpty,
+.pinFilled,
+.pinOut,
+.pinArmed {
+  cursor: pointer;
+  stroke-width: 1.5;
+  stroke: var(--text, #222);
+}
+
+.pinEmpty {
+  fill: var(--surface, #fff);
+}
+
+.pinFilled {
+  fill: var(--text, #222);
+}
+
+.pinOut {
+  fill: var(--surface, #fff);
+}
+
+/* Взятый выход виден: без этого клик «в никуда» неотличим от промаха. */
+.pinArmed {
+  fill: var(--accent, #2b6cb0);
+  stroke: var(--accent, #2b6cb0);
+}
+
+.remove {
+  font-size: 13px;
+  fill: var(--muted, #888);
+  cursor: pointer;
+  user-select: none;
+}
+
+.remove:hover {
+  fill: var(--danger, #c53030);
+}
+
+.status {
+  min-height: 1.4em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.95em;
+}
+
+.trouble {
+  color: var(--muted, #888);
+}
+
+.formula {
+  color: var(--text, #222);
+}
+
+.help {
+  margin: 0;
+  font-size: 0.85em;
+  color: var(--muted, #888);
+}

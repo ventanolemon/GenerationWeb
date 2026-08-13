@@ -132,6 +132,19 @@ class SessionStore:
             logger.exception("не удалось сохранить сессию %s", session_id)
             return False
 
+    def context(self, session_id: str) -> Optional[tuple]:
+        """
+        (partition_id, user_id) живой сессии — или None, если её нет.
+
+        Нужно записи попытки: сессия знает свои итоги, но не знает, к
+        какому разделу и пользователю они относятся — это знает стор.
+        """
+        with self._lock:
+            entry = self._items.get(session_id)
+            if entry is None:
+                return None
+            return (entry.partition_id, entry.user_id)
+
     # ---------- Чтение ----------
 
     def get(self, session_id: str) -> Optional[InteractiveTask]:

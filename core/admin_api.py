@@ -20,18 +20,44 @@ class AdminActionError(ValueError):
     (в отличие от 401/403, которые про identity/роль вызывающего)."""
 
 
-def list_users(repo: Repository) -> list[dict]:
-    return [u.to_dict() for u in repo.list_users()]
+def list_users(repo: Repository, *,
+               organization_id=None) -> list[dict]:
+    """
+    Пользователи. `organization_id=None` — все (администратор
+    развёртывания); иначе только своя организация: люди принадлежат
+    организации (§8.1), и админу кафедры чужие не видны.
+
+    К профилю добавлены `organization_id` и `is_superuser` — интерфейсу
+    нужно показывать, кем человек является по каждой из двух осей, а не
+    догадываться по роли.
+    """
+    out = []
+    for u in repo.list_users():
+        org = repo.user_organization_id(u.login)
+        if organization_id is not None and org != organization_id:
+            continue
+        row = u.to_dict()
+        row["organization_id"] = org
+        row["is_superuser"] = repo.is_superuser(u.login)
+        out.append(row)
+    return out
 
 
 def change_role(
     repo: Repository, *, actor_login: str, target_login: str, new_role: str,
+    actor_organization_id=None,
 ) -> dict:
     if new_role not in ROLES:
         raise AdminActionError(
             f"Неизвестная роль {new_role!r}; допустимы {ROLES}.")
     if target_login == actor_login:
         raise AdminActionError("Нельзя изменить собственную роль.")
+    if actor_organization_id is not None:
+        # Роль теперь означает «роль ВНУТРИ организации» (§8.2), и менять
+        # её чужому — значит распоряжаться людьми соседней кафедры.
+        if repo.user_organization_id(target_login) != actor_organization_id:
+            raise AdminActionError(
+                f"{target_login!r} состоит в другой организации.")
 
     # Проверка и запись — ОДНОЙ транзакцией. «Нельзя понизить последнего
     # администратора» — это классическое check-then-act: два одновременных

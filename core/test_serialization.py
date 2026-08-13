@@ -99,14 +99,13 @@ def test_formula_block():
     d = b.to_dict()
     assert d["type"] == "formula"
     assert d["latex"] == r"x^2 + 2x + 1"
-    # image_b64 может быть None, если matplotlib не справился, но поле должно быть
-    assert "image_b64" in d
-    if d["image_b64"] is not None:
-        # Простая проверка: это похоже на base64-строку
-        assert isinstance(d["image_b64"], str)
-        assert len(d["image_b64"]) > 100, "base64 PNG неподозрительно короткий"
+    # Растра здесь больше нет: формулу рисует клиент по исходнику (KaTeX).
+    # Проверяем именно отсутствие — поле стоило 94 % ответа, и вернуться
+    # оно может только по недосмотру.
+    assert "image_b64" not in d, "формула снова возит картинку"
+    assert set(d) == {"type", "latex"}
     _assert_json_serializable(d, "FormulaBlock")
-    print(f"✓ FormulaBlock.to_dict (PNG: {'есть' if d['image_b64'] else 'нет, fallback'})")
+    print("✓ FormulaBlock.to_dict (только LaTeX)")
 
 
 def test_image_block():

@@ -57,7 +57,7 @@ def my_grants(repo: Repository, *, actor_login: str, role: str) -> dict:
         }
     return {
         "scope_version": repo.scope_version(actor_login),
-        "default_access": repo.default_subject_access(),
+        "default_access": repo.effective_default_access(actor_login),
         "subject_ids": repo.subject_grants(actor_login),
     }
 
@@ -78,36 +78,48 @@ def granted_scope(
     if role != "teacher" or not login:
         return None
     ids = set(repo.subject_grants(login))
-    if repo.default_subject_access() == "none" or ids:
+    if repo.effective_default_access(login) == "none" or ids:
         return ids
     return None
 
 
 # ---------- Матрица администратора ----------
 
-def admin_matrix(repo: Repository) -> dict:
+def admin_matrix(repo: Repository, *,
+                 organization_id: Optional[int] = None) -> dict:
     """
     Данные админской вкладки одним вызовом: режим умолчания, преподаватели,
     предметы, текущие выдачи. Один вызов, а не три, потому что матрица без
     любой из частей не рисуется — экономить нечего, а гонять клиента по
     трём эндпоинтам значит показать ему несогласованный срез.
+
+    `organization_id` сужает матрицу до своей организации: выдачи работают
+    внутри неё (§8.1), и показывать админу кафедры преподавателей чужой —
+    значит предлагать ему операцию, которая всё равно будет отвергнута.
     """
     teachers = [
         {"login": u.login, "fio": u.fio}
-        for u in repo.list_users() if u.role == "teacher"
+        for u in repo.list_users()
+        if u.role == "teacher"
+        and (organization_id is None
+             or repo.user_organization_id(u.login) == organization_id)
     ]
     subjects = [
         {"id": s.id, "subject_name": s.name,
          "is_builtin": repo.subject_owner(s.id) is None}
         for s in repo.list_subjects()
+        if organization_id is None
+        or repo.subject_organization_id(s.id) in (None, organization_id)
     ]
     grants = repo.all_subject_grants()
     # Преподаватель без выдач обязан присутствовать пустым списком: иначе
     # клиент не отличит «ничего не выдано» от «строка ещё не загружена».
     for t in teachers:
         grants.setdefault(t["login"], [])
+    default_access = (repo.get_organization(organization_id) or {}).get(
+        "default_subject_access") if organization_id else None
     return {
-        "default_access": repo.default_subject_access(),
+        "default_access": default_access or repo.default_subject_access(),
         "teachers": teachers,
         "subjects": subjects,
         "grants": grants,

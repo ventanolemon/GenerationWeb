@@ -14,22 +14,19 @@ from fastapi import APIRouter, Header, HTTPException, Request
 
 from core import analytics_api
 
+from ..identity import CurrentUser
+
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 
 @router.get("/overview")
 def get_overview(
     request: Request,
+    who: CurrentUser,
     range_days: int = 30,
     group: Optional[str] = None,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
 ) -> dict[str, Any]:
-    uid = (x_user_id or "").strip()
-    if not uid:
-        raise HTTPException(status_code=401, detail="Нет заголовка X-User-Id.")
-    role = (x_user_role or "teacher").strip().lower()
     return analytics_api.overview(
-        request.app.state.repo, user_id=uid, role=role,
+        request.app.state.repo, user_id=who.login, role=who.role,
         range_days=range_days, group=group,
     )

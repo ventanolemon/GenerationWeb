@@ -7,6 +7,11 @@ namespace WebLayer.Contracts;
 /// Subject — справочник предметов. Минимальная C#-проекция того, что
 /// отдаёт FastAPI (Repository.Subject.to_dict()).
 /// </summary>
+/// <summary>
+/// Описание формы, а не её разбор: витрина предметов стала
+/// персональной и ходит через ProxyAsync, отдавая тело FastAPI как
+/// есть. Тип оставлен как документация контракта для фронта.
+/// </summary>
 public record SubjectDto(
     int Id,
     string Name,
@@ -26,7 +31,10 @@ public record PartitionDto(
     int Constracted,
     [property: JsonPropertyName("has_generator")] bool HasGenerator,
     [property: JsonPropertyName("view_kind")] string ViewKind,
-    [property: JsonPropertyName("is_interactive")] bool IsInteractive
+    [property: JsonPropertyName("is_interactive")] bool IsInteractive,
+    // Есть ли у задания статическая форма помимо сессии. Физика
+    // проверяема И экспортируема; тренажёр слов — только сессия.
+    [property: JsonPropertyName("is_checkable")] bool IsCheckable = false
 );
 
 /// <summary>
@@ -91,7 +99,14 @@ public record UserDto(
     string Email = "",
     string About = "",
     [property: JsonPropertyName("avatar_color")] string AvatarColor = "",
-    [property: JsonPropertyName("created_at")] double CreatedAt = 0
+    [property: JsonPropertyName("created_at")] double CreatedAt = 0,
+    // Токен сессии. Приходит ТОЛЬКО с ответа на вход и регистрацию; у
+    // остальных ответов с профилем его нет (null). Без этого поля токен
+    // молча терялся бы здесь, на границе C#: FastAPI его отдаёт, а DTO,
+    // не знающий о нём, выбрасывает — и браузер продолжал бы заявлять
+    // роль заголовком, как будто ничего не поменялось.
+    [property: JsonPropertyName("token")] string? Token = null,
+    [property: JsonPropertyName("expires_at")] double ExpiresAt = 0
 );
 
 /// <summary>

@@ -18,12 +18,14 @@ groups и контура. Права server-authoritative — клиентски
 """
 
 from __future__ import annotations
-from typing import Any, Optional
+from typing import Any
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from core import grants_api
+from core import grants_api, organizations_api
+
+from ..identity import AdminUser, CurrentUser
 
 router = APIRouter(tags=["grants"])
 
@@ -39,56 +41,49 @@ class DefaultAccessRequest(BaseModel):
     default_access: str = Field(..., min_length=1)
 
 
-def _identity(x_user_id: Optional[str], x_user_role: Optional[str]):
-    uid = (x_user_id or "").strip()
-    if not uid:
-        raise HTTPException(status_code=401, detail="Нет заголовка X-User-Id.")
-    return uid, (x_user_role or "student").strip().lower()
-
-
-def _require_admin(x_user_id: Optional[str], x_user_role: Optional[str]) -> str:
-    uid, role = _identity(x_user_id, x_user_role)
-    if role != "admin":
-        raise HTTPException(status_code=403,
-                            detail="Доступно только администратору.")
-    return uid
-
-
 @router.get("/subjects/grants/mine")
 def get_my_grants(
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: CurrentUser,
 ) -> dict[str, Any]:
     """Свои выдачи. Десктоп зовёт при логине и при каждом sync."""
-    uid, role = _identity(x_user_id, x_user_role)
     return grants_api.my_grants(request.app.state.repo,
-                                actor_login=uid, role=role)
+                                actor_login=who.login, role=who.role)
 
 
 @router.get("/admin/subject-grants")
 def get_matrix(
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: AdminUser,
 ) -> dict[str, Any]:
-    _require_admin(x_user_id, x_user_role)
-    return grants_api.admin_matrix(request.app.state.repo)
+    return grants_api.admin_matrix(
+        request.app.state.repo,
+        organization_id=None if who.is_superuser else who.organization_id)
 
 
 @router.put("/admin/subject-grants/default-access")
 def put_default_access(
     body: DefaultAccessRequest,
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: AdminUser,
 ) -> dict[str, Any]:
-    _require_admin(x_user_id, x_user_role)
+    """Умолчание видимости — настройка ОРГАНИЗАЦИИ (§8.1): выдачи работают
+    внутри неё, значит и умолчание для них живёт там же. Раньше это была
+    одна строка app_settings на всё развёртывание."""
+    repo = request.app.state.repo
+    if who.organization_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Вы не состоите в организации — настраивать нечего.")
     try:
-        return grants_api.set_default_access(
-            request.app.state.repo, default_access=body.default_access)
-    except grants_api.GrantActionError as exc:
+        out = organizations_api.set_default_access(
+            repo, org_id=who.organization_id, value=body.default_access)
+    except organizations_api.OrganizationActionError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    # Форма ответа прежняя: её читают фронт и десктоп, и менять её заодно с
+    # переездом настройки в организацию значило бы сломать их без нужды.
+    return {"ok": True, "default_access": out["default_subject_access"],
+            "organization_id": out["organization_id"]}
 
 
 @router.put("/admin/subject-grants/{login}")
@@ -96,13 +91,11 @@ def put_teacher_grants(
     login: str,
     body: SetGrantsRequest,
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: AdminUser,
 ) -> dict[str, Any]:
-    actor = _require_admin(x_user_id, x_user_role)
     try:
         return grants_api.set_teacher_grants(
-            request.app.state.repo, actor_login=actor,
+            request.app.state.repo, actor_login=who.login,
             target_login=login, subject_ids=body.subject_ids,
         )
     except grants_api.GrantActionError as exc:

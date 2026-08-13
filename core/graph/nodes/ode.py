@@ -106,11 +106,11 @@ class OdeSolveNode(Node):
             ics = self._ics(sp, f, v)
             sol = sp.dsolve(eq, f(v), ics=ics) if ics else sp.dsolve(eq, f(v))
         except Exception as e:
-            raise RetryGeneration(f"ode_solve {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         if isinstance(sol, (list, tuple)):
             # Несколько решений — берём первое (детерминированно).
             if not sol:
-                raise RetryGeneration(f"ode_solve {self.node_id!r}: нет решения.")
+                raise RetryGeneration(f"{self.node_ref()}: нет решения.")
             sol = sol[0]
         return {"out": sol}
 
@@ -136,9 +136,9 @@ class OdeClassifyNode(Node):
         try:
             kinds = sp.classify_ode(eq, f(v))
         except Exception as e:
-            raise RetryGeneration(f"ode_classify {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         if not kinds:
-            raise RetryGeneration(f"ode_classify {self.node_id!r}: тип не определён.")
+            raise RetryGeneration(f"{self.node_ref()}: тип не определён.")
         return {"out": TextBlock(kinds[0])}
 
 
@@ -166,5 +166,5 @@ class OdeCheckNode(Node):
         try:
             ok, _residual = sp.checkodesol(eq, sol, func=f(v))
         except Exception as e:
-            raise RetryGeneration(f"ode_check {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         return {"out": bool(ok)}

@@ -148,3 +148,54 @@
   flex: 1;
   min-height: 0;
 }
+
+/* ─── Примерка роли (режим разработчика) ─────────────────────────────── */
+/* Полоса намеренно контрастная и несворачиваемая: её задача — не дать
+   принять чужую картину за свою (см. RoleTryOnBar). */
+
+.tryOnBar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 7px 16px;
+  font-size: 13px;
+  color: #1c1207;
+  background: repeating-linear-gradient(
+    135deg, #f0b429, #f0b429 14px, #e0a41f 14px, #e0a41f 28px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.25);
+}
+
+.tryOnNote { opacity: 0.75; font-size: 12px; }
+
+.tryOnIdle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 16px;
+  font-size: 12px;
+  opacity: 0.75;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+}
+
+.tryOnLabel { font-weight: 600; }
+
+.tryOnPick,
+.tryOnExit {
+  padding: 2px 9px;
+  font: inherit;
+  font-size: 12px;
+  border-radius: 5px;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.tryOnExit {
+  font-weight: 600;
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.tryOnPick:hover,
+.tryOnExit:hover { background: rgba(0, 0, 0, 0.22); }

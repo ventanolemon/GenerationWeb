@@ -2,9 +2,12 @@
 // Никакого знания о конкретных типах узлов — только данные.
 
 import type { Catalog, GraphNodeJson } from "./types";
+import type { Branch } from "./model";
 import { catalogNode, derivePorts } from "./model";
 import {
   BODY_PAD,
+  BRANCH_COLORS,
+  BRANCH_UNUSED,
   HEADER_H,
   NODE_W,
   ROW_H,
@@ -23,6 +26,11 @@ interface Props {
   sinkBadge: "out" | "conflict" | null;
   /** Подсветка входов при протяжке провода: имя порта → green | amber. */
   dropHints: Record<string, "green" | "amber"> | null;
+  /** Ветка задания в режиме «Ветки»: null — режим выключен (полосы нет),
+   *  "unused" — режим включён, но узел до финала не доходит. Различать
+   *  обязательно: «не показываем» и «ни на что не влияет» — разные вещи,
+   *  и вторую как раз и надо увидеть. */
+  branch: Branch | "unused" | null;
   onHeaderMouseDown: (e: React.MouseEvent) => void;
   onPortMouseDown: (side: "in" | "out", port: string, e: React.MouseEvent) => void;
   onPortMouseUp: (side: "in" | "out", port: string, e: React.MouseEvent) => void;
@@ -30,7 +38,7 @@ interface Props {
 }
 
 export default function NodeItem({
-  catalog, node, x, y, selected, sinkBadge, dropHints,
+  catalog, node, x, y, selected, sinkBadge, dropHints, branch,
   onHeaderMouseDown, onPortMouseDown, onPortMouseUp, onDoubleClick,
 }: Props) {
   const cn = catalogNode(catalog, node.type);
@@ -38,10 +46,19 @@ export default function NodeItem({
   const h = nodeHeight(inputs.length, outputs.length);
   const title = cn?.display_name || node.type;
 
+  // Полоса ветки — слева, а не заливкой заголовка: заголовок уже несёт
+  // выделение узла, и вторая заливка поверх него читалась бы как «узел
+  // выделен». Полосу видно и на выделенном узле.
+  const stripe =
+    branch && branch !== "unused" ? BRANCH_COLORS[branch] : BRANCH_UNUSED;
+
   return (
     <div
       className={`${styles.node} ${selected ? styles.nodeSelected : ""}`}
-      style={{ left: x, top: y, width: NODE_W, height: h }}
+      style={{
+        left: x, top: y, width: NODE_W, height: h,
+        ...(branch ? { borderLeft: `4px solid ${stripe}` } : {}),
+      }}
       onDoubleClick={onDoubleClick}
       data-node-id={node.id}
     >

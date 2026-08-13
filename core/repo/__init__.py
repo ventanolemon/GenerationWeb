@@ -21,6 +21,7 @@ from __future__ import annotations
 from .access import AccessMixin
 from .base import RepositoryBase
 from .content import ContentMixin
+from .organizations import OrganizationsMixin
 from .models import (ROLES, Assignment, Group, Partition, Subject,
                      UserProfile, _VIEW_KIND_BY_CONSTRACTED)
 from .runtime import RuntimeMixin
@@ -29,7 +30,7 @@ from .users import UsersMixin
 
 
 class Repository(ContentMixin, UsersMixin, TeachingMixin, AccessMixin,
-                 RuntimeMixin, RepositoryBase):
+                 OrganizationsMixin, RuntimeMixin, RepositoryBase):
     """Единая точка доступа к БД. Домены — в соседних модулях."""
 
 

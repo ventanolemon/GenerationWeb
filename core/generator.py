@@ -19,6 +19,7 @@ class Capability(Flag):
 
     STATIC      = auto()  # generate() возвращает StaticTask
     INTERACTIVE = auto()  # generate() возвращает InteractiveTask
+    CHECKABLE   = auto()  # generate() возвращает StaticTask со спецификацией
 
     EXPORTABLE  = auto()  # имеет смысл выводить в .docx
     GROUPABLE   = auto()  # можно положить в группу или тест
@@ -27,6 +28,12 @@ class Capability(Flag):
 
 # Удобные дефолтные наборы
 STATIC_DEFAULT = Capability.STATIC | Capability.GROUPABLE | Capability.EXPORTABLE
+
+# Статический генератор, чьи задания умеют проверяться автоматически.
+# Отличается от INTERACTIVE тем, что тип возврата прежний — StaticTask;
+# сессию над ним собирает общая машинка (core.interactive), а не сам
+# генератор своим подклассом.
+CHECKABLE_DEFAULT = STATIC_DEFAULT | Capability.CHECKABLE
 
 
 class TaskGenerator(ABC):

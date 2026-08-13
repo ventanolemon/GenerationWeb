@@ -2,12 +2,17 @@ import { useEffect, useMemo, useState } from "react";
 import type { ReactElement } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import type { Role, UserInfo } from "./api/types";
-import { SessionProvider, effectiveRole, useSession } from "./session";
+import { api } from "./api/client";
+import {
+  SessionProvider, effectiveRole, readActingRole, useSession, writeActingRole,
+} from "./session";
 import type { SessionValue } from "./session";
 import LandingPage from "./views/LandingPage";
+import GuidePage from "./guide/GuidePage";
 import AppLayout from "./layouts/AppLayout";
 import GeneratorPage from "./pages/GeneratorPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
+import SubjectsPage from "./pages/SubjectsPage";
 import AdminPage from "./pages/AdminPage";
 import HomeworkPage from "./pages/HomeworkPage";
 import ContourPage from "./pages/ContourPage";
@@ -44,6 +49,11 @@ export default function App() {
   const [user, setUser] = useState<UserInfo | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [guestId] = useState<string>(getOrCreateGuestId);
+  // Примерка роли (режим разработчика). Начальное значение читается из
+  // sessionStorage: перезагрузка посреди отладки не должна молча вернуть
+  // разработчика к собственной картине.
+  const [actingRole, setActingRole] = useState<Role | null>(readActingRole);
+  const [canTryOn, setCanTryOn] = useState(false);
 
   useEffect(() => {
     const stored = loadStoredUser();
@@ -53,6 +63,22 @@ export default function App() {
     }
     setAuthChecked(true);
   }, []);
+
+  // Право примерять роль спрашиваем у СЕРВЕРА, один раз на вход. Не из
+  // сохранённого профиля: флаг разработчика в нём не лежит, а угадывать
+  // его по роли неверно — «админ организации» и «администратор
+  // развёртывания» это разные оси (§8.2).
+  useEffect(() => {
+    if (!user?.token) {
+      setCanTryOn(false);
+      return;
+    }
+    let alive = true;
+    api.me({ login: user.login, role: user.role, token: user.token })
+      .then((who) => { if (alive) setCanTryOn(who.can_try_on); })
+      .catch(() => { if (alive) setCanTryOn(false); });
+    return () => { alive = false; };
+  }, [user?.login, user?.token, user?.role]);
 
   function handleLogin(userInfo: UserInfo | null) {
     setUser(userInfo);
@@ -64,38 +90,76 @@ export default function App() {
   }
 
   function handleLogout() {
+    if (user?.token) {
+      void api.logout({ login: user.login, role: user.role, token: user.token });
+    }
     setAuthenticated(false);
     setUser(null);
     localStorage.removeItem(USER_STORAGE_KEY);
+    // Выход снимает примерку: иначе следующий вошедший в этой же вкладке
+    // получит чужой режим отладки и не поймёт, почему интерфейс урезан.
+    writeActingRole(null);
+    setActingRole(null);
   }
 
   function updateUser(updated: UserInfo) {
-    setUser(updated);
-    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updated));
+    // Токен сохраняем: он приходит ТОЛЬКО с ответа на вход, а профиль
+    // (GET/PATCH /profile) его не несёт. Затирать им сохранённый — значит
+    // молча разлогинить человека на сервере после правки своего же имени:
+    // локально он остаётся «вошедшим», а запросы начинают получать 401.
+    const merged = { ...updated, token: updated.token ?? user?.token };
+    setUser(merged);
+    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(merged));
   }
 
   const session = useMemo<SessionValue | null>(() => {
     if (!authenticated) return null;
-    const role = effectiveRole(user);
+    const trueRole = effectiveRole(user);
+    // Примерка подменяет роль ЦЕЛИКОМ, а не добавляется рядом: витрины
+    // гейтятся по `role`, и оставь мы здесь настоящую — интерфейс менялся
+    // бы только там, где о примерке отдельно вспомнили.
+    const role: Role = actingRole ?? trueRole;
     return {
       user,
       guestId,
       role,
-      identity: user ? { login: user.login, role } : null,
+      identity: user
+        ? {
+            login: user.login, role, token: user.token,
+            actingRole: actingRole ?? undefined,
+          }
+        : null,
       effectiveUserId: user?.login ?? guestId,
       logout: handleLogout,
       updateUser,
       // Регистрация из профиля обрабатывается в AppLayout (открывает
       // AuthModal); поле требуется контрактом сессии — здесь no-op.
       requestRegister: () => {},
+      canTryOn,
+      actingRole,
+      trueRole: actingRole ? trueRole : null,
+      tryOnRole: (next: Role | null) => {
+        writeActingRole(next);
+        setActingRole(next);
+      },
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authenticated, user, guestId]);
+  }, [authenticated, user, guestId, actingRole, canTryOn]);
 
   if (!authChecked) return null;
 
   if (!authenticated || session === null) {
-    return <LandingPage onLogin={handleLogin} />;
+    // База знаний открыта ГОСТЮ: инструкция, которую видно только после
+    // входа, не помогает тому, кто как раз и не понимает, как войти и
+    // зачем. Всё остальное по-прежнему за лендингом.
+    return (
+      <Routes>
+        <Route path="/guide" element={<GuidePage />} />
+        <Route path="/guide/:pageId" element={<GuidePage />} />
+        <Route path="/guide/:pageId/:sectionId" element={<GuidePage />} />
+        <Route path="*" element={<LandingPage onLogin={handleLogin} />} />
+      </Routes>
+    );
   }
 
   return (
@@ -116,6 +180,14 @@ export default function App() {
             element={
               <RequireRole roles={["teacher", "admin"]}>
                 <ContourPage />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="subjects"
+            element={
+              <RequireRole roles={["teacher", "admin"]}>
+                <SubjectsPage />
               </RequireRole>
             }
           />
@@ -143,6 +215,10 @@ export default function App() {
               </RequireUser>
             }
           />
+          <Route path="/guide" element={<GuidePage />} />
+          <Route path="/guide/:pageId" element={<GuidePage />} />
+          <Route path="/guide/:pageId/:sectionId" element={<GuidePage />} />
+        <Route path="/guide/:pageId/:sectionId" element={<GuidePage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

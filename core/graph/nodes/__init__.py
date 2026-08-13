@@ -8,16 +8,22 @@
 from __future__ import annotations
 
 from ..registry import NodeRegistry
-from .assembly import BlockListNode, StaticTaskNode
+from .assembly import BlockListNode, StaticTaskNode, TaskNode
 from .compute import ConstraintNode, FormulaNode, TemplateNode, VarDictNode
-from .content import TextBlockNode, TextNode, ToBlockNode
+from .content import CodeBlockNode, TextBlockNode, TextNode, ToBlockNode
 from .control import (
-    CompareNode, GuardNode, NumberCheckNode, PickNode, SelectNode,
+    BoolNumberNode, CompareNode, GuardNode, NumberCheckNode, PickNode,
+    SelectNode,
 )
 from .english import (
-    SentenceFillNode, SentencesFileNode, WordsFileNode, WordsTrainerNode,
+    SentencePickNode, SentencesFileNode,
+    WordsFileNode, WordsPickNode,
+    WordsTrainerNode,
 )
 from .image import ImageBlockNode, ImageFileNode, LogicCircuitNode
+from .informatics import BaseNameNode, NumberBaseNode, PrefixCodeNode
+from .pools import PoolNode, PoolPickNode
+from .strings import LetterKeysNode, RandomWordNode, TextLengthNode
 from .plot import (
     ComplexPointsPlotNode, ComplexRegionPlotNode, ConformalMapPlotNode,
 )
@@ -52,7 +58,7 @@ from .ode import (
 from .symbolic import (
     AbsNode, ApartNode, ArgNode, CancelNode, CollectNode, ConjugateNode,
     DiffNode, EvaluateNode, ExpandComplexNode, ExpandNode, ExprBinaryNode,
-    ExprBlockNode, ExprCallNode, ExprConstNode, ExprLambdaNode, ExprReduceNode,
+    ExprBlockNode, ExprCallNode, ExprConstNode, ExprLambdaNode, ExprLogNode, ExprReduceNode,
     FactorNode,
     FourierNode, ImNode,
     IntegrateNode, InverseFourierNode, InverseLaplaceNode, IsConvergentNode,
@@ -73,6 +79,7 @@ _ALL_NODES = [
     VarDictNode, FormulaNode, ConstraintNode, TemplateNode,
     # control
     CompareNode, NumberCheckNode, SelectNode, PickNode, GuardNode,
+    BoolNumberNode,
     LoopIndexNode, RepeatNode, MapItemNode, MapNode, InputVarNode,
     OutputVarNode, CaseNode,
     ShiftGetNode, ShiftSetNode,
@@ -81,7 +88,7 @@ _ALL_NODES = [
     ExpandNode, FactorNode, SimplifyNode, TogetherNode, CancelNode, TrigsimpNode,
     CollectNode, ApartNode, ExprBinaryNode, ExprReduceNode, SubstituteNode,
     SubsExprNode,
-    ExprLambdaNode, ExprCallNode,
+    ExprLambdaNode, ExprCallNode, ExprLogNode,
     EvaluateNode,
     DiffNode, IntegrateNode, LimitNode, LimitDisplayNode, SeriesNode,
     SummationNode, SumDisplayNode, IsConvergentNode,
@@ -105,7 +112,13 @@ _ALL_NODES = [
     # ode (дифференциальные уравнения)
     OdeConstNode, OdeSolveNode, OdeClassifyNode, OdeCheckNode,
     # english (английский язык)
-    WordsFileNode, WordsTrainerNode, SentencesFileNode, SentenceFillNode,
+    WordsFileNode, WordsPickNode, WordsTrainerNode, SentencesFileNode,
+    SentencePickNode,
+    # пулы значений и строки (общие: русский, английский, информатика)
+    PoolNode, PoolPickNode, RandomWordNode, LetterKeysNode,
+    TextLengthNode,
+    # informatics (информатика)
+    NumberBaseNode, BaseNameNode, PrefixCodeNode,
     # image (изображения / ОПВС)
     LogicCircuitNode, ImageFileNode, ImageBlockNode,
     # plot (графика на комплексной плоскости)
@@ -114,15 +127,23 @@ _ALL_NODES = [
     ListNewNode, ListAppendNode, ListConcatNode, ListLengthNode, ListGetNode,
     ListJoinNode,
     # content
-    TextNode, TextBlockNode, ToBlockNode,
+    TextNode, TextBlockNode, CodeBlockNode, ToBlockNode,
     # assembly
-    BlockListNode, StaticTaskNode,
+    TaskNode, BlockListNode, StaticTaskNode,
 ]
 
 
 def build_default_registry() -> NodeRegistry:
     reg = NodeRegistry()
     for cls in _ALL_NODES:
+        reg.register(cls)
+    # Узлы моделей не перечисляются здесь поимённо: они собираются из
+    # объявлений моделей (core/models), и дописывать сюда строку значило
+    # бы требовать от автора предметного модуля правки в графе — ровно
+    # того, чего стандарт и избегает.
+    from ...models import DEFAULT_MODELS
+    from .model_nodes import model_node_classes
+    for cls in model_node_classes(DEFAULT_MODELS):
         reg.register(cls)
     from .descriptions import apply_descriptions
     apply_descriptions(reg)

@@ -49,6 +49,20 @@ export interface ParamSchema {
   default?: unknown;
   optional?: boolean;
   values?: string[];
+  // Вид поставочного ресурса у файлового параметра: words | sentences |
+  // images | pools. Инспектор по нему отбирает список — какие узлы какие
+  // файлы берут, знает СХЕМА, а не форма.
+  resource?: string;
+}
+
+// Поставочный файл (GET /graph/resources). Адресуется идентификатором
+// `res:…`, а не путём: путь верен на одной машине и бессмыслен на
+// другой, а граф ездит между ними (core/graph/resources.py).
+export interface GraphResource {
+  id: string;
+  kind: string;
+  name: string;
+  title: string;
 }
 
 export interface CatalogConversion {

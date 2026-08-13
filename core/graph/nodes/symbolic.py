@@ -50,11 +50,11 @@ def _resolve_var(node, inputs, expr):
         return syms[0]
     if not syms:
         raise GraphValidationError(
-            f"{node.type_id} {node.node_id!r}: в выражении нет переменной — "
+            f"{node.node_ref()}: в выражении нет переменной — "
             f"укажите параметр var или подключите вход var."
         )
     raise GraphValidationError(
-        f"{node.type_id} {node.node_id!r}: в выражении несколько переменных "
+        f"{node.node_ref()}: в выражении несколько переменных "
         f"{[s.name for s in syms]} — укажите, по какой (параметр var)."
     )
 
@@ -78,7 +78,7 @@ class SymbolNode(Node):
     def validate_params(self) -> None:
         name = str(self.params.get("name", "")).strip()
         if not name:
-            raise GraphValidationError(f"Узел {self.node_id!r}: пустое имя символа.")
+            raise GraphValidationError(f"{self.node_ref()}: пустое имя символа.")
 
     def summary(self) -> str:
         return str(self.params.get("name", "x")).strip()
@@ -158,7 +158,7 @@ class ParseExprNode(Node):
                              self.params.get("assumptions", "complex"))
         text = inputs.get("text")
         if text is None or str(text).strip() == "":
-            raise RetryGeneration(f"parse_expr {self.node_id!r}: пустая строка.")
+            raise RetryGeneration(f"{self.node_ref()}: пустая строка.")
         return {"out": parse_expr(str(text), syms)}
 
 
@@ -189,7 +189,7 @@ class RandomPolynomialNode(Node):
                 raise ValueError
         except (TypeError, ValueError):
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: degree должно быть целым ≥ 0."
+                f"{self.node_ref()}: degree должно быть целым ≥ 0."
             )
 
     def compute(self, inputs, ctx: ExecContext):
@@ -227,7 +227,7 @@ class _UnaryExprNode(Node):
         try:
             result = self._apply(sp, expr)
         except Exception as e:
-            raise RetryGeneration(f"{self.type_id} {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         return {"out": guard_numeric(result)}
 
 
@@ -273,7 +273,7 @@ class _ExprWithVarNode(Node):
         try:
             result = getattr(sp, self.SYMPY_OP)(expr, var)
         except Exception as e:
-            raise RetryGeneration(f"{self.type_id} {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         return {"out": guard_numeric(result)}
 
 
@@ -304,8 +304,21 @@ _BINARY_OP_ALIASES = {
 _BINARY_OP_GLYPHS = {"add": "+", "sub": "−", "mul": "×", "div": "÷", "pow": "^"}
 
 
+#: Операции, у которых больше двух слагаемых осмысленны без порядка:
+#: сложение и умножение ассоциативны и коммутативны, поэтому «a+b+c» —
+#: одно действие, а не два, и рисовать его одним узлом честно.
+#:
+#: Вычитание, деление и степень сюда НЕ входят, и это решение, а не
+#: недоделка. Деление двух выражений — это дробь, самая читаемая форма
+#: записи; «дробь из трёх» превращается в многоэтажную, которая читается
+#: хуже двух обычных. Степень правоассоциативна, вычитание — лево-, и в
+#: обоих случаях порядок пришлось бы либо показывать на узле, либо
+#: выбрать за автора молча.
+_VARIADIC_OPS = ("add", "mul")
+
+
 class ExprBinaryNode(Node):
-    """Бинарная операция над двумя выражениями (+, −, ×, ÷, ^)."""
+    """Операция над выражениями (+, −, ×, ÷, ^); сумма и произведение — N входов."""
     type_id = "expr_binop"
     category = "symbolic"
     display_name = "Операция (выражения)"
@@ -313,31 +326,109 @@ class ExprBinaryNode(Node):
     OUTPUTS = [Port("out", PortType.EXPR)]
     PARAMS_SCHEMA = {
         "op": {"type": "enum", "values": list(_BINARY_OPS), "default": "add"},
+        "count": {"type": "int", "default": 2, "optional": True},
     }
 
     def _op(self) -> str:
         raw = str(self.params.get("op", "add")).strip()
         return _BINARY_OP_ALIASES.get(raw, raw)
 
+    def _count(self) -> int:
+        """
+        Сколько входов. Больше двух допускается только у ассоциативных
+        операций — см. `_VARIADIC_OPS`.
+        """
+        try:
+            count = int(self.params.get("count", 2))
+        except (TypeError, ValueError):
+            raise GraphValidationError(
+                f"{self.node_ref()}: 'count' должен быть целым.")
+        if count < 2:
+            raise GraphValidationError(
+                f"{self.node_ref()}: операции нужно минимум два входа.")
+        if count > 2 and self._op() not in _VARIADIC_OPS:
+            raise GraphValidationError(
+                f"{self.node_ref()}: у операции "
+                f"{self._op()!r} входов ровно два. Больше двух бывает у "
+                f"{', '.join(_VARIADIC_OPS)} — остальные зависят от порядка, "
+                f"и деление двух выражений это дробь, а не звено цепочки.")
+        return count
+
     def validate_params(self) -> None:
         if self._op() not in _BINARY_OPS:
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: неизвестная операция "
+                f"{self.node_ref()}: неизвестная операция "
                 f"{self.params.get('op')!r}. Допустимы: {list(_BINARY_OPS)} "
                 f"или символы {list(_BINARY_OP_ALIASES)}."
             )
+        self._count()
+
+    def input_ports(self):
+        # Имена a, b, c… — чтобы двухвходовые графы, сохранённые раньше,
+        # продолжали ссылаться на «a» и «b» теми же проводами.
+        return [Port(chr(ord("a") + i), PortType.EXPR)
+                for i in range(self._count())]
 
     def summary(self) -> str:
         # 1 символ → холст нарисует крупным глифом (как арифметика LabVIEW).
-        return _BINARY_OP_GLYPHS.get(self._op(), self._op())
+        glyph = _BINARY_OP_GLYPHS.get(self._op(), self._op())
+        count = self._count()
+        return glyph if count == 2 else f"{glyph} ×{count}"
 
     def compute(self, inputs, ctx: ExecContext):
-        a = as_expr(inputs["a"])
-        b = as_expr(inputs["b"])
+        operation = _BINARY_OPS[self._op()]
+        values = [as_expr(inputs[chr(ord("a") + i)])
+                  for i in range(self._count())]
         try:
-            result = _BINARY_OPS[self._op()](a, b)
+            result = values[0]
+            for value in values[1:]:
+                result = operation(result, value)
         except Exception as e:
-            raise RetryGeneration(f"expr_binop {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
+        return {"out": guard_numeric(result)}
+
+
+class ExprLogNode(Node):
+    """
+    Логарифм с основанием: log_base(выражение).
+
+    Единственная функция, у которой второй аргумент — не «настройка», а
+    полноправное выражение: основание бывает и числом, и параметром
+    задания, и результатом другого узла. Записать его внутрь текста
+    (`expr_const` с «log(x, 3)») можно, но тогда основание перестаёт быть
+    точкой графа — его нельзя ни сгенерировать случайно, ни переиспользовать.
+
+    Основание берётся со входа `base`, а если провод не подключён — из
+    одноимённого параметра. Пусто и там и там — натуральный логарифм.
+    Тот же приём, что у `to_block.prefix`: динамический вход перекрывает
+    статический параметр.
+    """
+    type_id = "expr_log"
+    category = "symbolic"
+    display_name = "Логарифм"
+    description = ("Логарифм выражения по основанию. Вход: EXPR (аргумент), "
+                   "EXPR (основание, необязательно). Пустое основание — "
+                   "натуральный. Выход: EXPR.")
+    INPUTS = [Port("in", PortType.EXPR),
+              Port("base", PortType.EXPR, required=False)]
+    OUTPUTS = [Port("out", PortType.EXPR)]
+    PARAMS_SCHEMA = {"base": {"type": "string", "default": "", "optional": True}}
+
+    def summary(self) -> str:
+        base = str(self.params.get("base", "")).strip()
+        return f"log_{base}" if base else "ln"
+
+    def compute(self, inputs, ctx: ExecContext):
+        argument = as_expr(inputs["in"])
+        base = inputs.get("base")
+        if base is None:
+            raw = str(self.params.get("base", "")).strip()
+            base = parse_expr(raw) if raw else None
+        try:
+            result = (sympy().log(argument) if base is None
+                      else sympy().log(argument, as_expr(base)))
+        except Exception as e:
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         return {"out": guard_numeric(result)}
 
 
@@ -370,7 +461,7 @@ class ExprReduceNode(Node):
     def validate_params(self) -> None:
         if self._op() not in ("add", "mul"):
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: op должен быть add или mul "
+                f"{self.node_ref()}: op должен быть add или mul "
                 f"(или символы '+', '*')."
             )
 
@@ -385,13 +476,13 @@ class ExprReduceNode(Node):
             [raw] if raw is not None else [])
         if not items:
             raise RetryGeneration(
-                f"expr_reduce {self.node_id!r}: пустой список выражений."
+                f"{self.node_ref()}: пустой список выражений."
             )
         try:
             exprs = [as_expr(v) for v in items]
             result = sp.Add(*exprs) if self._op() == "add" else sp.Mul(*exprs)
         except Exception as e:
-            raise RetryGeneration(f"expr_reduce {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         return {"out": guard_numeric(result)}
 
 
@@ -459,7 +550,7 @@ class SubstituteNode(Node):
         try:
             result = expr.subs(mapping)
         except Exception as e:
-            raise RetryGeneration(f"expr_subs {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         return {"out": result}
 
 
@@ -487,12 +578,12 @@ class ExprLambdaNode(Node):
         names = self.params.get("params")
         if not isinstance(names, list) or not names:
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: 'params' должен быть непустым списком "
+                f"{self.node_ref()}: 'params' должен быть непустым списком "
                 f"имён параметров функции."
             )
         if len(set(map(str, names))) != len(names):
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: имена параметров не уникальны."
+                f"{self.node_ref()}: имена параметров не уникальны."
             )
 
     def summary(self) -> str:
@@ -544,13 +635,13 @@ class ExprCallNode(Node):
         func = inputs.get("func")
         if not isinstance(func, GraphFunction):
             raise RetryGeneration(
-                f"expr_call {self.node_id!r}: на вход func подана не функция."
+                f"{self.node_ref()}: на вход func подана не функция."
             )
         args = {name: inputs.get(name) for name in self._names()}
         try:
             result = func.call(args)
         except Exception as e:
-            raise RetryGeneration(f"expr_call {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         return {"out": guard_numeric(result)}
 
 
@@ -576,7 +667,7 @@ class SubsExprNode(Node):
     def validate_params(self) -> None:
         if not str(self.params.get("name", "")).strip():
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: пустое имя подставляемого символа."
+                f"{self.node_ref()}: пустое имя подставляемого символа."
             )
 
     def summary(self) -> str:
@@ -592,7 +683,7 @@ class SubsExprNode(Node):
         try:
             result = expr.subs(sym, value)
         except Exception as e:
-            raise RetryGeneration(f"subs_expr {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         return {"out": result}
 
 
@@ -616,10 +707,10 @@ class EvaluateNode(Node):
                 raise ValueError(f"не вещественное число: {val}")
             f = float(val)
         except (TypeError, ValueError, AttributeError) as e:
-            raise RetryGeneration(f"expr_eval {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         import math
         if math.isinf(f) or math.isnan(f):
-            raise RetryGeneration(f"expr_eval {self.node_id!r}: inf/nan.")
+            raise RetryGeneration(f"{self.node_ref()}: inf/nan.")
         return {"out": f}
 
 
@@ -664,7 +755,7 @@ class DiffNode(Node):
                 raise ValueError
         except (TypeError, ValueError):
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: order должен быть целым ≥ 0."
+                f"{self.node_ref()}: order должен быть целым ≥ 0."
             )
 
     def summary(self) -> str:
@@ -681,7 +772,7 @@ class DiffNode(Node):
         try:
             result = sp.diff(expr, var, order)
         except Exception as e:
-            raise RetryGeneration(f"diff {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         return {"out": guard_numeric(result)}
 
 
@@ -723,7 +814,7 @@ class IntegrateNode(Node):
             else:
                 result = sp.integrate(expr, var)
         except Exception as e:
-            raise RetryGeneration(f"integrate {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         # Неберущийся интеграл sympy возвращает как Integral(...) — это валидно
         # для показа, но численно бесполезно; оставляем как есть.
         return {"out": guard_numeric(result)}
@@ -761,7 +852,7 @@ class LimitNode(Node):
         try:
             result = sp.limit(expr, var, point, direction)
         except Exception as e:
-            raise RetryGeneration(f"limit {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         return {"out": result}
 
 
@@ -798,7 +889,7 @@ class LimitDisplayNode(Node):
         try:
             result = sp.Limit(expr, var, point, direction)
         except Exception as e:
-            raise RetryGeneration(f"limit_display {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         return {"out": result}
 
 
@@ -825,7 +916,7 @@ class SeriesNode(Node):
                 raise ValueError
         except (TypeError, ValueError):
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: order должен быть целым ≥ 1."
+                f"{self.node_ref()}: order должен быть целым ≥ 1."
             )
 
     def compute(self, inputs, ctx: ExecContext):
@@ -837,7 +928,7 @@ class SeriesNode(Node):
         try:
             result = sp.series(expr, var, point, order).removeO()
         except Exception as e:
-            raise RetryGeneration(f"series {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         return {"out": guard_numeric(result)}
 
 
@@ -876,7 +967,7 @@ class SummationNode(_SumBaseNode):
         try:
             result = sp.summation(term, (index, lo, hi))
         except Exception as e:
-            raise RetryGeneration(f"summation {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         return {"out": guard_numeric(result)}
 
 
@@ -894,7 +985,7 @@ class SumDisplayNode(_SumBaseNode):
         try:
             result = sp.Sum(term, (index, lo, hi))
         except Exception as e:
-            raise RetryGeneration(f"sum_display {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         return {"out": result}
 
 
@@ -919,10 +1010,10 @@ class IsConvergentNode(Node):
         try:
             verdict = sp.Sum(term, (index, lo, sp.oo)).is_convergent()
         except Exception as e:
-            raise RetryGeneration(f"is_convergent {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         if verdict not in (sp.true, sp.false, True, False):
             raise RetryGeneration(
-                f"is_convergent {self.node_id!r}: не удалось определить сходимость."
+                f"{self.node_ref()}: не удалось определить сходимость."
             )
         return {"out": bool(verdict)}
 
@@ -942,7 +1033,7 @@ class _ComplexUnaryNode(Node):
         try:
             result = getattr(sp, self.SYMPY_OP)(expr)
         except Exception as e:
-            raise RetryGeneration(f"{self.type_id} {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         return {"out": result}
 
 
@@ -995,7 +1086,7 @@ class ResidueNode(Node):
         try:
             result = sp.residue(expr, var, point)
         except Exception as e:
-            raise RetryGeneration(f"residue {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         return {"out": result}
 
 
@@ -1025,7 +1116,7 @@ class SolveNode(Node):
         try:
             roots = sp.solve(expr, var)
         except Exception as e:
-            raise RetryGeneration(f"solve {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         prefix = str(self.params.get("prefix", "")).strip()
         blocks = []
         for r in roots:
@@ -1073,7 +1164,7 @@ class _TransformNode(Node):
         try:
             result = self._apply(sp, expr, a, b)
         except Exception as e:
-            raise RetryGeneration(f"{self.type_id} {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         return {"out": result}
 
 

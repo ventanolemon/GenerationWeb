@@ -39,6 +39,7 @@ from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from core import content_authz, sync_api  # noqa: E402
+from core import auth_sessions  # noqa: E402
 from core.repository import Repository  # noqa: E402
 from generator_service import errors  # noqa: E402
 from generator_service.routers import partitions as partitions_router  # noqa: E402
@@ -80,14 +81,18 @@ class ReadAuthzTestBase(unittest.TestCase):
             if os.path.exists(self.db_path + suffix):
                 os.unlink(self.db_path + suffix)
 
-    @staticmethod
-    def _headers(login=None, role=None) -> dict:
-        headers = {}
-        if login is not None:
-            headers["X-User-Id"] = login
-        if role is not None:
-            headers["X-User-Role"] = role
-        return headers
+    def _headers(self, login=None, role=None) -> dict:
+        """
+        Заголовки личности: настоящая сессия, а не заявление.
+
+        `login=None` — гость (заголовков нет вовсе). Роль игнорируется:
+        сервер читает её из БД по токену. Раньше её можно было заявить, и
+        именно поэтому преподаватель мог назвать себя админом.
+        """
+        if login is None:
+            return {}
+        token = auth_sessions.issue(self.repo, login)["token"]
+        return {"Authorization": f"Bearer {token}"}
 
     def _get(self, partition_id: int, login=None, role=None):
         return self.client.get(f"/partitions/{partition_id}",
@@ -144,9 +149,13 @@ class AuthoringReadTests(ReadAuthzTestBase):
             self.assertEqual(
                 self._get(pid, login="root", role="admin").status_code, 200)
 
-    def test_missing_role_header_defaults_to_no_rights(self):
-        self.assertEqual(self._get(self.alla_part, login="alla").status_code,
-                         403)
+    def test_role_comes_from_the_database_not_from_the_header(self):
+        """Заявить себе роль заголовком больше нельзя — сервер читает её
+        из БД по токену."""
+        headers = {**self._headers(login="boris"), "X-User-Role": "admin"}
+        r = self.client.get(f"/partitions/{self.alla_part}", headers=headers)
+        self.assertEqual(r.status_code, 404,
+                         "заголовок роли открыл чужой раздел")
 
 
 class RefusalIsIndistinguishableTests(ReadAuthzTestBase):
@@ -247,6 +256,48 @@ class ReadScopeMatchesPullTests(ReadAuthzTestBase):
                 self.assertEqual(
                     self._get(partition_id, login="alla", role="teacher"
                               ).status_code, expected)
+
+
+class AnonymousDeviceScopeTests(ReadAuthzTestBase):
+    """
+    Устройство без входа видит только встроенное.
+
+    Настоящая дыра, пережившая auth-фазу. `visible_scope` возвращал
+    «видно всё» при отсутствии identity — заглушка с тех времён, когда
+    web_layer не пробрасывал личность. Синк принимает неопознанное
+    устройство (`MaybeUser`), а свежая установка до входа — это ровно оно,
+    и она вытягивала приватные предметы чужих преподавателей.
+
+    Пустой скоуп был бы другой крайностью: без общего каталога клиент не
+    работает офлайн до входа. Граница — та же, что во всей §8: встроенное
+    принадлежит продукту, остальное требует имени.
+    """
+
+    def test_authored_subjects_do_not_leak(self):
+        scope = sync_api.visible_scope(self.repo, None, "student")
+        self.assertIsNotNone(scope, "скоуп без identity снова «видно всё»")
+        self.assertNotIn(self.alla_subject, scope)
+        self.assertNotIn(self.boris_subject, scope)
+
+    def test_builtin_subjects_stay_available(self):
+        with self.repo.transaction() as conn:
+            conn.execute(
+                "INSERT INTO Subjects (subject_name, pra_subject, "
+                "owner_user_id) VALUES ('Встроенный', 'Встроенный', NULL)")
+            builtin = conn.execute(
+                "SELECT id FROM Subjects WHERE owner_user_id IS NULL"
+            ).fetchone()[0]
+        self.assertIn(builtin,
+                      sync_api.visible_scope(self.repo, None, "student"))
+
+    def test_pull_returns_only_builtins_without_identity(self):
+        """Проверка на самом синке, а не только на функции скоупа."""
+        pulled = sync_api.pull(self.repo, device_id="fresh", user_id=None,
+                               role="student", cursors={}, limit=100,
+                               scope_version=0)
+        owners = {row.get("owner_user_id") for row in pulled["subjects"]}
+        self.assertEqual(owners - {None}, set(),
+                         "неопознанное устройство получило авторский предмет")
 
 
 if __name__ == "__main__":

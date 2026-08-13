@@ -33,6 +33,7 @@ from exercises.opvs.generators import (
 )
 from exercises.fisic import FisicConstructorGenerator
 from exercises.graph import GraphConstructorGenerator
+from exercises.model_tasks import TASKS as MODEL_TASKS
 from exercises.english.generators import english_generators_for_path
 
 
@@ -86,6 +87,18 @@ def sync_database(repo: Repository, words_dir: Path) -> None:
             partition_id=gen.partition_id,
             subject_id=subject_id,
             name=gen.name,
+        )
+
+    # Задания на моделях (exercises/model_tasks): разделы-графы, которые
+    # поставляются вместе с приложением. Заводятся РЯДОМ со старыми
+    # код-генераторами, а не вместо них: замена сменила бы содержимое уже
+    # выданных домашних заданий и разошлась бы со статистикой попыток.
+    for entry in MODEL_TASKS.values():
+        repo.ensure_graph_partition(
+            partition_id=entry["partition_id"],
+            subject_id=entry["subject_id"],
+            name=entry["title"],
+            graph=entry["graph"],
         )
 
     # Английские словари: 1000+i → раздел английского

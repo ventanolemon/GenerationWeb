@@ -212,7 +212,7 @@ class ListGetNode(Node):
             idx = int(self.params.get("index", -1))
         if not items or not (-len(items) <= idx < len(items)):
             raise RetryGeneration(
-                f"list_get {self.node_id!r}: индекс {idx} вне диапазона (len={len(items)})."
+                f"{self.node_ref()}: индекс {idx} вне диапазона (len={len(items)})."
             )
         return {"out": items[idx]}
 
@@ -244,11 +244,16 @@ class RandomChoiceNode(Node):
     description = ("Случайно выбрать count элементов из набора (вход LIST или "
                    "параметр items). Тип выхода — elem_type при count=1, иначе "
                    "LIST. allow_duplicates — допустимы ли повторы.")
-    INPUTS = [Port("list", PortType.LIST, required=False)]
+    INPUTS = [Port("list", PortType.LIST, required=False),
+              # Веса приходят проводом ИЛИ параметром. Провод нужен, чтобы
+              # несколько выборов можно было сделать зависимыми от одного
+              # параметра генерации: посчитал веса один раз — раздал.
+              Port("weights", PortType.LIST, required=False)]
     PARAMS_SCHEMA = {
         "elem_type": {"type": "enum", "values": list(_ELEM_TYPES),
                       "default": "string", "optional": True},
         "items": {"type": "list", "default": [], "optional": True},
+        "weights": {"type": "list", "default": [], "optional": True},
         "count": {"type": "int", "default": 1, "optional": True},
         "allow_duplicates": {"type": "bool", "default": False, "optional": True},
     }
@@ -262,7 +267,8 @@ class RandomChoiceNode(Node):
         pool = len(self.params.get("items") or [])
         src = f"из {pool}" if pool else "из списка"
         n = self._count()
-        return f"{n} {src}" if n > 1 else src
+        head = f"{n} {src}" if n > 1 else src
+        return head + " ⚖" if (self.params.get("weights") or []) else head
 
     def _count(self) -> int:
         try:
@@ -273,7 +279,7 @@ class RandomChoiceNode(Node):
     def validate_params(self) -> None:
         if self._count() != int(self.params.get("count", 1) or 1):
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: count должно быть целым ≥ 1."
+                f"{self.node_ref()}: count должно быть целым ≥ 1."
             )
         items = self.params.get("items") or []
         allow_dup = bool(self.params.get("allow_duplicates", False))
@@ -281,9 +287,12 @@ class RandomChoiceNode(Node):
         # из входа list известен только в рантайме (см. compute).
         if items and not allow_dup and self._count() > len(items):
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: count={self._count()} больше набора "
+                f"{self.node_ref()}: count={self._count()} больше набора "
                 f"({len(items)}) без повторов (allow_duplicates=false)."
             )
+        weights = self.params.get("weights") or []
+        if weights:
+            self._parse_weights(weights, len(items) if items else len(weights))
 
     def output_ports(self):
         if self._count() == 1:
@@ -296,8 +305,42 @@ class RandomChoiceNode(Node):
             return _coerce_to_elem_type(value, self.params.get("elem_type", "string"))
         except RetryGeneration:
             raise RetryGeneration(
-                f"random_choice {self.node_id!r}: элемент {value!r} не число."
+                f"{self.node_ref()}: элемент {value!r} не число."
             )
+
+    def _parse_weights(self, raw, expected: int) -> list[float]:
+        """
+        Разобрать и проверить веса.
+
+        Сумма НЕ обязана быть единицей — узел нормирует сам. Требовать
+        долей значило бы заставлять автора подгонять их вручную при каждом
+        добавлении варианта, а это ровно та арифметика, которую машина
+        делает лучше.
+        """
+        values = []
+        for item in raw:
+            try:
+                values.append(float(str(item).replace(",", ".")))
+            except (TypeError, ValueError):
+                raise GraphValidationError(
+                    f"{self.node_ref()}: вес {item!r} — не число.")
+        if len(values) != expected:
+            raise GraphValidationError(
+                f"{self.node_ref()}: весов {len(values)}, "
+                f"а вариантов {expected} — они сопоставляются по порядку.")
+        if any(v < 0 for v in values):
+            raise GraphValidationError(
+                f"{self.node_ref()}: отрицательный вес.")
+        if sum(values) <= 0:
+            raise GraphValidationError(
+                f"{self.node_ref()}: все веса нулевые — выбирать не из чего.")
+        return values
+
+    def _weights_for(self, items, inputs) -> "list[float] | None":
+        raw = _as_list(inputs.get("weights")) or (self.params.get("weights") or [])
+        if not raw:
+            return None
+        return self._parse_weights(raw, len(items))
 
     def compute(self, inputs, ctx: ExecContext):
         items = _as_list(inputs.get("list"))
@@ -305,19 +348,37 @@ class RandomChoiceNode(Node):
             items = list(self.params.get("items") or [])
         if not items:
             raise RetryGeneration(
-                f"random_choice {self.node_id!r}: пустой набор для выбора."
+                f"{self.node_ref()}: пустой набор для выбора."
             )
         count = self._count()
         allow_dup = bool(self.params.get("allow_duplicates", False))
+        weights = self._weights_for(items, inputs)
+
         if allow_dup:
-            chosen = ctx.rng.choices(items, k=count)
+            chosen = ctx.rng.choices(items, weights=weights, k=count)
         else:
             if count > len(items):
                 raise RetryGeneration(
-                    f"random_choice {self.node_id!r}: count={count} больше "
+                    f"{self.node_ref()}: count={count} больше "
                     f"набора ({len(items)}) без повторов."
                 )
-            chosen = ctx.rng.sample(items, count)
+            if weights is None:
+                chosen = ctx.rng.sample(items, count)
+            else:
+                # Взвешенная выборка БЕЗ возвращения: выбранный вариант
+                # убирается, и распределение на следующем шаге считается
+                # заново по остатку. Другого «правильного» смысла у весов
+                # без повторов нет — но стоит знать, что вес означает
+                # шанс на ПЕРВОМ шаге, а не долю в итоговой выборке.
+                pool = list(items)
+                pool_weights = list(weights)
+                chosen = []
+                for _ in range(count):
+                    picked = ctx.rng.choices(pool, weights=pool_weights, k=1)[0]
+                    index = pool.index(picked)
+                    pool.pop(index)
+                    pool_weights.pop(index)
+                    chosen.append(picked)
         coerced = [self._coerce(v) for v in chosen]
         return {"out": coerced[0] if count == 1 else coerced}
 

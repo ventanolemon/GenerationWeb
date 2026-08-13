@@ -32,7 +32,8 @@ if _MONOREPO not in sys.path:
 from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-from core import api_clients, content_api, sync_api  # noqa: E402
+from core import (api_clients, auth_sessions, content_api,  # noqa: E402
+                  organizations_api, sync_api)
 from core.repository import Repository  # noqa: E402
 from generator_service import errors  # noqa: E402
 from generator_service.routers import admin_content  # noqa: E402
@@ -45,6 +46,11 @@ class StorageTestBase(unittest.TestCase):
         os.unlink(self.db_path)
         self.repo = Repository(self.db_path)
         self.repo.create_user("root", "p", "Админ", "", role="admin")
+        # Тот же шаг, что делает сервис при старте: развёртыванию нужен
+        # администратор развёртывания (is_superuser), иначе пакеты, ключи,
+        # выпуски и публичный API закрыты для всех. Роль admin теперь
+        # означает «админ своей организации» — см. §8.2.
+        organizations_api.ensure_bootstrapped(self.repo)
         self.repo.create_user("alla", "p", "Алла", "", role="teacher")
         self.repo.create_user("boris", "p", "Борис", "", role="teacher")
         self.repo.create_user("stud", "p", "Студент", "КСБО-11")
@@ -71,9 +77,17 @@ class StorageTestBase(unittest.TestCase):
             return conn.execute("SELECT row_version FROM Subjects WHERE id = ?",
                                 (subject_id,)).fetchone()[0]
 
-    @staticmethod
-    def _h(login, role):
-        return {"X-User-Id": login, "X-User-Role": role}
+    def _h(self, login, role=None):
+        """
+        Заголовки личности: настоящая сессия, а не заявление.
+
+        Роль больше не передаётся — сервер читает её из БД по токену
+        (GEN_TRUST_IDENTITY_HEADERS снят). Параметр оставлен, чтобы не
+        переписывать сотни вызовов, и игнорируется: если он расходится с
+        БД, прав это не добавляет — в этом и была суть перехода.
+        """
+        token = auth_sessions.issue(self.repo, login)["token"]
+        return {"Authorization": f"Bearer {token}"}
 
 
 # ---------- Модель хранилищ ----------

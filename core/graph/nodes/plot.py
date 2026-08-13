@@ -99,7 +99,7 @@ class ComplexPointsPlotNode(Node):
         raw = inputs.get("points")
         if not isinstance(raw, (list, tuple)) or not raw:
             raise RetryGeneration(
-                f"complex_points_plot {self.node_id!r}: пустой список точек."
+                f"{self.node_ref()}: пустой список точек."
             )
         pts = [_to_complex(v) for v in raw]
 
@@ -216,7 +216,7 @@ class ComplexRegionPlotNode(Node):
         conds = inputs.get("conds")
         if not isinstance(conds, (list, tuple)) or not conds:
             raise RetryGeneration(
-                f"complex_region_plot {self.node_id!r}: нет условий области."
+                f"{self.node_ref()}: нет условий области."
             )
         try:
             span = float(self.params.get("span", 6))
@@ -238,7 +238,7 @@ class ComplexRegionPlotNode(Node):
                 mask &= np.asarray(val, dtype=bool)
         if not mask.any():
             raise RetryGeneration(
-                f"complex_region_plot {self.node_id!r}: область пуста "
+                f"{self.node_ref()}: область пуста "
                 f"в окне ±{span} — проверьте условия."
             )
 
@@ -289,11 +289,11 @@ class ConformalMapPlotNode(Node):
         mapping = inputs.get("mapping")
         if not isinstance(conds, (list, tuple)) or not conds:
             raise RetryGeneration(
-                f"conformal_map_plot {self.node_id!r}: нет условий области D₁."
+                f"{self.node_ref()}: нет условий области D₁."
             )
         if not mapping:
             raise RetryGeneration(
-                f"conformal_map_plot {self.node_id!r}: не задано отображение."
+                f"{self.node_ref()}: не задано отображение."
             )
         try:
             span = float(self.params.get("span", 4))
@@ -315,7 +315,7 @@ class ConformalMapPlotNode(Node):
                                    dtype=bool)
             if not mask.any():
                 raise RetryGeneration(
-                    f"conformal_map_plot {self.node_id!r}: D₁ пуста в окне ±{span}."
+                    f"{self.node_ref()}: D₁ пуста в окне ±{span}."
                 )
             W = _safe_z_eval(str(mapping), Z[mask], "Отображение")
         W = np.asarray(W, dtype=complex).ravel()

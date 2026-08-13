@@ -196,6 +196,33 @@ def parse_cases_latex(latex: str):
 # Рендер LaTeX в QPixmap (Qt-предпросмотр)
 # ============================================================
 
+def latex_to_png_bytes(latex: str, fontsize: int = 14, dpi: int = 130) -> bytes:
+    """
+    Отрендерить LaTeX-формулу в PNG и вернуть байты.
+
+    Headless: Qt не нужен. Это то, чем пользуется веб-сериализация блоков
+    (`FormulaBlock.to_dict`), и общая середина для Qt- и docx-рендеров,
+    которые раньше несли её копиями у себя внутри.
+
+    Бросает исключение при неудаче — вызывающий решает, показывать ли
+    фолбэк. Молча возвращать пустые байты нельзя: получилась бы картинка
+    нулевого размера вместо честного «отрендерить не вышло».
+    """
+    png = _matrix_png(latex, fontsize, dpi)
+    if png is not None:
+        return png
+
+    import matplotlib
+    matplotlib.use("Agg")
+    from matplotlib import font_manager, mathtext
+
+    buf = io.BytesIO()
+    prop = font_manager.FontProperties(size=fontsize)
+    mathtext.math_to_image(
+        f"${canonical_latex(latex)}$", buf, prop=prop, dpi=dpi, format="png")
+    return buf.getvalue()
+
+
 def latex_to_pixmap(latex: str, fontsize: int = 14, dpi: int = 130) -> Optional[QPixmap]:
     """
     Отрендерить LaTeX-формулу в QPixmap через matplotlib.mathtext.

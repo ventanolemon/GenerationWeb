@@ -39,6 +39,15 @@ ALLOWED_FUNCTIONS = {
     "floor": math.floor,
     "ceil":  math.ceil,
     "round": round,
+    # Набор собирался под физику и матанализ, где максимума из нескольких
+    # чисел не спрашивают. В информатике он первое, обо что спотыкаешься
+    # («найдите наибольшее из трёх»), и обходить его пришлось бы цепочкой
+    # сравнений с мультиплексорами — три узла вместо одной функции.
+    #
+    # Переменное число аргументов вызов уже умеет (`func(*args)`), так что
+    # эти двое ничего не требуют сверх строчки в списке.
+    "max":   max,
+    "min":   min,
 }
 
 # Математические константы. Имеют приоритет ниже пользовательских переменных:
@@ -205,15 +214,30 @@ def _eval_node(node: ast.AST, scope: Mapping[str, Any]) -> Any:
     raise FormulaError(f"Неподдерживаемый узел AST: {type(node).__name__}")
 
 
-def extract_variable_names(text: str) -> set[str]:
+# Чисто математические константы: остаются константами даже в режиме
+# include_constants (в отличие от физических c/g/e/…, которые в «чистой
+# математике» — обычные имена параметров).
+_MATH_CONSTANTS = {"pi", "π"}
+
+
+def extract_variable_names(text: str, include_constants: bool = False) -> set[str]:
     """
     Вернуть множество имён переменных, использованных в формуле,
     исключая имена встроенных функций и стандартных констант.
+
+    include_constants=True трактует физические константы (c, e, g, G, h, …)
+    как обычные переменные — для графового узла formula в режиме
+    constants='off', где буква c означает не скорость света, а параметр
+    задачи. pi/π остаются константами всегда. Вычисление менять не нужно:
+    в evaluate_formula пользовательские переменные и так перекрывают константы.
     """
     tree = parse_formula(text)
     names: set[str] = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.Name) and node.id not in ALLOWED_FUNCTIONS \
-                and node.id not in DEFAULT_CONSTANTS:
-            names.add(node.id)
+        if not isinstance(node, ast.Name) or node.id in ALLOWED_FUNCTIONS:
+            continue
+        if node.id in DEFAULT_CONSTANTS and not (
+                include_constants and node.id not in _MATH_CONSTANTS):
+            continue
+        names.add(node.id)
     return names

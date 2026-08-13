@@ -33,7 +33,8 @@ def get_ln_secret_diff():
     ans_latex = clear_latex(sp.latex(answer))
     return (("text", " 3.\tВычислить производную функции\n"),
             ("formula", res_latex),
-            ("formula", ans_latex))
+            ("formula", ans_latex),
+            ("answer", answer))
 # {sin(x)}^{3x+1}
 if __name__ == "__main__":
     res = get_ln_secret_diff()

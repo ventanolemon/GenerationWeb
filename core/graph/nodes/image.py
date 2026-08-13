@@ -26,12 +26,22 @@ class LogicCircuitNode(Node):
     Логическая схема ОПВС: случайная схема из вентилей И/ИЛИ/НЕ (3-4 входа).
     Выходы: image (картинка схемы, IMAGE) и formula (булева формула, STRING).
     Источник; воспроизводимо через глобальный random (его сидит исполнитель).
+
+    Узел оставлен ради сохранённых графов, но для новых предпочтительна
+    модель `model_opvs_circuit`: формула здесь уезжает СТРОКОЙ, то есть
+    оформлением, и построить на ней проверяемое задание нельзя — у одной
+    функции бесконечно много правильных записей. Модель отдаёт ту же
+    функцию величиной (`expr`), плюс таблицу истинности и число единичных
+    наборов (docs/architecture/models_on_july.md, §5.2).
     """
     type_id = "logic_circuit"
     category = "image"
     display_name = "Логическая схема"
     description = ("Случайная логическая схема ОПВС (ГОСТ 2.743-91). "
-                   "Источник. Выходы: image (IMAGE), formula (STRING).")
+                   "Источник. Выходы: image (IMAGE), formula (STRING). "
+                   "Для новых графов лучше «Логическая схема (модель)»: "
+                   "она отдаёт функцию величиной, и ответ по ней "
+                   "проверяется.")
     OUTPUTS = [Port("image", PortType.IMAGE), Port("formula", PortType.STRING)]
 
     def compute(self, inputs, ctx: ExecContext):
@@ -40,7 +50,7 @@ class LogicCircuitNode(Node):
             elements = make_function()
         except RuntimeError as e:
             # Не удалось собрать валидную схему — попросить пере-генерацию графа.
-            raise RetryGeneration(f"logic_circuit {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         image = render_circuit(elements)
         formula = elements[-1].get_logic_str()
         return {"image": image, "formula": str(formula)}
@@ -59,28 +69,29 @@ class ImageFileNode(Node):
     description = ("Картинка из файла (PNG/JPG). Источник. Выход: IMAGE.")
     OUTPUTS = [Port("out", PortType.IMAGE)]
     PARAMS_SCHEMA = {
-        "file": {"type": "file", "default": "",
+        "file": {"type": "file", "default": "", "resource": "images",
                  "filter": "Изображения (*.png *.jpg *.jpeg *.bmp *.gif)"},
     }
 
     def validate_params(self) -> None:
         if not str(self.params.get("file", "")).strip():
             raise GraphValidationError(
-                f"Узел {self.node_id!r}: укажите файл изображения."
+                f"{self.node_ref()}: укажите файл изображения."
             )
 
     def compute(self, inputs, ctx: ExecContext):
-        from pathlib import Path
         from PIL import Image
+        from ..resources import describe, resolve
         path = str(self.params.get("file", "")).strip()
-        p = Path(path)
+        p = resolve(path)
         if not p.exists():
-            raise GraphValidationError(f"Файл изображения не найден: {path!r}")
+            raise GraphValidationError(
+                f"Файл изображения не найден: {describe(path)}")
         try:
             img = Image.open(p)
             img.load()                      # прочитать сразу (файл может закрыться)
         except Exception as e:
-            raise RetryGeneration(f"image_file {self.node_id!r}: {e}")
+            raise RetryGeneration(f"{self.node_ref()}: {e}")
         return {"out": img}
 
 
@@ -100,7 +111,7 @@ class ImageBlockNode(Node):
         image = inputs.get("in")
         if image is None:
             raise RetryGeneration(
-                f"image_block {self.node_id!r}: на вход не пришло изображение."
+                f"{self.node_ref()}: на вход не пришло изображение."
             )
         caption = str(self.params.get("caption", ""))
         return {"out": ImageBlock(image, caption=caption)}

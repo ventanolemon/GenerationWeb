@@ -30,6 +30,9 @@ from pydantic import BaseModel, Field
 
 from core import sync_api
 
+from .. import identity
+from ..identity import MaybeUser
+
 router = APIRouter(prefix="/sync", tags=["sync"])
 
 
@@ -53,27 +56,17 @@ class PullRequest(BaseModel):
     scope_version: int = Field(default=0, ge=0)
 
 
-def _identity(x_user_id: Optional[str], x_user_role: Optional[str]):
-    # Канонический id пользователя — строка-логин (X-User-Id), единая с
-    # десктопом (core.session.Session). Раньше здесь стоял int(...), что
-    # роняло идентичность в None на логин-строке и «раскрывало» витрину
-    # (scope=None → видно всё). Пустой заголовок → None (гость/аноним).
-    uid = (x_user_id or "").strip() or None
-    role = (x_user_role or "teacher").strip().lower()
-    return uid, role
-
 
 @router.post("/push")
 def sync_push(
     body: PushRequest,
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: MaybeUser,
 ) -> dict[str, Any]:
     """Принять офлайн-изменения устройства. Идемпотентно: повторная отправка
     того же пакета после обрыва безвредна (attempts — по client_uuid,
     version-check сущностей — по base_version)."""
-    uid, role = _identity(x_user_id, x_user_role)
+    uid, role = identity.actor(who)
     result = sync_api.push(
         request.app.state.repo,
         device_id=body.device_id,
@@ -96,11 +89,10 @@ def sync_push(
 def sync_pull(
     body: PullRequest,
     request: Request,
-    x_user_id: Optional[str] = Header(default=None),
-    x_user_role: Optional[str] = Header(default=None),
+    who: MaybeUser,
 ) -> dict[str, Any]:
     """Отдать диф по курсорам (включая tombstones) страницами."""
-    uid, role = _identity(x_user_id, x_user_role)
+    uid, role = identity.actor(who)
     return sync_api.pull(
         request.app.state.repo,
         device_id=body.device_id,

@@ -18,7 +18,9 @@ def get_long_radicals():
     # print(zero_ev, first_ev, second_ev, third_ev, sep=".....")
     itog = sympy.sqrt((zero_ev * first_ev).expand()) - sympy.sqrt((second_ev * third_ev).expand())
     res = r"\lim_{x \to \infty} {" + sympy.latex(sympy.sqrt((zero_ev * first_ev).expand())) + "-" + sympy.latex(sympy.sqrt((second_ev * third_ev).expand())) + "}"
-    return ("formula", res),  ("formula", sympy.latex(sympy.limit(itog, x, sympy.oo)))
+    answer = sympy.limit(itog, x, sympy.oo)
+    return (("formula", res), ("formula", sympy.latex(answer)),
+            ("answer", answer))
 
 
 if __name__ == "__main__":

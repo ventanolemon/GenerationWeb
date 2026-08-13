@@ -129,6 +129,7 @@ app.MapAuthEndpoints();
 app.MapSubjectsEndpoints();
 app.MapGenerateEndpoints();
 app.MapInteractiveEndpoints();
+app.MapAnswersEndpoints();
 app.MapExportEndpoints();
 app.MapPartitionEndpoints();
 app.MapStatsEndpoints();

@@ -1,8 +1,8 @@
 import { useState } from "react";
 import type { Partition, StaticTaskResponse } from "../api/types";
-import { api, ApiError } from "../api/client";
+import { api } from "../api/client";
+import ExportDialog from "../components/ExportDialog";
 import { BlockList } from "../blocks/BlockRenderer";
-import { triggerDownload } from "./StaticTaskView";
 import styles from "../styles/views.module.css";
 
 interface Props {
@@ -17,6 +17,7 @@ interface Props {
  */
 export default function TestExportView({ partition }: Props) {
   const [count, setCount] = useState(4);
+  const [exporting, setExporting] = useState(false);
   const [variants, setVariants] = useState<StaticTaskResponse[]>([]);
   const [activeTab, setActiveTab] = useState(0);
   const [showAnswers, setShowAnswers] = useState(false);
@@ -57,19 +58,9 @@ export default function TestExportView({ partition }: Props) {
     }
   }
 
-  async function exportAll() {
-    try {
-      const blob = await api.export({
-        partitionId: partition.id,
-        count,
-        withAnswers: showAnswers,
-      });
-      triggerDownload(blob, `${partition.name}.docx`);
-    } catch (e) {
-      const msg = e instanceof ApiError ? e.message : String(e);
-      setError(`Не удалось экспортировать: ${msg}`);
-    }
-  }
+  // Экспорт открывает диалог: одной галочки «с ответами» мало —
+  // размещений четыре, и лист с ключом под каждым заданием
+  // студентам не раздашь.
 
   return (
     <div className={styles.view}>
@@ -91,7 +82,7 @@ export default function TestExportView({ partition }: Props) {
         <button onClick={generate} disabled={loading}>
           {loading ? "Генерация…" : "Сгенерировать варианты"}
         </button>
-        <button onClick={exportAll} disabled={loading}>
+        <button onClick={() => setExporting(true)} disabled={loading}>
           Экспорт в Word
         </button>
         <label>
@@ -134,6 +125,14 @@ export default function TestExportView({ partition }: Props) {
             )}
           </div>
         </>
+      )}
+          {exporting && (
+        <ExportDialog
+          partitionId={partition.id}
+          partitionName={partition.name}
+          defaultCount={count}
+          onClose={() => setExporting(false)}
+        />
       )}
     </div>
   );

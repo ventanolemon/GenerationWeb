@@ -10,8 +10,11 @@ from __future__ import annotations
 from typing import Callable, Sequence, Tuple
 
 from core import (
-    TaskGenerator, StaticTask, TextBlock, FormulaBlock, Block, STATIC_DEFAULT
+    TaskGenerator, StaticTask, TextBlock, FormulaBlock, Block,
+    CHECKABLE_DEFAULT, STATIC_DEFAULT
 )
+
+from .answer_specs import build as build_answer_spec, split_checkable
 
 # diff
 from .diff.just_diff import get_just_diff
@@ -83,11 +86,36 @@ class _LegacyMatanAdapter(TaskGenerator):
     _legacy_func: Callable
     description: str = ""
 
+    checkable: bool = False
+    """
+    Разбирается ли ответ этого задания.
+
+    Объявляется классом, а не выводится при генерации: витрина отвечает
+    ДО того, как задание построено, — по ней выбирается экран. Проверить
+    можно только сгенерировав, а генерация случайна.
+
+    Флаг — обещание, а не гарантия. Само прикрепление спецификации
+    остаётся самопроверяемым (`answer_specs.build`): если конкретный
+    вариант не разобрался, задание выйдет непроверяемым, и это лучше,
+    чем задание, отвергающее собственный ответ.
+    """
+
+    def __init_subclass__(cls, **kw):
+        super().__init_subclass__(**kw)
+        # Возможности следуют из объявления, а не дублируют его: два
+        # места, где написано одно и то же, рано или поздно разойдутся.
+        if cls.__dict__.get("checkable"):
+            cls.capabilities = CHECKABLE_DEFAULT
+
     def generate(self) -> StaticTask:
         result = self._legacy_func()
         return self._build_task(result)
 
     def _build_task(self, result: Sequence[ContentTuple]) -> StaticTask:
+        # Проверяемое значение, если функция его отдала, — до разбора
+        # блоков: дальше кортеж имеет прежнюю форму, и вся логика показа
+        # остаётся нетронутой.
+        result, explicit = split_checkable(result)
         statement: list[Block] = []
         # Описание из класса — единообразный заголовок
         if self.description:
@@ -109,7 +137,16 @@ class _LegacyMatanAdapter(TaskGenerator):
         else:
             raise ValueError(f"Неподдерживаемый размер кортежа: {len(result)}")
 
-        return StaticTask(statement=statement, answer=answer)
+        shown = " ".join(b.render_plain() for b in answer)
+        if isinstance(answer[0], FormulaBlock):
+            # У формульного блока `render_plain` оборачивает в доллары —
+            # разбирать надо сам латех, а не его обёртку для печати.
+            shown = answer[0].latex
+        return StaticTask(
+            statement=statement,
+            answer=answer,
+            answer_spec=build_answer_spec(explicit, shown),
+        )
 
 
 # ---------- DIFF: partition_id 40–47 ----------
@@ -117,30 +154,35 @@ class _LegacyMatanAdapter(TaskGenerator):
 class JustDiffGenerator(_LegacyMatanAdapter):
     name = "Обычные производные"
     partition_id = 40
+    checkable = True
     _legacy_func = staticmethod(get_just_diff)
 
 
 class LnDiffGenerator(_LegacyMatanAdapter):
     name = "Логарифмические производные"
     partition_id = 41
+    checkable = True
     _legacy_func = staticmethod(get_ln_diff)
 
 
 class LnSecretDiffGenerator(_LegacyMatanAdapter):
     name = "Неявные логарифмические производные"
     partition_id = 42
+    checkable = True
     _legacy_func = staticmethod(get_ln_secret_diff)
 
 
 class NeyawnDiffGenerator(_LegacyMatanAdapter):
     name = "Неявно заданная функция"
     partition_id = 43
+    checkable = True
     _legacy_func = staticmethod(get_neyawn_diff)
 
 
 class ParametricGenerator(_LegacyMatanAdapter):
     name = "Параметрически заданная производная"
     partition_id = 44
+    checkable = True
     _legacy_func = staticmethod(get_parametric_task)
 
 
@@ -153,12 +195,14 @@ class TangentGenerator(_LegacyMatanAdapter):
 class LopitalGenerator(_LegacyMatanAdapter):
     name = "Задания на Лопиталя"
     partition_id = 46
+    checkable = True
     _legacy_func = staticmethod(get_lopital_law)
 
 
 class TaylorGenerator(_LegacyMatanAdapter):
     name = "Разложение по формуле Тейлора"
     partition_id = 47
+    checkable = True
     _legacy_func = staticmethod(get_taylor_limit_task)
 
 
@@ -175,6 +219,7 @@ class SuperEasyEqualsGenerator(_LegacyMatanAdapter):
     name = "Простейшие пределы"
     partition_id = 50
     description = _LIMIT_TASK
+    checkable = True
     _legacy_func = staticmethod(get_super_easy_equals)
 
 
@@ -182,6 +227,7 @@ class EasyEqualsGenerator(_LegacyMatanAdapter):
     name = "Простые пределы"
     partition_id = 51
     description = _LIMIT_TASK
+    checkable = True
     _legacy_func = staticmethod(get_easy_equals)
 
 
@@ -189,6 +235,7 @@ class EqualsGenerator(_LegacyMatanAdapter):
     name = "Пределы стандартные"
     partition_id = 52
     description = _LIMIT_TASK
+    checkable = True
     _legacy_func = staticmethod(get_equals)
 
 
@@ -196,6 +243,7 @@ class CKEqualsGenerator(_LegacyMatanAdapter):
     name = "Замечательные пределы (C, k)"
     partition_id = 53
     description = "Определить C и k, при которых функции эквивалентны при x → 0."
+    checkable = True
     _legacy_func = staticmethod(get_c_k_equals)
 
 
@@ -203,6 +251,7 @@ class Perfect12Generator(_LegacyMatanAdapter):
     name = "Первый замечательный предел"
     partition_id = 54
     description = _LIMIT_TASK
+    checkable = True
     _legacy_func = staticmethod(get_1_2_perfect)
 
 
@@ -210,6 +259,7 @@ class SecondPerfectGenerator(_LegacyMatanAdapter):
     name = "Второй замечательный предел"
     partition_id = 55
     description = _LIMIT_TASK
+    checkable = True
     _legacy_func = staticmethod(get_2_perfect)
 
 
@@ -217,6 +267,7 @@ class SimpleStepensGenerator(_LegacyMatanAdapter):
     name = "Пределы со степенями"
     partition_id = 56
     description = _LIMIT_TASK
+    checkable = True
     _legacy_func = staticmethod(get_simple_stepens)
 
 
@@ -224,6 +275,7 @@ class SimpleStepensRadicalsGenerator(_LegacyMatanAdapter):
     name = "Пределы со степенями и радикалами"
     partition_id = 57
     description = _LIMIT_TASK
+    checkable = True
     _legacy_func = staticmethod(get_simple_stepens_radicals)
 
 
@@ -231,6 +283,7 @@ class DrobRadicalsGenerator(_LegacyMatanAdapter):
     name = "Дробно-радикальные пределы"
     partition_id = 58
     description = _LIMIT_TASK
+    checkable = True
     _legacy_func = staticmethod(get_drob_radicals)
 
 
@@ -238,6 +291,7 @@ class LongRadicalsGenerator(_LegacyMatanAdapter):
     name = "Длинные радикалы"
     partition_id = 59
     description = _LIMIT_TASK
+    checkable = True
     _legacy_func = staticmethod(get_long_radicals)
 
 
@@ -245,6 +299,7 @@ class SimpleOsnGenerator(_LegacyMatanAdapter):
     name = "Пределы по основному правилу"
     partition_id = 60
     description = "Вычислить предел последовательности."
+    checkable = True
     _legacy_func = staticmethod(lambda: get_simple_osn("easy"))
 
 

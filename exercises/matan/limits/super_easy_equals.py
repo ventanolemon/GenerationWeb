@@ -38,7 +38,10 @@ def get_super_easy_equals():
     res = r"\lim_{x \to 0} {" + sp.latex(result) + "}"
     res = (res.replace("operatorname{asin}", "arcsin").replace("\operatorname{atan}", "arctg")
            .replace(r"\tan", "tg").replace(r"\log", "\ln"))
-    return ("formula", res),  ("formula", sp.latex(result_ans))
+    return (("formula", res), ("formula", sp.latex(result_ans)),
+            # Проверяемое значение рядом с его отрисовкой: латех
+            # разобрать обратно нечем.
+            ("answer", result_ans))
 
 
 if __name__ == "__main__":

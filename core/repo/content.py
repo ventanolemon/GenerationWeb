@@ -176,6 +176,64 @@ class ContentMixin:
                      partition_id),
                 )
 
+    def ensure_graph_partition(
+        self,
+        partition_id: int,
+        subject_id: int,
+        name: str,
+        graph: dict,
+    ) -> None:
+        """
+        Гарантировать наличие раздела-графа (constracted=4), принадлежащего
+        продукту. Идемпотентно; граф обновляется при расхождении.
+
+        Отдельный метод, а не `upsert_partition`, по той же причине, что и
+        у `ensure_code_partition`: id здесь ЗАДАН, а не выдан базой. Эти
+        разделы поставляются вместе с приложением, и их номера должны быть
+        одинаковы на всех установках — иначе домашнее задание, выданное на
+        одной, укажет на другой раздел на второй.
+
+        Владелец не проставляется намеренно: `owner_user_id IS NULL` — это
+        и есть «принадлежит продукту», единственное, что по §8 пересекает
+        границу организаций.
+
+        Граф ОБНОВЛЯЕТСЯ при расхождении, в отличие от кода-генератора: он
+        и есть содержимое задания, и правка в поставке обязана доехать.
+        Правки пользователя тут не теряются — свои задания он заводит
+        своими разделами, а не переписывает поставочные.
+        """
+        raw = json.dumps(graph, ensure_ascii=False)
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT partition_name, subject_id, constracted, "
+                "       generation_parametrs "
+                "FROM Partitions WHERE id = ?", (partition_id,)
+            ).fetchone()
+            if row is None:
+                try:
+                    conn.execute(
+                        "INSERT INTO Partitions "
+                        "(id, subject_id, partition_name, constracted, "
+                        " generation_parametrs, row_version, updated_at) "
+                        "VALUES (?, ?, ?, 4, ?, ?, ?)",
+                        (partition_id, subject_id, name, raw,
+                         self.next_row_version(conn, "Partitions"),
+                         time.time()),
+                    )
+                except sqlite3.IntegrityError:
+                    pass
+                return
+            if (row[0], row[1], row[2], row[3]) == (name, subject_id, 4, raw):
+                return
+            conn.execute(
+                "UPDATE Partitions SET partition_name = ?, subject_id = ?, "
+                "constracted = 4, generation_parametrs = ?, row_version = ?, "
+                "updated_at = ? WHERE id = ?",
+                (name, subject_id, raw,
+                 self.next_row_version(conn, "Partitions"), time.time(),
+                 partition_id),
+            )
+
     def upsert_partition(
         self,
         subject_id: int,
@@ -270,6 +328,37 @@ class ContentMixin:
             )
             return cur.lastrowid
 
+    def rename_subject(self, subject_id: int, name: str) -> bool:
+        """Переименовать. Новый row_version обязателен: имя уезжает в pull,
+        и без версии десктопы о переименовании не узнают."""
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE Subjects SET subject_name = ?, row_version = ?, "
+                "updated_at = ? WHERE id = ? AND deleted_at IS NULL",
+                (name, self.next_row_version(conn, "Subjects"),
+                 time.time(), subject_id),
+            )
+            return cur.rowcount > 0
+
+    def delete_subject(self, subject_id: int) -> bool:
+        """
+        Мягкое удаление: tombstone, а не DELETE.
+
+        Синк узнаёт об удалении только по строке с `deleted_at` и новым
+        `row_version` — та же механика, что у разделов. Физическое удаление
+        не доехало бы до десктопов вовсе, и предмет воскрес бы при
+        следующем push'е.
+        """
+        now = time.time()
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE Subjects SET deleted_at = ?, row_version = ?, "
+                "updated_at = ? WHERE id = ? AND deleted_at IS NULL",
+                (now, self.next_row_version(conn, "Subjects"), now,
+                 subject_id),
+            )
+            return cur.rowcount > 0
+
     def set_subject_owner(self, subject_id: int,
                           owner_user_id: Optional[str]) -> bool:
         """
@@ -302,27 +391,48 @@ class ContentMixin:
         with self._connect() as conn:
             rows = conn.execute(
                 "SELECT s.id, s.subject_name, s.pra_subject, s.owner_user_id, "
-                "       COUNT(p.id) "
+                "       COUNT(p.id), s.organization_id "
                 "FROM Subjects s "
                 "LEFT JOIN Partitions p "
                 "  ON p.subject_id = s.id AND p.deleted_at IS NULL "
                 "WHERE s.deleted_at IS NULL "
-                "GROUP BY s.id, s.subject_name, s.pra_subject, s.owner_user_id "
+                "GROUP BY s.id, s.subject_name, s.pra_subject, s.owner_user_id, "
+                "         s.organization_id "
                 "ORDER BY s.id"
             ).fetchall()
         return [{"id": r[0], "name": r[1], "parent_name": r[2],
-                 "owner": r[3], "partition_count": int(r[4] or 0)}
+                 "owner": r[3], "partition_count": int(r[4] or 0),
+                 "organization_id": r[5]}
                 for r in rows]
 
     def visible_subject_ids(self, user_id: Optional[str], role: str) -> List[int]:
         """
-        Какие предметы видит пользователь: admin — все; остальные — системные
-        (owner IS NULL) плюс свои. Удалённые (deleted_at) исключены.
+        Какие предметы видит пользователь: admin — все в СВОЕЙ организации
+        плюс встроенные; остальные — системные (owner IS NULL) плюс свои.
+        Удалённые (deleted_at) исключены.
+
+        Организация вошла сюда, а не в вызывающих, потому что это
+        единственное место, через которое область видимости считают все
+        трое: синк (`visible_scope`), аналитика и выдача домашних заданий.
+        Разложи проверку по ним — и она разойдётся, как разошлись
+        четырнадцать копий гейта роли.
+
+        Администратор РАЗВЁРТЫВАНИЯ (`is_superuser`) видит всё: обслуживать
+        развёртывание, не видя его, нельзя. Обычный `admin` — админ своей
+        организации, и чужая ему не видна вовсе (§8.1).
         """
         with self._connect() as conn:
-            if role == "admin":
+            if role == "admin" and self.is_superuser(user_id or ""):
                 rows = conn.execute(
                     "SELECT id FROM Subjects WHERE deleted_at IS NULL ORDER BY id"
+                ).fetchall()
+            elif role == "admin":
+                rows = conn.execute(
+                    "SELECT id FROM Subjects "
+                    "WHERE deleted_at IS NULL "
+                    "  AND (organization_id IS NULL OR organization_id = ?) "
+                    "ORDER BY id",
+                    (self.user_organization_id(user_id or ""),),
                 ).fetchall()
             else:
                 rows = conn.execute(

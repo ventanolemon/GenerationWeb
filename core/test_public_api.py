@@ -33,7 +33,8 @@ if _MONOREPO not in sys.path:
 from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-from core import api_clients, public_api  # noqa: E402
+from core import (api_clients, auth_sessions,  # noqa: E402
+                  organizations_api, public_api)
 from core.blocks import TextBlock  # noqa: E402
 from core.repository import Repository  # noqa: E402
 from core.task import StaticTask  # noqa: E402
@@ -79,6 +80,11 @@ class PublicApiTestBase(unittest.TestCase):
         os.unlink(self.db_path)
         self.repo = Repository(self.db_path)
         self.repo.create_user("root", "p", "Админ", "", role="admin")
+        # Тот же шаг, что делает сервис при старте: развёртыванию нужен
+        # администратор развёртывания (is_superuser), иначе пакеты, ключи,
+        # выпуски и публичный API закрыты для всех. Роль admin теперь
+        # означает «админ своей организации» — см. §8.2.
+        organizations_api.ensure_bootstrapped(self.repo)
         self.repo.create_user("alla", "p", "Алла", "", role="teacher")
 
         # Встроенный предмет (owner NULL) и авторский (owner = преподаватель).
@@ -116,9 +122,10 @@ class PublicApiTestBase(unittest.TestCase):
     def _bearer(self, key=None):
         return {"Authorization": f"Bearer {key or self.key}"}
 
-    @staticmethod
-    def _admin():
-        return {"X-User-Id": "root", "X-User-Role": "admin"}
+    def _admin(self):
+        """Настоящая сессия администратора развёртывания."""
+        token = auth_sessions.issue(self.repo, "root")["token"]
+        return {"Authorization": f"Bearer {token}"}
 
     def _topic_id(self, partition_id):
         return self.repo.public_id("partition", partition_id)
@@ -426,8 +433,9 @@ class AdminClientsRouterTests(PublicApiTestBase):
         self.assertEqual(self.http.get("/admin/api-clients").status_code, 401)
         self.assertEqual(
             self.http.get("/admin/api-clients",
-                          headers={"X-User-Id": "alla",
-                                   "X-User-Role": "teacher"}).status_code, 403)
+                          headers={"Authorization": "Bearer " +
+                                   auth_sessions.issue(self.repo,
+                                                       "alla")["token"]}).status_code, 403)
 
     def test_full_lifecycle(self):
         h = self._admin()
