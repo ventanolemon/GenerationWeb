@@ -260,6 +260,11 @@ class WordCorrectionBlock(Block):
       correct         — True/False общая оценка
       tolerant_accept — ответ принят мягким режимом (Левенштейн), но
                         не совпадает посимвольно с expected.
+      transcription   — IPA-запись слова (`/ˈkɒmpjuːtə/`). Показывается
+                        рядом с правильным ответом — в РАЗБОРЕ, а не в
+                        задании: транскрипция это то же слово другой
+                        записью, и в условии она была бы подсказкой к
+                        переводу, который и спрашивают. None — строки нет.
     """
 
     def __init__(
@@ -269,12 +274,14 @@ class WordCorrectionBlock(Block):
         expected: str,
         correct: bool,
         tolerant_accept: bool = False,
+        transcription: str | None = None,
     ):
         self.translation = translation
         self.user_answer = user_answer
         self.expected = expected
         self.correct = correct
         self.tolerant_accept = tolerant_accept
+        self.transcription = transcription or None
 
     # --- Qt ---
 
@@ -316,15 +323,29 @@ class WordCorrectionBlock(Block):
         v.addWidget(user_lbl)
 
         if not self.correct or self.tolerant_accept:
-            right = QLabel(
+            answer_html = (
                 f"&nbsp;&nbsp;ответ: "
                 f"<span style='font-family: Consolas, monospace; color:#2a5a8a;'>"
-                f"{_html_escape(self.expected)}</span>",
-                wrap,
+                f"{_html_escape(self.expected)}</span>"
             )
+            if self.transcription:
+                answer_html += (
+                    f"&nbsp;&nbsp;<span style='color:#7a4a8a;'>"
+                    f"{_html_escape(self.transcription)}</span>")
+            right = QLabel(answer_html, wrap)
             right.setTextFormat(Qt.TextFormat.RichText)
             right.setWordWrap(True)
             v.addWidget(right)
+        elif self.transcription:
+            # Ответ верен посимвольно — строки «ответ» нет, но произношение
+            # показать всё равно стоит: студент написал слово, а как оно
+            # звучит, из письменной формы английского не следует.
+            hint = QLabel(
+                f"&nbsp;&nbsp;<span style='color:#7a4a8a;'>"
+                f"{_html_escape(self.transcription)}</span>", wrap)
+            hint.setTextFormat(Qt.TextFormat.RichText)
+            hint.setWordWrap(True)
+            v.addWidget(hint)
 
         return wrap
 
@@ -342,7 +363,12 @@ class WordCorrectionBlock(Block):
             f"   ввод: {self.user_answer}",
         ]
         if not self.correct or self.tolerant_accept:
-            lines.append(f"   ответ: {self.expected}")
+            tail = self.expected
+            if self.transcription:
+                tail = f"{self.expected}  {self.transcription}"
+            lines.append(f"   ответ: {tail}")
+        elif self.transcription:
+            lines.append(f"   {self.transcription}")
         return "\n".join(lines)
 
     def render_docx(self, doc) -> None:
@@ -360,6 +386,10 @@ class WordCorrectionBlock(Block):
             p3 = doc.add_paragraph()
             run = p3.add_run(f"  ответ: {self.expected}")
             run.italic = True
+            if self.transcription:
+                p3.add_run(f"  {self.transcription}").italic = True
+        elif self.transcription:
+            doc.add_paragraph().add_run(f"  {self.transcription}").italic = True
 
     # --- Web ---
 
@@ -383,6 +413,7 @@ class WordCorrectionBlock(Block):
             "expected": self.expected,
             "correct": self.correct,
             "tolerant_accept": self.tolerant_accept,
+            "transcription": self.transcription,
             "diff": _diff_ops(self.user_answer, self.expected),
         }
 
@@ -454,3 +485,257 @@ def _diff_highlight_html(user: str, expected: str) -> str:
         + "".join(out)
         + "</span>"
     )
+
+
+# ============================================================
+# AudioBlock
+# ============================================================
+
+class AudioBlock(Block):
+    """
+    Кнопка «прослушать»: заранее подготовленное произношение термина.
+
+    Звук адресуется ИДЕНТИФИКАТОРОМ (`res:audio/<хеш>.wav`), а не путём.
+    Причина та же, по которой на идентификаторы перевели файлы графа:
+    путь верен ровно на той машине, где файл сгенерировали. Карточка с
+    ответом уезжает на веб и во второй десктоп, а `resources/` есть у
+    обеих сторон — значит, переносимо только имя внутри поставки.
+
+    Звук в тренажёре появляется в РАЗБОРЕ, а не в задании: озвученное
+    английское слово было бы подсказкой к переводу, который и спрашивают.
+
+    Рантайм ничего не синтезирует и о TTS не знает: WAV готовит
+    `tools/generate_audio.py` при сборке. Отсутствие QtMultimedia или
+    самого файла — не отказ, а выключенная кнопка с пояснением: звук
+    здесь дополнение, и приложение обязано работать без него.
+    """
+
+    #: Общий на процесс проигрыватель. QMediaPlayer должен пережить
+    #: проигрывание: без ссылки сборщик мусора обрывает звук на середине.
+    _player = None
+    _output = None
+    _checked = False
+
+    def __init__(self, resource: str, label: str = "Прослушать"):
+        self.resource = str(resource)
+        self.label = label
+
+    # --- Разрешение ресурса ---
+
+    def path(self):
+        """Файл на ЭТОЙ машине; None — ресурс не разрешается или его нет."""
+        import pathlib
+
+        try:
+            from core.graph.resources import resolve
+            target = resolve(self.resource)
+        except Exception:                       # noqa: BLE001
+            return None
+        target = pathlib.Path(target)
+        return target if target.exists() else None
+
+    @classmethod
+    def _shared_player(cls):
+        """Лениво поднять общий проигрыватель; (None, None) — звука нет."""
+        if cls._checked:
+            return cls._player, cls._output
+        cls._checked = True
+        try:
+            from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
+            cls._output = QAudioOutput()
+            cls._player = QMediaPlayer()
+            cls._player.setAudioOutput(cls._output)
+        except Exception:                       # noqa: BLE001
+            cls._player = cls._output = None
+        return cls._player, cls._output
+
+    # --- Qt ---
+
+    def render_qt(self, parent: "QWidget") -> "QWidget":
+        from PyQt6.QtCore import Qt, QUrl
+        from PyQt6.QtWidgets import QPushButton
+
+        button = QPushButton(f"🔊 {self.label}", parent)
+        button.setMaximumWidth(260)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        target = self.path()
+        if target is None:
+            button.setEnabled(False)
+            button.setToolTip(f"Файл произношения не найден: {self.resource}")
+            return button
+        player, _ = self._shared_player()
+        if player is None:
+            button.setEnabled(False)
+            button.setToolTip("Звук недоступен: модуль QtMultimedia не загружен.")
+            return button
+
+        def play(_checked=False, _file=str(target.resolve())):
+            active, _out = self._shared_player()
+            if active is None:
+                return
+            active.stop()
+            active.setSource(QUrl.fromLocalFile(_file))
+            active.play()
+
+        button.clicked.connect(play)
+        return button
+
+    # --- Plain / Docx ---
+
+    def render_plain(self) -> str:
+        return f"[звук: {self.label}]"
+
+    def render_docx(self, doc) -> None:
+        # Звук в документ не вставляется: docx уходит на печать.
+        doc.add_paragraph().add_run(f"[звук: {self.label}]").italic = True
+
+    # --- Web ---
+
+    def to_dict(self) -> dict:
+        """
+        Для веба отдаётся ИДЕНТИФИКАТОР, а не путь: файл лежит на
+        сервере, и превращать идентификатор в адрес — дело того, кто
+        знает адреса, то есть фронта.
+        """
+        return {"type": "audio", "resource": self.resource, "label": self.label}
+
+
+# ============================================================
+# TranscriptionChoiceBlock
+# ============================================================
+
+class TranscriptionChoiceBlock(Block):
+    """
+    Выбор правильной транскрипции термина из нескольких вариантов.
+
+    Почему выбор, а не ввод. Ввести IPA с клавиатуры нельзя — там нет
+    этих символов, и «правильный ответ» свёлся бы к копированию из
+    подсказки. Выбор тренирует ровно ту связь, ради которой всё и
+    затевалось: как выглядит слово ↔ как оно звучит.
+
+    Варианты перемешиваются ОДИН раз при создании: перерисовка окна не
+    должна их переставлять — студент читает список, а он меняется под
+    рукой.
+
+    Параметры:
+      term        — слово, для которого выбирают транскрипцию;
+      correct     — правильная IPA-строка целиком, вместе с `/…/`;
+      distractors — заведомо неверные варианты (рекомендуется три);
+      on_answer   — необязательный обратный вызов `(верно: bool)`,
+                    срабатывает ровно один раз.
+    """
+
+    def __init__(
+        self,
+        term: str,
+        correct: str,
+        distractors: List[str],
+        on_answer: "Callable[[bool], None] | None" = None,
+    ):
+        import random
+
+        self.term = term
+        self.correct = correct
+        self.on_answer = on_answer
+
+        # Дедупликация: при бедном пуле отвлекающий вариант может совпасть
+        # с правильным, и задание стало бы неразрешимым.
+        seen = {correct}
+        options = [correct]
+        for candidate in distractors:
+            if candidate not in seen:
+                options.append(candidate)
+                seen.add(candidate)
+        random.shuffle(options)
+        self.options: List[str] = options
+        self.correct_index: int = options.index(correct)
+
+    # --- Qt ---
+
+    def render_qt(self, parent: "QWidget") -> "QWidget":
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
+
+        wrap = QWidget(parent)
+        layout = QVBoxLayout(wrap)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(6)
+
+        title = QLabel(
+            f"<span style='font-size: 13pt;'>Выберите транскрипцию слова "
+            f"<b>{_html_escape(self.term)}</b>:</span>", wrap)
+        title.setTextFormat(Qt.TextFormat.RichText)
+        title.setWordWrap(True)
+        layout.addWidget(title)
+
+        buttons: List["QPushButton"] = []
+        answered = [False]
+
+        def handler_for(index: int):
+            def handle():
+                if answered[0]:
+                    return
+                answered[0] = True
+                # Правильный подсвечивается ВСЕГДА, даже если выбрали не
+                # его: разбор без правильного ответа ничему не учит.
+                for position, button in enumerate(buttons):
+                    if position == self.correct_index:
+                        button.setStyleSheet(_CHOICE_RIGHT)
+                    elif position == index:
+                        button.setStyleSheet(_CHOICE_WRONG)
+                    button.setEnabled(False)
+                if self.on_answer is not None:
+                    self.on_answer(index == self.correct_index)
+            return handle
+
+        for index, option in enumerate(self.options):
+            button = QPushButton(option, wrap)
+            button.setStyleSheet(_CHOICE_PLAIN)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.clicked.connect(handler_for(index))
+            buttons.append(button)
+            layout.addWidget(button)
+
+        return wrap
+
+    # --- Plain / Docx ---
+
+    def render_plain(self) -> str:
+        lines = [f"Выберите транскрипцию слова «{self.term}»:"]
+        for number, option in enumerate(self.options, start=1):
+            mark = " ← ответ" if number - 1 == self.correct_index else ""
+            lines.append(f"  {number}. {option}{mark}")
+        return "\n".join(lines)
+
+    def render_docx(self, doc) -> None:
+        head = doc.add_paragraph()
+        head.add_run("Выберите транскрипцию слова ")
+        head.add_run(self.term).bold = True
+        head.add_run(":")
+        for number, option in enumerate(self.options, start=1):
+            line = doc.add_paragraph()
+            run = line.add_run(f"  {number}. {option}")
+            if number - 1 == self.correct_index:
+                run.bold = True
+                line.add_run("  ← правильный ответ").italic = True
+
+    # --- Web ---
+
+    def to_dict(self) -> dict:
+        return {
+            "type": "transcription_choice",
+            "term": self.term,
+            "options": list(self.options),
+            "correct_index": self.correct_index,
+        }
+
+
+_CHOICE_PLAIN = ("QPushButton { font-family: Consolas, monospace; "
+                 "text-align: left; padding: 6px 12px; }")
+_CHOICE_RIGHT = ("QPushButton { background: #d8f0d8; color: #1a4d1a; "
+                 "font-family: Consolas, monospace; text-align: left; "
+                 "padding: 6px 12px; }")
+_CHOICE_WRONG = ("QPushButton { background: #f4d8d8; color: #5a1a1a; "
+                 "font-family: Consolas, monospace; text-align: left; "
+                 "padding: 6px 12px; }")

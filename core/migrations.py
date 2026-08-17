@@ -16,6 +16,7 @@ JSONB), автоинкремент id → BIGSERIAL/identity. Смена дви�
 """
 
 from __future__ import annotations
+import json
 import sqlite3
 import time
 import uuid
@@ -880,6 +881,106 @@ def _m014_organizations(conn: sqlite3.Connection) -> None:
                      "WHERE organization_id IS NULL", (org_id,))
 
 
+# ---------- Миграция 015: устойчивые номера разделов английского ----------
+
+_ENGLISH_PREFIX = "Английский: "
+_ENGLISH_SENTENCES_SUFFIX = " (предложения)"
+
+
+def _english_stem(name: str) -> str | None:
+    """Имя файла словаря из отображаемого имени раздела; None — не словарь."""
+    if not name.startswith(_ENGLISH_PREFIX):
+        return None
+    stem = name[len(_ENGLISH_PREFIX):]
+    if stem.endswith(_ENGLISH_SENTENCES_SUFFIX):
+        stem = stem[:-len(_ENGLISH_SENTENCES_SUFFIX)]
+    return stem.strip() or None
+
+
+def _m015_stable_english_partition_ids(conn: sqlite3.Connection) -> None:
+    """
+    Перевести словари английского с номера ПО МЕСТУ файла на номер ПО ИМЕНИ.
+
+    Дефект был такой: `pid = 1000 + i`, где i — место файла в
+    отсортированном списке. У сервера 20 словарей, у десктопа 12, и номер
+    1001 означал `complete_vocabulary` здесь и `complete_words` там.
+    Синхронизация переносит разделы ПО НОМЕРУ, поэтому домашнее задание,
+    выданное на сервере, открывало на десктопе другой словарь — молча.
+    То же самое во времени на одной машине: добавили файл, встающий раньше
+    по алфавиту, и все последующие словари переехали вместе с выданными
+    по ним заданиями.
+
+    Опознаём словарь по ИМЕНИ раздела, а не по номеру: имя — единственное,
+    что в старой схеме что-то значило. Номер значил положение файла в
+    каталоге в день запуска.
+
+    Переносятся и ссылки: выданные задания, попытки и живые интерактивные
+    сессии указывают на номер раздела, и строка, переехавшая без них, была
+    бы хуже исходного дефекта — сломалось бы то, что работало.
+    """
+    from core import partition_ids
+
+    rows = conn.execute(
+        "SELECT id, partition_name FROM Partitions "
+        "WHERE subject_id = 2 AND constracted = 0 "
+        "  AND id >= ? AND id < ?",
+        (partition_ids.LEGACY_ENGLISH.start, partition_ids.LEGACY_ENGLISH.stop),
+    ).fetchall()
+
+    taken = {r[0] for r in conn.execute("SELECT id FROM Partitions")}
+    moves: list[tuple[int, int]] = []
+    for old_id, name in rows:
+        stem = _english_stem(name)
+        if stem is None:
+            continue
+        new_id = partition_ids.english_words_id(stem)
+        if new_id == old_id or new_id in taken:
+            continue
+        moves.append((old_id, new_id))
+        taken.add(new_id)
+
+    if not moves:
+        return
+
+    now = time.time()
+    for old_id, new_id in moves:
+        version = conn.execute(
+            "SELECT COALESCE(MAX(row_version), 0) + 1 FROM Partitions"
+        ).fetchone()[0]
+        conn.execute(
+            "UPDATE Partitions SET id = ?, row_version = ?, updated_at = ? "
+            "WHERE id = ?", (new_id, version, now, old_id))
+        for table in ("assignments", "attempts", "interactive_sessions"):
+            if _table_exists(conn, table):
+                conn.execute(
+                    f"UPDATE {table} SET partition_id = ? WHERE partition_id = ?",
+                    (new_id, old_id))
+
+    # Состав групп и тестов хранится списком позиций с полем task_id —
+    # это тоже ссылка на номер раздела, просто внутри JSON.
+    renamed = dict(moves)
+    for pid, raw in conn.execute(
+            "SELECT id, generation_parametrs FROM Partitions "
+            "WHERE constracted IN (2, 3)").fetchall():
+        if not raw:
+            continue
+        try:
+            members = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(members, list):
+            continue
+        changed = False
+        for item in members:
+            if isinstance(item, dict) and item.get("task_id") in renamed:
+                item["task_id"] = renamed[item["task_id"]]
+                changed = True
+        if changed:
+            conn.execute(
+                "UPDATE Partitions SET generation_parametrs = ? WHERE id = ?",
+                (json.dumps(members, ensure_ascii=False), pid))
+
+
 # Порядок применения. Добавлять новые кортежами (version, name, fn).
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = [
     (1, "rbac_foundation", _m001_rbac_foundation),
@@ -896,6 +997,7 @@ MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = [
     (12, "attempt_scenarios", _m012_attempt_scenarios),
     (13, "auth_sessions", _m013_auth_sessions),
     (14, "organizations", _m014_organizations),
+    (15, "stable_english_partition_ids", _m015_stable_english_partition_ids),
 ]
 
 
