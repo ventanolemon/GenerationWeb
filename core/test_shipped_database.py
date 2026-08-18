@@ -104,6 +104,44 @@ class DatabaseFileTests(unittest.TestCase):
         expected = {version for version, _name, _fn in MIGRATIONS}
         self.assertEqual(expected - applied_versions(conn), set())
 
+    def test_file_is_unchanged_against_the_commit(self):
+        """
+        Заслон против того, что уже случилось ТРИЖДЫ за одну работу.
+
+        База меняется от любого прикосновения: слой доступа заводит
+        служебные таблицы и прогоняет миграции. Каждый раз это уезжало бы
+        в коммит двоичной строкой, в которой не видно ничего:
+
+          1. разбор дефекта открыл базу — завелись две пустые таблицы;
+          2. скрипт замера открыл базу напрямую — переставились страницы;
+          3. разбор состояния разделов открыл базу — применилась
+             миграция 15, и английские разделы перенумеровались.
+
+        Ни одно из трёх не было намеренной правкой содержания. Правило
+        простое и проверяемое: **в разовых сценариях Repository
+        открывают на КОПИИ**, а не на `const.DB_PATH`.
+
+        Проверка пропускается там, где git недоступен (собранная
+        поставка, установка у пользователя): она про дисциплину
+        разработки, а не про свойство файла.
+        """
+        import subprocess
+
+        root = Path(__file__).resolve().parent.parent
+        try:
+            done = subprocess.run(
+                ["git", "diff", "--quiet", "--", str(Path(DB_PATH).relative_to(root))],
+                cwd=root, capture_output=True, timeout=30)
+        except (OSError, subprocess.SubprocessError, ValueError):
+            self.skipTest("git недоступен — проверка только для рабочей копии")
+        self.assertEqual(
+            done.returncode, 0,
+            "База изменилась относительно коммита. Если правка НЕ "
+            "намеренная — верните файл: git checkout -- "
+            "resources/users_database.db. Если намеренная — скажите об "
+            "этом в сообщении коммита явно, двоичный diff сам ничего не "
+            "объяснит.")
+
     def test_every_code_partition_has_a_generator(self):
         """
         Раздел с `constracted = 0` заявляет, что его обслуживает КОД.
