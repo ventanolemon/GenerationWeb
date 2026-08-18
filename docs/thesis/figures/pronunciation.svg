@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 420" width="780" height="420" font-family="DejaVu Sans, Arial, sans-serif" font-size="13">
+<rect width="780" height="420" fill="#ffffff"/>
+<text x="24" y="28" font-size="15" font-weight="bold" fill="#1b1c21">Проверка произношения: правило «ближайший эталон в словаре»</text>
+<text x="24" y="48" font-size="12" fill="#676c7a">словарь 20 слов; эталон искажён — темп, шум, громкость. Зелёное — вердикт вынесен и верен, серое — отказ судить.</text>
+<text x="24" y="66" font-size="12" fill="#676c7a">Уверенно неверных вердиктов нет ни одного.</text>
+<text x="24" y="105" fill="#1b1c21">темп ×0.85</text>
+<rect x="260.0" y="92" width="370.0" height="18" fill="#17784a"/>
+<text x="640.0" y="106" fill="#676c7a">20 верных, 0 отказов</text>
+<text x="24" y="143" fill="#1b1c21">темп ×1.20</text>
+<rect x="260.0" y="130" width="370.0" height="18" fill="#17784a"/>
+<text x="640.0" y="144" fill="#676c7a">20 верных, 0 отказов</text>
+<text x="24" y="181" fill="#1b1c21">шум 5%</text>
+<rect x="260.0" y="168" width="370.0" height="18" fill="#17784a"/>
+<text x="640.0" y="182" fill="#676c7a">20 верных, 0 отказов</text>
+<text x="24" y="219" fill="#1b1c21">шум 15%</text>
+<rect x="260.0" y="206" width="55.5" height="18" fill="#17784a"/>
+<rect x="315.5" y="206" width="314.5" height="18" fill="#c9ccd4"/>
+<text x="640.0" y="220" fill="#676c7a">3 верных, 17 отказов</text>
+<text x="24" y="257" fill="#1b1c21">громкость ×0.5 *</text>
+<rect x="260.0" y="244" width="370.0" height="18" fill="#17784a"/>
+<text x="640.0" y="258" fill="#676c7a">20 верных, 0 отказов</text>
+<text x="24" y="295" fill="#1b1c21">темп ×1.15 + шум 8%</text>
+<rect x="260.0" y="282" width="55.5" height="18" fill="#17784a"/>
+<rect x="315.5" y="282" width="314.5" height="18" fill="#c9ccd4"/>
+<text x="640.0" y="296" fill="#676c7a">3 верных, 17 отказов</text>
+<line x1="24" y1="324" x2="756" y2="324" stroke="#d6d8e0"/>
+<text x="24" y="348" font-weight="bold" fill="#1b1c21">Вердикт вынесен 86 раз из 120 — верны все 86 (100%)</text>
+<text x="24" y="368" font-size="12" fill="#676c7a">В остальных 34 случаях правило отказалось судить. Из них верными были бы 21 —</text>
+<text x="24" y="386" font-size="12" fill="#676c7a">это цена покрытия, уплаченная за отсутствие уверенных ошибок.</text>
+<text x="24" y="404" font-size="11" fill="#8a8f9a">* громкость на признаки не влияет по построению — эта строка не достижение, а контроль.</text>
+</svg>

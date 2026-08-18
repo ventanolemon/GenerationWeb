@@ -102,6 +102,8 @@ def sync_database(repo: Repository, words_dir: Path) -> None:
             graph=entry["graph"],
         )
 
+    _repair_physics_constructor(repo)
+
     # Английские словари. Номер выводится из ИМЕНИ файла (см.
     # core/partition_ids.py), а не из его места в отсортированном списке:
     # каталоги сервера (20 файлов) и десктопа (12) разной длины, и при
@@ -151,6 +153,57 @@ def _has_transcriptions(path: Path) -> bool:
         return False
     inline = pronunciation.inline_transcriptions(data)
     return any(pronunciation.transcription_of(t, inline) for t in words)
+
+
+#: Настройка, которой поставочный раздел «конструктор» предмета Физика
+#: не имел никогда. Второй закон Ньютона взят не как «какая-нибудь
+#: задача», а как пример из документации самого конструктора
+#: (`exercises/fisic/fisic_generater.py`): раздел из поставки обязан
+#: показывать, что конструктор умеет, — иначе первое, что видит
+#: преподаватель, это пустая форма.
+_PHYSICS_CONSTRUCTOR_DEFAULT = {
+    "condition": "Тело массой #m# движется с ускорением #a#. "
+                 "Найдите действующую на него силу.",
+    "result_letter": "F",
+    "formula": "m * a",
+    "dimension": "Н",
+    "variables": {
+        "m": {"min": 1, "max": 20, "kind": "natural", "dimension": "кг"},
+        "a": {"min": 1, "max": 10, "kind": "natural", "dimension": "м/с^2"},
+    },
+}
+
+
+def _repair_physics_constructor(repo: Repository) -> bool:
+    """
+    Починить поставочный раздел «конструктор» предмета Физика.
+
+    В БД он лежит с `constracted = 0` — то есть заявляет, что его
+    обслуживает КОД, — но код-генератора с его номером нет и не было.
+    Клик по нему даёт `KeyError: Нет генератора для partition_id=2`.
+    По имени и предмету это конструктор физики, то есть `constracted = 1`.
+
+    Правка осторожная: трогаем только запись, которая ещё не настроена
+    (пустые параметры). Настроенный раздел — уже работа преподавателя, и
+    перезаписывать её нельзя, даже если `constracted` выглядит странно.
+    """
+    for part in repo.list_partitions_for_subject(3):
+        if part.constracted != 0 or part.generation_params:
+            continue
+        if "конструктор" not in part.name.lower():
+            continue
+        # Без явного id: серверный upsert находит запись по паре
+        # (предмет, имя) и правит её на месте, сохраняя номер. Это то,
+        # что нужно, — раздел уже существует, у него меняется только
+        # признак обслуживания и настройка.
+        repo.upsert_partition(
+            subject_id=3,
+            name=part.name,
+            constracted=1,
+            generation_params=_PHYSICS_CONSTRUCTOR_DEFAULT,
+        )
+        return True
+    return False
 
 
 def english_partition_ids(words_dir: Path) -> dict[str, int]:
