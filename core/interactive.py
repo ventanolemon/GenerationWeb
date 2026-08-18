@@ -486,7 +486,69 @@ def session_from_task(task, **kwargs) -> Optional[SpecSession]:
     return session_from_tasks([task], **kwargs)
 
 
+class SolvingGenerator:
+    """
+    Проверяемое статическое задание, поданное как сессия «решать».
+
+    Зачем это отдельная вещь. У CHECKABLE-генератора есть ОБЕ формы:
+    преподаватель генерирует варианты и выгружает их в Word, студент
+    решает то же самое с проверкой. Это не два разных раздела и не
+    настройка — это два способа открыть один и тот же раздел, и выбор за
+    тем, кто его открыл.
+
+    Отдать витрине один флаг «интерактивный» значило бы увести весь
+    предмет на экран тренажёра и отнять экспорт; отдать только
+    «статический» — отнять проверку. Поэтому обёртка: снаружи она
+    INTERACTIVE, внутри — тот же генератор, а решение о форме принимает
+    представление.
+
+    Обёртка, а не флаг в самом генераторе: генератор не должен знать, в
+    каком виде его открыли. По той же причине здесь нет наследования —
+    подмешивать INTERACTIVE в чужой класс значило бы менять его
+    возможности для всех вызывающих сразу.
+    """
+
+    def __init__(self, inner):
+        self.inner = inner
+        self.name = getattr(inner, "name", "")
+        self.partition_id = getattr(inner, "partition_id", None)
+        # Импорт здесь, а не наверху: `core.generator` тянет `core.task`,
+        # а тот — этот модуль. Цикл в рантайме безвреден, при загрузке —
+        # нет.
+        from .generator import Capability
+        self.capabilities = Capability.INTERACTIVE
+
+    def configure(self, params: dict) -> None:
+        configure = getattr(self.inner, "configure", None)
+        if configure is not None:
+            configure(params)
+
+    def generate(self) -> SpecSession:
+        task = self.inner.generate()
+        session = session_from_task(task)
+        if session is None:
+            raise ValueError(
+                f"У задания {self.name!r} нет спецификации ответа — "
+                f"решать в нём нечего. Проверьте, что генератор объявил "
+                f"CHECKABLE не напрасно."
+            )
+        return session
+
+
+def is_solvable(generator) -> bool:
+    """
+    Можно ли открыть этот раздел в режиме «решать».
+
+    Смотрим на флаг, а не пробуем сгенерировать: генерация бывает
+    небыстрой, а вопрос задаётся при построении экрана.
+    """
+    from .generator import Capability
+    return bool(getattr(generator, "capabilities", Capability.NONE)
+                & Capability.CHECKABLE)
+
+
 __all__ = [
-    "Question", "Outcome", "SpecSession",
+    "Question", "Outcome", "SpecSession", "SolvingGenerator",
     "question_from_task", "session_from_task", "session_from_tasks",
+    "is_solvable",
 ]
