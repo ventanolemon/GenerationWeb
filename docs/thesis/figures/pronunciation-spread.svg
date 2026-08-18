@@ -1,90 +1,122 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 516" width="860" height="516" font-family="DejaVu Sans, Arial, sans-serif" font-size="13">
-<rect width="860" height="516" fill="#ffffff"/>
-<text x="24" y="30" font-size="15" font-weight="bold" fill="#1b1c21">Уверенно неверные вердикты по словарям поставки</text>
-<text x="24" y="50" font-size="12" fill="#676c7a">окрестность 12 слов, искажение «темп ×1,15 + шум 8%», 25 проб на словарь; словари по убыванию длины термина</text>
-<rect x="250" y="64" width="12" height="12" fill="#17784a"/>
-<text x="268" y="74" font-size="12" fill="#676c7a">вердикт вынесен и верен</text>
-<rect x="440" y="64" width="12" height="12" fill="#b3261e"/>
-<text x="458" y="74" font-size="12" fill="#676c7a">вердикт вынесен и НЕВЕРЕН</text>
-<line x1="250" y1="114" x2="836" y2="114" stroke="#d6d8e0" stroke-width="1"/>
-<text x="24" y="110" font-size="12" fill="#1b1c21">complete_abbreveations</text>
-<text x="238" y="110" font-size="11" fill="#676c7a" text-anchor="end">3.3 сл.</text>
-<rect x="250" y="99" width="280.0" height="13" fill="#17784a"/>
-<text x="538.0" y="110" font-size="11" fill="#676c7a">0 из 14</text>
-<line x1="250" y1="140" x2="836" y2="140" stroke="#d6d8e0" stroke-width="1"/>
-<text x="24" y="136" font-size="12" fill="#1b1c21">unit5_secondary_storage</text>
-<text x="238" y="136" font-size="11" fill="#676c7a" text-anchor="end">2.1 сл.</text>
-<rect x="250" y="125" width="60.0" height="13" fill="#17784a"/>
-<rect x="310.0" y="125" width="140.0" height="13" fill="#b3261e"/>
-<text x="458.0" y="136" font-size="11" fill="#b3261e" font-weight="bold">7 из 10</text>
-<line x1="250" y1="166" x2="836" y2="166" stroke="#d6d8e0" stroke-width="1"/>
-<text x="24" y="162" font-size="12" fill="#1b1c21">term_4_unit8_professions_in_it</text>
-<text x="238" y="162" font-size="11" fill="#676c7a" text-anchor="end">2.0 сл.</text>
-<rect x="250" y="151" width="80.0" height="13" fill="#17784a"/>
-<rect x="330.0" y="151" width="20.0" height="13" fill="#b3261e"/>
-<text x="358.0" y="162" font-size="11" fill="#b3261e" font-weight="bold">1 из 5</text>
-<line x1="250" y1="192" x2="836" y2="192" stroke="#d6d8e0" stroke-width="1"/>
-<text x="24" y="188" font-size="12" fill="#1b1c21">term_4_unit1_internet</text>
-<text x="238" y="188" font-size="11" fill="#676c7a" text-anchor="end">1.9 сл.</text>
-<rect x="250" y="177" width="180.0" height="13" fill="#17784a"/>
-<text x="438.0" y="188" font-size="11" fill="#676c7a">0 из 9</text>
-<line x1="250" y1="218" x2="836" y2="218" stroke="#d6d8e0" stroke-width="1"/>
-<text x="24" y="214" font-size="12" fill="#1b1c21">term_4_unit4_web_design</text>
-<text x="238" y="214" font-size="11" fill="#676c7a" text-anchor="end">1.7 сл.</text>
-<rect x="250" y="203" width="280.0" height="13" fill="#17784a"/>
-<text x="538.0" y="214" font-size="11" fill="#676c7a">0 из 14</text>
-<line x1="250" y1="244" x2="836" y2="244" stroke="#d6d8e0" stroke-width="1"/>
-<text x="24" y="240" font-size="12" fill="#1b1c21">complete_words</text>
-<text x="238" y="240" font-size="11" fill="#676c7a" text-anchor="end">1.7 сл.</text>
-<rect x="250" y="229" width="160.0" height="13" fill="#17784a"/>
-<rect x="410.0" y="229" width="40.0" height="13" fill="#b3261e"/>
-<text x="458.0" y="240" font-size="11" fill="#b3261e" font-weight="bold">2 из 10</text>
-<line x1="250" y1="270" x2="836" y2="270" stroke="#d6d8e0" stroke-width="1"/>
-<text x="24" y="266" font-size="12" fill="#1b1c21">term_4_unit7_future_of_it</text>
-<text x="238" y="266" font-size="11" fill="#676c7a" text-anchor="end">1.7 сл.</text>
-<rect x="250" y="255" width="40.0" height="13" fill="#17784a"/>
-<rect x="290.0" y="255" width="60.0" height="13" fill="#b3261e"/>
-<text x="358.0" y="266" font-size="11" fill="#b3261e" font-weight="bold">3 из 5</text>
-<line x1="250" y1="296" x2="836" y2="296" stroke="#d6d8e0" stroke-width="1"/>
-<text x="24" y="292" font-size="12" fill="#1b1c21">unit3_hardware</text>
-<text x="238" y="292" font-size="11" fill="#676c7a" text-anchor="end">1.6 сл.</text>
-<rect x="250" y="281" width="80.0" height="13" fill="#17784a"/>
-<rect x="330.0" y="281" width="80.0" height="13" fill="#b3261e"/>
-<text x="418.0" y="292" font-size="11" fill="#b3261e" font-weight="bold">4 из 8</text>
-<line x1="250" y1="322" x2="836" y2="322" stroke="#d6d8e0" stroke-width="1"/>
-<text x="24" y="318" font-size="12" fill="#1b1c21">term_4_complete_vocabulary</text>
-<text x="238" y="318" font-size="11" fill="#676c7a" text-anchor="end">1.5 сл.</text>
-<rect x="250" y="307" width="200.0" height="13" fill="#17784a"/>
-<rect x="450.0" y="307" width="60.0" height="13" fill="#b3261e"/>
-<text x="518.0" y="318" font-size="11" fill="#b3261e" font-weight="bold">3 из 13</text>
-<line x1="250" y1="348" x2="836" y2="348" stroke="#d6d8e0" stroke-width="1"/>
-<text x="24" y="344" font-size="12" fill="#1b1c21">term_4_unit6_data_security</text>
-<text x="238" y="344" font-size="11" fill="#676c7a" text-anchor="end">1.4 сл.</text>
-<rect x="250" y="333" width="80.0" height="13" fill="#17784a"/>
-<rect x="330.0" y="333" width="60.0" height="13" fill="#b3261e"/>
-<text x="398.0" y="344" font-size="11" fill="#b3261e" font-weight="bold">3 из 7</text>
-<line x1="250" y1="374" x2="836" y2="374" stroke="#d6d8e0" stroke-width="1"/>
-<text x="24" y="370" font-size="12" fill="#1b1c21">complete_vocabulary</text>
-<text x="238" y="370" font-size="11" fill="#676c7a" text-anchor="end">1.4 сл.</text>
-<rect x="250" y="359" width="80.0" height="13" fill="#17784a"/>
-<rect x="330.0" y="359" width="160.0" height="13" fill="#b3261e"/>
-<text x="498.0" y="370" font-size="11" fill="#b3261e" font-weight="bold">8 из 12</text>
-<line x1="250" y1="400" x2="836" y2="400" stroke="#d6d8e0" stroke-width="1"/>
-<text x="24" y="396" font-size="12" fill="#1b1c21">term_4_unit2_search_engines</text>
-<text x="238" y="396" font-size="11" fill="#676c7a" text-anchor="end">1.3 сл.</text>
-<rect x="250" y="385" width="160.0" height="13" fill="#17784a"/>
-<rect x="410.0" y="385" width="260.0" height="13" fill="#b3261e"/>
-<text x="678.0" y="396" font-size="11" fill="#b3261e" font-weight="bold">13 из 21</text>
-<line x1="250" y1="426" x2="836" y2="426" stroke="#d6d8e0" stroke-width="1"/>
-<text x="24" y="422" font-size="12" fill="#1b1c21">term_4_unit3_programming_langu</text>
-<text x="238" y="422" font-size="11" fill="#676c7a" text-anchor="end">1.3 сл.</text>
-<rect x="250" y="411" width="80.0" height="13" fill="#17784a"/>
-<text x="338.0" y="422" font-size="11" fill="#676c7a">0 из 4</text>
-<line x1="250" y1="452" x2="836" y2="452" stroke="#d6d8e0" stroke-width="1"/>
-<text x="24" y="448" font-size="12" fill="#1b1c21">term_4_unit5_malware_cybercrim</text>
-<text x="238" y="448" font-size="11" fill="#676c7a" text-anchor="end">1.1 сл.</text>
-<rect x="250" y="437" width="180.0" height="13" fill="#17784a"/>
-<rect x="430.0" y="437" width="160.0" height="13" fill="#b3261e"/>
-<text x="598.0" y="448" font-size="11" fill="#b3261e" font-weight="bold">8 из 17</text>
-<text x="24" y="490" font-size="12" fill="#1b1c21">Всего вердиктов вынесено 149, из них неверных <tspan font-weight="bold" fill="#b3261e">52</tspan> (35%). Словарей без неверных вердиктов: 4 из 14.</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 542" width="860" height="542" font-family="DejaVu Sans, Arial, sans-serif" font-size="13">
+<rect width="860" height="542" fill="#ffffff"/>
+<text x="24" y="30" font-size="15" font-weight="bold" fill="#1b1c21">Порог уверенности: константа против окрестности</text>
+<text x="24" y="50" font-size="12" fill="#676c7a">окрестность 12 слов, 6 искажений, 25 проб на словарь; по два ряда на словарь — верхний ряд прежнее правило, нижний нынешнее</text>
+<rect x="24" y="66" width="12" height="10" fill="#17784a"/>
+<text x="42" y="75" font-size="12" fill="#676c7a">вердикт вынесен и верен</text>
+<rect x="228" y="66" width="12" height="10" fill="#b3261e"/>
+<text x="246" y="75" font-size="12" fill="#676c7a">вердикт вынесен и НЕВЕРЕН</text>
+<text x="24" y="99" font-size="12" fill="#1b1c21" font-weight="bold">словарь</text>
+<text x="238" y="99" font-size="11" fill="#676c7a" text-anchor="end">длина</text>
+<line x1="24" y1="141" x2="836" y2="141" stroke="#d6d8e0" stroke-width="1"/>
+<text x="24" y="131" font-size="12" fill="#1b1c21">term_4_unit2_search_engines</text>
+<text x="238" y="131" font-size="11" fill="#676c7a" text-anchor="end">1.3 сл.</text>
+<rect x="250" y="118" width="337.9" height="9" fill="#17784a"/>
+<rect x="587.9" y="118" width="82.1" height="9" fill="#b3261e"/>
+<text x="677.0" y="126" font-size="10" fill="#b3261e" font-weight="bold">было: 133, неверных 26</text>
+<rect x="250" y="129" width="198.9" height="9" fill="#17784a"/>
+<text x="455.9" y="137" font-size="10" fill="#676c7a">стало: 63, неверных 0</text>
+<line x1="24" y1="167" x2="836" y2="167" stroke="#d6d8e0" stroke-width="1"/>
+<text x="24" y="157" font-size="12" fill="#1b1c21">unit5_secondary_storage</text>
+<text x="238" y="157" font-size="11" fill="#676c7a" text-anchor="end">2.1 сл.</text>
+<rect x="250" y="144" width="315.8" height="9" fill="#17784a"/>
+<rect x="565.8" y="144" width="75.8" height="9" fill="#b3261e"/>
+<text x="648.6" y="152" font-size="10" fill="#b3261e" font-weight="bold">было: 124, неверных 24</text>
+<rect x="250" y="155" width="164.2" height="9" fill="#17784a"/>
+<text x="421.2" y="163" font-size="10" fill="#676c7a">стало: 52, неверных 0</text>
+<line x1="24" y1="193" x2="836" y2="193" stroke="#d6d8e0" stroke-width="1"/>
+<text x="24" y="183" font-size="12" fill="#1b1c21">term_4_unit5_malware_cybercrim</text>
+<text x="238" y="183" font-size="11" fill="#676c7a" text-anchor="end">1.1 сл.</text>
+<rect x="250" y="170" width="341.1" height="9" fill="#17784a"/>
+<rect x="591.1" y="170" width="66.3" height="9" fill="#b3261e"/>
+<text x="664.4" y="178" font-size="10" fill="#b3261e" font-weight="bold">было: 129, неверных 21</text>
+<rect x="250" y="181" width="164.2" height="9" fill="#17784a"/>
+<text x="421.2" y="189" font-size="10" fill="#676c7a">стало: 52, неверных 0</text>
+<line x1="24" y1="219" x2="836" y2="219" stroke="#d6d8e0" stroke-width="1"/>
+<text x="24" y="209" font-size="12" fill="#1b1c21">complete_vocabulary</text>
+<text x="238" y="209" font-size="11" fill="#676c7a" text-anchor="end">1.4 сл.</text>
+<rect x="250" y="196" width="322.1" height="9" fill="#17784a"/>
+<rect x="572.1" y="196" width="53.7" height="9" fill="#b3261e"/>
+<text x="632.8" y="204" font-size="10" fill="#b3261e" font-weight="bold">было: 119, неверных 17</text>
+<rect x="250" y="207" width="189.5" height="9" fill="#17784a"/>
+<text x="446.5" y="215" font-size="10" fill="#676c7a">стало: 60, неверных 0</text>
+<line x1="24" y1="245" x2="836" y2="245" stroke="#d6d8e0" stroke-width="1"/>
+<text x="24" y="235" font-size="12" fill="#1b1c21">unit3_hardware</text>
+<text x="238" y="235" font-size="11" fill="#676c7a" text-anchor="end">1.6 сл.</text>
+<rect x="250" y="222" width="328.4" height="9" fill="#17784a"/>
+<rect x="578.4" y="222" width="37.9" height="9" fill="#b3261e"/>
+<text x="623.3" y="230" font-size="10" fill="#b3261e" font-weight="bold">было: 116, неверных 12</text>
+<rect x="250" y="233" width="173.7" height="9" fill="#17784a"/>
+<text x="430.7" y="241" font-size="10" fill="#676c7a">стало: 55, неверных 0</text>
+<line x1="24" y1="271" x2="836" y2="271" stroke="#d6d8e0" stroke-width="1"/>
+<text x="24" y="261" font-size="12" fill="#1b1c21">term_4_unit7_future_of_it</text>
+<text x="238" y="261" font-size="11" fill="#676c7a" text-anchor="end">1.7 сл.</text>
+<rect x="250" y="248" width="325.3" height="9" fill="#17784a"/>
+<rect x="575.3" y="248" width="31.6" height="9" fill="#b3261e"/>
+<text x="613.8" y="256" font-size="10" fill="#b3261e" font-weight="bold">было: 113, неверных 10</text>
+<rect x="250" y="259" width="180.0" height="9" fill="#17784a"/>
+<text x="437.0" y="267" font-size="10" fill="#676c7a">стало: 57, неверных 0</text>
+<line x1="24" y1="297" x2="836" y2="297" stroke="#d6d8e0" stroke-width="1"/>
+<text x="24" y="287" font-size="12" fill="#1b1c21">complete_words</text>
+<text x="238" y="287" font-size="11" fill="#676c7a" text-anchor="end">1.7 сл.</text>
+<rect x="250" y="274" width="356.8" height="9" fill="#17784a"/>
+<rect x="606.8" y="274" width="28.4" height="9" fill="#b3261e"/>
+<text x="642.3" y="282" font-size="10" fill="#b3261e" font-weight="bold">было: 122, неверных 9</text>
+<rect x="250" y="285" width="205.3" height="9" fill="#17784a"/>
+<text x="462.3" y="293" font-size="10" fill="#676c7a">стало: 65, неверных 0</text>
+<line x1="24" y1="323" x2="836" y2="323" stroke="#d6d8e0" stroke-width="1"/>
+<text x="24" y="313" font-size="12" fill="#1b1c21">term_4_complete_vocabulary</text>
+<text x="238" y="313" font-size="11" fill="#676c7a" text-anchor="end">1.5 сл.</text>
+<rect x="250" y="300" width="347.4" height="9" fill="#17784a"/>
+<rect x="597.4" y="300" width="28.4" height="9" fill="#b3261e"/>
+<text x="632.8" y="308" font-size="10" fill="#b3261e" font-weight="bold">было: 119, неверных 9</text>
+<rect x="250" y="311" width="211.6" height="9" fill="#17784a"/>
+<text x="468.6" y="319" font-size="10" fill="#676c7a">стало: 67, неверных 0</text>
+<line x1="24" y1="349" x2="836" y2="349" stroke="#d6d8e0" stroke-width="1"/>
+<text x="24" y="339" font-size="12" fill="#1b1c21">term_4_unit6_data_security</text>
+<text x="238" y="339" font-size="11" fill="#676c7a" text-anchor="end">1.4 сл.</text>
+<rect x="250" y="326" width="306.3" height="9" fill="#17784a"/>
+<rect x="556.3" y="326" width="25.3" height="9" fill="#b3261e"/>
+<text x="588.6" y="334" font-size="10" fill="#b3261e" font-weight="bold">было: 105, неверных 8</text>
+<rect x="250" y="337" width="186.3" height="9" fill="#17784a"/>
+<text x="443.3" y="345" font-size="10" fill="#676c7a">стало: 59, неверных 0</text>
+<line x1="24" y1="375" x2="836" y2="375" stroke="#d6d8e0" stroke-width="1"/>
+<text x="24" y="365" font-size="12" fill="#1b1c21">term_4_unit8_professions_in_it</text>
+<text x="238" y="365" font-size="11" fill="#676c7a" text-anchor="end">2.0 сл.</text>
+<rect x="250" y="352" width="318.9" height="9" fill="#17784a"/>
+<rect x="568.9" y="352" width="18.9" height="9" fill="#b3261e"/>
+<text x="594.9" y="360" font-size="10" fill="#b3261e" font-weight="bold">было: 107, неверных 6</text>
+<rect x="250" y="363" width="161.1" height="9" fill="#17784a"/>
+<text x="418.1" y="371" font-size="10" fill="#676c7a">стало: 51, неверных 0</text>
+<line x1="24" y1="401" x2="836" y2="401" stroke="#d6d8e0" stroke-width="1"/>
+<text x="24" y="391" font-size="12" fill="#1b1c21">term_4_unit1_internet</text>
+<text x="238" y="391" font-size="11" fill="#676c7a" text-anchor="end">1.9 сл.</text>
+<rect x="250" y="378" width="353.7" height="9" fill="#17784a"/>
+<rect x="603.7" y="378" width="6.3" height="9" fill="#b3261e"/>
+<text x="617.0" y="386" font-size="10" fill="#b3261e" font-weight="bold">было: 114, неверных 2</text>
+<rect x="250" y="389" width="214.7" height="9" fill="#17784a"/>
+<text x="471.7" y="397" font-size="10" fill="#676c7a">стало: 68, неверных 0</text>
+<line x1="24" y1="427" x2="836" y2="427" stroke="#d6d8e0" stroke-width="1"/>
+<text x="24" y="417" font-size="12" fill="#1b1c21">complete_abbreveations</text>
+<text x="238" y="417" font-size="11" fill="#676c7a" text-anchor="end">3.3 сл.</text>
+<rect x="250" y="404" width="382.1" height="9" fill="#17784a"/>
+<text x="639.1" y="412" font-size="10" fill="#676c7a">было: 121, неверных 0</text>
+<rect x="250" y="415" width="211.6" height="9" fill="#17784a"/>
+<text x="468.6" y="423" font-size="10" fill="#676c7a">стало: 67, неверных 0</text>
+<line x1="24" y1="453" x2="836" y2="453" stroke="#d6d8e0" stroke-width="1"/>
+<text x="24" y="443" font-size="12" fill="#1b1c21">term_4_unit3_programming_langu</text>
+<text x="238" y="443" font-size="11" fill="#676c7a" text-anchor="end">1.3 сл.</text>
+<rect x="250" y="430" width="344.2" height="9" fill="#17784a"/>
+<text x="601.2" y="438" font-size="10" fill="#676c7a">было: 109, неверных 0</text>
+<rect x="250" y="441" width="192.6" height="9" fill="#17784a"/>
+<text x="449.6" y="449" font-size="10" fill="#676c7a">стало: 61, неверных 0</text>
+<line x1="24" y1="479" x2="836" y2="479" stroke="#d6d8e0" stroke-width="1"/>
+<text x="24" y="469" font-size="12" fill="#1b1c21">term_4_unit4_web_design</text>
+<text x="238" y="469" font-size="11" fill="#676c7a" text-anchor="end">1.7 сл.</text>
+<rect x="250" y="456" width="378.9" height="9" fill="#17784a"/>
+<text x="635.9" y="464" font-size="10" fill="#676c7a">было: 120, неверных 0</text>
+<rect x="250" y="467" width="173.7" height="9" fill="#17784a"/>
+<text x="430.7" y="475" font-size="10" fill="#676c7a">стало: 55, неверных 0</text>
+<text x="24" y="512" font-size="12" fill="#1b1c21">Константа: вынесено 1651 из 2100 (79%), неверных <tspan font-weight="bold" fill="#b3261e">144</tspan> на 11 словарях из 14.</text>
+<text x="24" y="530" font-size="12" fill="#1b1c21">Окрестность: вынесено 832 из 2100 (40%), неверных <tspan font-weight="bold" fill="#17784a">0</tspan>. Цена — покрытие; ошибка — ноль.</text>
 </svg>

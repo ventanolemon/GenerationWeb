@@ -17,8 +17,16 @@
 закрепляет факт, а не желаемое.
 
 Второе свойство, ради которого всё и делалось: правило умеет ОТКАЗАТЬСЯ
-судить. Замер на 20 словах и шести искажениях: из 86 вынесенных вердиктов
-верны 86; в остальных 34 случаях правило отказалось, а не ошиблось.
+судить. Порог этого отказа СНАЧАЛА БЫЛ КОНСТАНТОЙ (отрыв ≥ 8%), и это
+была та же ошибка, против которой написан модуль: замер по всем
+четырнадцати словарям поставки дал 144 уверенно неверных вердикта из
+1651, причём на 11 словарях из 14.
+
+Порог заменён на выводимый из окрестности: отрыв меряется долей от
+`separation` — расстояния между эталонами самого словаря. После замены
+на том же протоколе: 832 вердикта, **0 неверных, 0 словарей с ошибками**;
+цена — покрытие упало с 78.6% до 39.6%. Разбор в
+`docs/thesis/07-chapter-results.md` §7.3.2.
 
 Запуск:
     python -m unittest core.test_pronunciation_match
@@ -26,6 +34,7 @@
 
 from __future__ import annotations
 
+import math
 import pathlib
 import unittest
 
@@ -183,6 +192,89 @@ class NeighbourhoodRuleTests(unittest.TestCase):
             self.skipTest("на этой поставке шум не размыл отрыв")
         self.assertFalse(M.accepts(terms[0], noisy, self.references,
                                    require_confident=True))
+
+    def test_a_single_word_vocabulary_is_never_confident(self):
+        """
+        Словарь из одного слова: соперника нет, разделения нет, значит
+        нет и свидетельства. Прежнее правило считало такой вердикт
+        БЕСКОНЕЧНО уверенным — отсутствие соперника принималось за
+        бесспорную победу.
+        """
+        term = next(iter(self.references))
+        alone = {term: self.references[term]}
+        found = M.match(M.mfcc(_signal(term)), alone)
+        self.assertEqual(found.term, term)
+        self.assertFalse(found.confident)
+        self.assertEqual(found.share, 0.0)
+        self.assertFalse(M.accepts(term, M.mfcc(_signal(term)), alone,
+                                   require_confident=True))
+        # Без требования уверенности — принимается: первое место есть.
+        self.assertTrue(M.accepts(term, M.mfcc(_signal(term)), alone))
+
+    def test_a_perfect_recording_takes_all_of_the_separation(self):
+        """
+        Смысл величины `share`: доля ДОСТИЖИМОГО разделения.
+
+        Запись, совпавшая с эталоном, стоит от своего слова на нуле, а от
+        ближайшего чужого — ровно на `separation`. Значит доля равна
+        единице, и это верхняя граница, а не совпадение.
+        """
+        term = next(iter(self.references))
+        found = M.match(self.references[term], self.references)
+        self.assertEqual(found.term, term)
+        self.assertAlmostEqual(found.share, 1.0, places=2)
+        self.assertTrue(found.confident)
+
+    def test_separation_is_computed_from_references_alone(self):
+        """
+        Масштаб уверенности не должен зависеть от записи — иначе он снова
+        начнёт зависеть от голоса и микрофона, то есть потребует
+        калибровки. Проверяется буквально: величина считается функцией,
+        которой запись не передают.
+        """
+        gaps = M.separations(self.references)
+        self.assertEqual(set(gaps), set(self.references))
+        for term, value in gaps.items():
+            with self.subTest(term=term):
+                self.assertGreater(value, 0.0)
+                self.assertTrue(math.isfinite(value))
+        # То же значение, что кладётся в вердикт.
+        term = next(iter(self.references))
+        found = M.match(M.mfcc(_signal(term)), self.references)
+        self.assertAlmostEqual(found.separation, gaps[found.term], places=9)
+
+    def test_precomputed_separations_change_nothing(self):
+        """
+        Готовые межэталонные расстояния — только про скорость. Вердикт с
+        ними обязан совпадать с вердиктом без них, иначе кэш начинает
+        менять результат.
+        """
+        gaps = M.separations(self.references)
+        for term in list(self.references)[:3]:
+            recording = M.mfcc(M.perturb(_signal(term), speed=1.1, seed=2))
+            with self.subTest(term=term):
+                self.assertEqual(
+                    M.match(recording, self.references).confident,
+                    M.match(recording, self.references, gaps=gaps).confident)
+
+    def test_the_threshold_is_not_a_distance(self):
+        """
+        Главное свойство новой меры: она БЕЗРАЗМЕРНА.
+
+        Умножение всех признаков на константу меняет все расстояния — и
+        не должно менять ни доли, ни вердикта. Именно этого не умел
+        прежний абсолютный порог, и именно поэтому его приходилось бы
+        калибровать под голос и микрофон.
+        """
+        scaled = {t: f * 3.0 for t, f in self.references.items()}
+        term = next(iter(self.references))
+        plain = M.match(M.mfcc(_signal(term)), self.references)
+        loud = M.match(M.mfcc(_signal(term)) * 3.0, scaled)
+        self.assertEqual(plain.term, loud.term)
+        # Не до последнего знака: DTW накапливает погрешность на
+        # умноженных признаках. Проверяется свойство, а не арифметика.
+        self.assertAlmostEqual(plain.share, loud.share, places=4)
+        self.assertGreater(loud.distance, plain.distance)
 
     def test_absolute_threshold_is_not_ruled_out_on_this_material(self):
         """

@@ -181,57 +181,71 @@ def _across_all(neighbours: int, samples: int) -> int:
             cache[term] = M.features_of(resolve(index[term]))
         return cache[term]
 
-    # Искажение берётся одно и самое трудное из набора: разброс между
-    # словарями виден там, где правилу тяжело, а не там, где всё верно.
-    label, params = PERTURBATIONS[-1]
+    # Все искажения набора, а не одно самое трудное. На одном трудном
+    # видно, ошибается ли правило, но не видно, ЧАСТО ЛИ оно вообще
+    # отвечает: после того как порог уверенности стал выводиться из
+    # окрестности, на самом трудном искажении вердикт почти не выносится,
+    # и таблица из одних нулей ничего не сообщает.
     print(f"Разброс по словарям, окрестность {neighbours} слов, "
-          f"искажение «{label}», {samples} проб на словарь\n")
+          f"{len(PERTURBATIONS)} искажений, {samples} проб на словарь\n")
     print(f"{'словарь':38}{'слов':>6}{'ср. длина':>11}"
-          f"{'уверенно':>10}{'НЕВЕРНО':>9}")
+          f"{'вынесено':>12}{'НЕВЕРНО':>9}")
 
     rows = []
     for stem, pool in _all_dictionaries():
         if len(pool) < neighbours:
             continue
         rng = random.Random(zlib.crc32(stem.encode("utf-8")))
-        confident = wrong = 0
+        confident = wrong = trials = 0
         length = 0.0
-        for _ in range(samples):
+        for step in range(samples):
             target = rng.choice(pool)
             others = [t for t in pool if t != target]
             rng.shuffle(others)
             vocabulary = [target, *others[:neighbours - 1]]
+            picked = {t: features(t) for t in vocabulary}
+            gaps = M.separations(picked)
             signal, rate = M.read_wav(resolve(index[target]))
-            distorted = M.perturb(M.resample(signal, rate),
-                                  seed=_seed(target), **params)
-            found = M.match(M.mfcc(distorted),
-                            {t: features(t) for t in vocabulary})
+            signal = M.resample(signal, rate)
             length += len(target.split())
-            if found is not None and found.confident:
-                confident += 1
-                wrong += int(found.term != target)
-        rows.append((wrong, confident, stem, len(pool), length / samples))
+            for _label, params in PERTURBATIONS:
+                distorted = M.perturb(signal, seed=_seed(target) + step,
+                                      **params)
+                found = M.match(M.mfcc(distorted), picked, gaps=gaps)
+                trials += 1
+                if found is not None and found.confident:
+                    confident += 1
+                    wrong += int(found.term != target)
+        rows.append((wrong, confident, stem, len(pool), length / samples,
+                     trials))
 
     if not rows:
         print("Нет словаря, где хватило бы слов со звуком.")
         return 1
 
     rows.sort(reverse=True)
-    for wrong, confident, stem, size, length in rows:
+    for wrong, confident, stem, size, length, trials in rows:
         print(f"  {stem[:36]:36}{size:>6}{length:>11.1f}"
-              f"{confident:>10}{wrong:>9}")
+              f"{confident:>6}/{trials:<5}{wrong:>9}")
 
     confident_total = sum(r[1] for r in rows)
     wrong_total = sum(r[0] for r in rows)
-    print(f"\nВердикт вынесен: {confident_total}, из них НЕВЕРНЫХ: "
+    trials_total = sum(r[5] for r in rows)
+    print(f"\nВердикт вынесен: {confident_total} из {trials_total} "
+          f"({confident_total / max(1, trials_total):.1%}), из них НЕВЕРНЫХ: "
           f"{wrong_total}"
           + (f" ({wrong_total / confident_total:.1%})"
              if confident_total else ""))
     clean = [r[2] for r in rows if r[0] == 0]
     print(f"Словарей без уверенно неверных вердиктов: "
           f"{len(clean)} из {len(rows)}")
-    print("\nСвойство «система не ошибается уверенно» ЗАВИСИТ ОТ МАТЕРИАЛА "
-          "и\nмеханизму не принадлежит. Отчёты обязаны называть словарь.")
+    if len(clean) == len(rows):
+        print("\nРазброса между словарями нет — порог уверенности выводится\n"
+              "из окрестности и подстраивается под материал сам. Цена\n"
+              "названа долей вынесенных вердиктов, а не спрятана.")
+    else:
+        print("\nРазброс между словарями ЕСТЬ: свойство зависит от материала.\n"
+              "Отчёты обязаны называть словарь, на котором замерено.")
     return 0
 
 
@@ -268,6 +282,9 @@ def main() -> int:
         terms, lambda term: resolve(index[term]) if term in index else None)
     print(f"Словарь: {len(references)} слов со звуком\n")
 
+    # Межэталонные расстояния — масштаб уверенности. Считаются один раз:
+    # они зависят только от эталонов и от записи не зависят вовсе.
+    gaps = M.separations(references)
     confusions = M.vocabulary_confusions(references)
     print(f"Эталон опознаёт сам себя: "
           f"{len(references) - len(confusions)} из {len(references)}")
@@ -278,7 +295,7 @@ def main() -> int:
 
     confident_total = wrong_confident_total = 0
     print(f"\n{'искажение':24}{'опознано':>12}{'уверенно':>10}"
-          f"{'уверенно НЕВЕРНО':>19}{'медианный отрыв':>17}")
+          f"{'уверенно НЕВЕРНО':>19}{'медианная доля':>17}")
 
     for label, params in PERTURBATIONS:
         right = 0
@@ -289,11 +306,11 @@ def main() -> int:
             signal, rate = M.read_wav(resolve(index[term]))
             signal = M.resample(signal, rate)
             distorted = M.perturb(signal, seed=_seed(term), **params)
-            found = M.match(M.mfcc(distorted), references)
+            found = M.match(M.mfcc(distorted), references, gaps=gaps)
             ok = found is not None and found.term == term
             right += int(ok)
             if found is not None:
-                current.append(found.margin if np.isfinite(found.margin) else 0.0)
+                current.append(found.share)
                 # Уверенность — свойство ВЕРДИКТА, а не его правильности.
                 # Складывать их в один счётчик значит сделать долю
                 # «верных среди вынесенных» равной 100% по построению.

@@ -216,11 +216,15 @@ class RefusalIsNotRejectionTests(unittest.TestCase):
     def setUpClass(cls):
         cls.terms = _terms_with_audio(6)
 
-    def test_strict_refuses_when_two_words_are_equally_close(self):
+    def test_strict_refuses_on_a_single_word_vocabulary(self):
         """
-        Словарь из ОДНОГО слова: отрыва от следующего нет по построению.
-        Мягкий режим засчитает — первое место есть; строгий откажется, и
-        это не придирчивость, а честность: выбирать не из чего.
+        Словарь из ОДНОГО слова: разделения нет по построению, значит нет
+        и свидетельства. Мягкий режим засчитает — первое место есть;
+        строгий откажется, и это не придирчивость, а честность: выбирать
+        не из чего.
+
+        Прежнее правило считало такой вердикт бесконечно уверенным:
+        отсутствие соперника принималось за бесспорную победу.
         """
         term = self.terms[0]
         spec_soft = VoiceSpec(term=term, vocabulary=(term,))
@@ -232,9 +236,31 @@ class RefusalIsNotRejectionTests(unittest.TestCase):
 
         self.assertTrue(spec_soft.check(str(path)).accepted)
         verdict = spec_strict.check(str(path))
-        # Единственное слово — отрыв бесконечен, вердикт уверенный.
-        # Проверяем не это, а что режим вообще доходит до разбора отрыва.
-        self.assertIn(verdict.reason, (Reason.EXACT, Reason.UNCERTAIN))
+        self.assertFalse(verdict.accepted)
+        self.assertEqual(verdict.reason, Reason.UNCERTAIN)
+
+    def test_the_threshold_comes_from_the_vocabulary_not_a_constant(self):
+        """
+        Главное свойство исправления: масштаб уверенности приносит САМ
+        СЛОВАРЬ.
+
+        Проверяется тем, что мера безразмерна: умножение всех признаков
+        на константу меняет все расстояния и не меняет ни доли, ни
+        вердикта. Абсолютный порог этого не умел — его пришлось бы
+        калибровать под голос и микрофон.
+        """
+        spec = VoiceSpec(term=self.terms[0], vocabulary=tuple(self.terms))
+        references, gaps = spec._references()
+        recording = M.features_of(_reference(self.terms[0]))
+        plain = M.match(recording, references, gaps=gaps)
+
+        scaled = {t: f * 4.0 for t, f in references.items()}
+        loud = M.match(recording * 4.0, scaled, gaps=M.separations(scaled))
+
+        self.assertEqual(plain.term, loud.term)
+        self.assertEqual(plain.confident, loud.confident)
+        self.assertAlmostEqual(plain.share, loud.share, places=4)
+        self.assertGreater(loud.distance, plain.distance * 2)
 
     def test_an_uncertain_verdict_is_not_a_mismatch(self):
         """
@@ -441,6 +467,40 @@ class SessionTests(unittest.TestCase):
         from core.interactive import SolvingGenerator
         session = SolvingGenerator(self.generator).generate()
         self.assertEqual(session.attempt_payload(), {})
+
+
+class AudioLookupTests(unittest.TestCase):
+    """Адресация звука по термину, включая запасной путь."""
+
+    def test_a_term_written_without_its_gloss_still_finds_its_sound(self):
+        """
+        В одном словаре сокращение записано «BIOS», в другом — «BIOS
+        (Basic Input/Output System)». Манифест адресует термин
+        посимвольно и считал их разными словами: звук терялся при том,
+        что файл есть.
+
+        Подмена законна по построению материала: `tools/generate_audio.py`
+        снимает скобочное пояснение ПЕРЕД синтезом, поэтому в файле
+        произнесено ровно сокращение (проверено длительностью: 0.57 с).
+        """
+        index = P.audio_index()
+        glossed = [t for t in index if "(" in t]
+        if not glossed:
+            self.skipTest("в поставке нет терминов с пояснением")
+        full = glossed[0]
+        short = full.split("(", 1)[0].strip()
+        self.assertNotIn(short, index, "случай выродился: короткая форма "
+                                       "есть в манифесте сама по себе")
+        self.assertEqual(P.audio_of(short), index[full])
+
+    def test_an_unknown_term_still_has_no_sound(self):
+        """Запасной путь не должен превращаться в «найдётся что-нибудь»."""
+        self.assertIsNone(P.audio_of("заведомо-несуществующий-термин"))
+        self.assertIsNone(P.audio_of(""))
+
+    def test_the_fallback_does_not_shadow_an_exact_match(self):
+        term = next(iter(P.audio_index()))
+        self.assertEqual(P.audio_of(term), P.audio_index()[term])
 
 
 class PartitionBandTests(unittest.TestCase):

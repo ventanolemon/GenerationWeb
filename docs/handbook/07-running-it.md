@@ -137,11 +137,11 @@ python -m scripts.seed_accounts \
 ## Проверки
 
 ```bash
-# сервер: 1631 тестов
+# сервер: 1640 тестов
 cd GenerationWeb
 python -m unittest discover -t . -s . -p "test_*.py"
 
-# десктоп: 2245 тестов
+# десктоп: 2254 тестов
 cd Generator
 QT_QPA_PLATFORM=offscreen python -m unittest discover -t . -s . -p "test_*.py"
 
@@ -184,9 +184,18 @@ python tools/generate_audio.py
 ```
 
 Последние две — только когда меняется состав словарей. Готовые 405
-транскрипций и 462 звука уже лежат в `resources/` — это 81,8% и
-93,3% от 495 терминов поставки. Непокрытые 33 принадлежат словарям,
-добавленным после последнего запуска этих двух команд.
+транскрипций и 462 звука уже лежат в `resources/`. Звук покрывает 465
+терминов из 495 (93,9%): три сокращения находятся через запасной путь —
+термин без скобочного пояснения (`BIOS` ← `BIOS (Basic Input/Output
+System)`). Непокрытые 30 принадлежат словарям, добавленным после
+последнего запуска этих двух команд.
+
+```bash
+# замер проверки произношения: один словарь и вся поставка
+python -m scripts.measure_pronunciation --words 20
+python -m scripts.measure_pronunciation --all
+python -m scripts.figure_pronunciation      # рисунок 7.3 диплома
+```
 
 ---
 

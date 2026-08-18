@@ -1961,7 +1961,7 @@ class VoiceSpec(AnswerSpec):
             return Verdict(False, active, Reason.EMPTY, shown,
                            "Запись слишком коротка.")
 
-        references = self._references()
+        references, gaps = self._references()
         if not references:
             # Не «неверно»: сравнивать не с чем. Такое бывает на установке
             # без каталога звуков — это поломка поставки, а не ответ
@@ -1969,7 +1969,7 @@ class VoiceSpec(AnswerSpec):
             return Verdict(False, active, Reason.UNCERTAIN, shown,
                            "Не с чем сравнить: эталонов произношения нет.")
 
-        found = matching.match(recording, references)
+        found = matching.match(recording, references, gaps=gaps)
         if found is None:
             return Verdict(False, active, Reason.UNCERTAIN, shown,
                            "Запись не удалось сопоставить.")
@@ -2026,13 +2026,19 @@ class VoiceSpec(AnswerSpec):
 
     # ---------- вспомогательное ----------
 
-    def _references(self) -> dict:
+    def _references(self) -> tuple:
         """
-        Признаки эталонов окрестности. Считаются один раз на спецификацию.
+        Признаки эталонов окрестности и расстояния МЕЖДУ ними.
 
-        Пересчёт на каждую попытку означал бы разбор всего словаря на
-        каждый ответ; данные при этом неизменны — `term` и `vocabulary` у
-        спецификации не меняются.
+        Считаются один раз на спецификацию. Пересчёт на каждую попытку
+        означал бы разбор всего словаря на каждый ответ; данные при этом
+        неизменны — `term` и `vocabulary` у спецификации не меняются.
+
+        Второй элемент — накопитель межэталонных расстояний, масштаба
+        уверенности. Он отдаётся ПУСТЫМ и заполняется по мере надобности:
+        за попытку нужен масштаб одного слова-победителя, а не всей
+        таблицы. Заполненное переживает попытку, поэтому повтор с тем же
+        победителем — бесплатен.
         """
         cached = getattr(self, "_reference_cache", None)
         if cached is not None:
@@ -2043,8 +2049,11 @@ class VoiceSpec(AnswerSpec):
         built = matching.reference_features(
             [t for t in terms if t],
             lambda term: _recording_path(pronunciation.audio_of(term) or ""))
-        object.__setattr__(self, "_reference_cache", built)
-        return built
+        # Именно ЭТОТ словарь, а не его копия: в него пишет `match`, и
+        # возврат нового каждый раз молча выбрасывал бы накопленное.
+        prepared = (built, {})
+        object.__setattr__(self, "_reference_cache", prepared)
+        return prepared
 
     def _payload(self) -> dict:
         out: dict = {"term": self.term}

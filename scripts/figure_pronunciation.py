@@ -14,9 +14,13 @@
 
 Что на рисунке
 --------------
-По одному ряду на словарь: сколько уверенных вердиктов вынесено и
-сколько из них НЕВЕРНЫХ. Словари упорядочены по средней длине термина —
-именно она объясняет разброс, и порядок делает это видимым без слов.
+По ДВА ряда на словарь: верхний — прежнее правило (константный порог
+отрыва 0.08), нижний — нынешнее (порог выводится из окрестности). Оба
+правила считаются на ОДНОМ материале в одном прогоне, иначе сравнение
+превратилось бы в сопоставление двух разных случайностей.
+
+Словари упорядочены по числу уверенно неверных вердиктов прежнего
+правила — то есть по тому, насколько сильно оно ошибалось.
 """
 
 from __future__ import annotations
@@ -42,7 +46,13 @@ RULE = "#d6d8e0"
 
 
 def measure(samples: int, neighbours: int) -> list[tuple]:
-    """(имя, слов, средняя длина, уверенных, из них неверных) по словарям."""
+    """
+    По словарю: сколько вердиктов вынесли ОБА правила и сколько неверных.
+
+    Считаются оба сразу и на одном материале — иначе сравнение
+    превратится в сопоставление двух прогонов с разными случайностями, а
+    именно сравнение здесь и есть содержание рисунка.
+    """
     from core import pronunciation as P, pronunciation_match as M
     from core.graph.resources import resolve
     from scripts.measure_pronunciation import (
@@ -57,38 +67,64 @@ def measure(samples: int, neighbours: int) -> list[tuple]:
             cache[term] = M.features_of(resolve(index[term]))
         return cache[term]
 
-    _label, params = PERTURBATIONS[-1]
     rows = []
     for stem, pool in _all_dictionaries():
         if len(pool) < neighbours:
             continue
         generator = random.Random(zlib.crc32(stem.encode("utf-8")))
-        confident = wrong = 0
+        old_confident = old_wrong = new_confident = new_wrong = trials = 0
         length = 0.0
-        for _ in range(samples):
+        for step in range(samples):
             target = generator.choice(pool)
             others = [t for t in pool if t != target]
             generator.shuffle(others)
             vocabulary = [target, *others[:neighbours - 1]]
+            picked = {t: features(t) for t in vocabulary}
+            gaps = M.separations(picked)
             signal, rate = M.read_wav(resolve(index[target]))
-            distorted = M.perturb(M.resample(signal, rate),
-                                  seed=_seed(target), **params)
-            found = M.match(M.mfcc(distorted),
-                            {t: features(t) for t in vocabulary})
+            signal = M.resample(signal, rate)
             length += len(target.split())
-            if found is not None and found.confident:
-                confident += 1
-                wrong += int(found.term != target)
-        rows.append((stem, len(pool), length / samples, confident, wrong))
-    rows.sort(key=lambda row: row[2], reverse=True)
+            for _label, params in PERTURBATIONS:
+                distorted = M.perturb(signal, seed=_seed(target) + step,
+                                      **params)
+                found = M.match(M.mfcc(distorted), picked, gaps=gaps)
+                trials += 1
+                bad = found.term != target
+                # Прежнее правило: константный порог относительного отрыва.
+                if found.margin >= 0.08:
+                    old_confident += 1
+                    old_wrong += int(bad)
+                if found.confident:
+                    new_confident += 1
+                    new_wrong += int(bad)
+        rows.append((stem, len(pool), length / samples, trials,
+                     old_confident, old_wrong, new_confident, new_wrong))
+    rows.sort(key=lambda row: row[5], reverse=True)
     return rows
 
 
 def render(rows: list[tuple], neighbours: int, samples: int) -> str:
-    top = 96
-    height = top + ROW * len(rows) + 56
-    peak = max((row[3] for row in rows), default=1) or 1
+    top = 118
+    height = top + ROW * len(rows) + 60
+    peak = max((max(row[4], row[6]) for row in rows), default=1) or 1
     scale = BAR / peak
+
+    def bar(x, y, confident, wrong, tag):
+        right = confident - wrong
+        parts = []
+        if right:
+            parts.append(f'<rect x="{x}" y="{y}" width="{right * scale:.1f}"'
+                         f' height="9" fill="{RIGHT_COLOR}"/>')
+        if wrong:
+            parts.append(f'<rect x="{x + right * scale:.1f}" y="{y}" '
+                         f'width="{wrong * scale:.1f}" height="9" '
+                         f'fill="{WRONG_COLOR}"/>')
+        colour = WRONG_COLOR if wrong else MUTED
+        weight = ' font-weight="bold"' if wrong else ''
+        parts.append(f'<text x="{x + confident * scale + 7:.1f}" y="{y + 8}" '
+                     f'font-size="10" fill="{colour}"{weight}>'
+                     f'{tag} {confident}, неверных {wrong}</text>')
+        return parts
 
     out = [
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {WIDTH} {height}"'
@@ -96,51 +132,49 @@ def render(rows: list[tuple], neighbours: int, samples: int) -> str:
         ' font-family="DejaVu Sans, Arial, sans-serif" font-size="13">',
         f'<rect width="{WIDTH}" height="{height}" fill="#ffffff"/>',
         f'<text x="24" y="30" font-size="15" font-weight="bold" fill="{INK}">'
-        'Уверенно неверные вердикты по словарям поставки</text>',
+        'Порог уверенности: константа против окрестности</text>',
         f'<text x="24" y="50" font-size="12" fill="{MUTED}">'
-        f'окрестность {neighbours} слов, искажение «темп ×1,15 + шум 8%», '
-        f'{samples} проб на словарь; словари по убыванию длины термина</text>',
-        f'<rect x="{LEFT}" y="64" width="12" height="12" fill="{RIGHT_COLOR}"/>',
-        f'<text x="{LEFT + 18}" y="74" font-size="12" fill="{MUTED}">'
+        f'окрестность {neighbours} слов, 6 искажений, {samples} проб на '
+        f'словарь; по два ряда на словарь — верхний ряд прежнее правило, '
+        f'нижний нынешнее</text>',
+        f'<rect x="24" y="66" width="12" height="10" fill="{RIGHT_COLOR}"/>',
+        f'<text x="42" y="75" font-size="12" fill="{MUTED}">'
         'вердикт вынесен и верен</text>',
-        f'<rect x="{LEFT + 190}" y="64" width="12" height="12" fill="{WRONG_COLOR}"/>',
-        f'<text x="{LEFT + 208}" y="74" font-size="12" fill="{MUTED}">'
+        f'<rect x="228" y="66" width="12" height="10" fill="{WRONG_COLOR}"/>',
+        f'<text x="246" y="75" font-size="12" fill="{MUTED}">'
         'вердикт вынесен и НЕВЕРЕН</text>',
+        f'<text x="24" y="99" font-size="12" fill="{INK}" font-weight="bold">'
+        'словарь</text>',
+        f'<text x="{LEFT - 12}" y="99" font-size="11" fill="{MUTED}" '
+        f'text-anchor="end">длина</text>',
     ]
 
-    for i, (stem, size, length, confident, wrong) in enumerate(rows):
+    for i, row in enumerate(rows):
+        stem, _size, length, _trials, oc, ow, nc, nw = row
         y = top + ROW * i
-        right = confident - wrong
-        out.append(f'<line x1="{LEFT}" y1="{y + 18}" x2="{WIDTH - 24}" '
-                   f'y2="{y + 18}" stroke="{RULE}" stroke-width="1"/>')
-        out.append(f'<text x="24" y="{y + 14}" font-size="12" fill="{INK}">'
+        out.append(f'<line x1="24" y1="{y + 23}" x2="{WIDTH - 24}" '
+                   f'y2="{y + 23}" stroke="{RULE}" stroke-width="1"/>')
+        out.append(f'<text x="24" y="{y + 13}" font-size="12" fill="{INK}">'
                    f'{stem[:30]}</text>')
-        out.append(f'<text x="{LEFT - 12}" y="{y + 14}" font-size="11" '
+        out.append(f'<text x="{LEFT - 12}" y="{y + 13}" font-size="11" '
                    f'fill="{MUTED}" text-anchor="end">{length:.1f} сл.</text>')
-        if right:
-            out.append(f'<rect x="{LEFT}" y="{y + 3}" width="{right * scale:.1f}"'
-                       f' height="13" fill="{RIGHT_COLOR}"/>')
-        if wrong:
-            out.append(f'<rect x="{LEFT + right * scale:.1f}" y="{y + 3}" '
-                       f'width="{wrong * scale:.1f}" height="13" '
-                       f'fill="{WRONG_COLOR}"/>')
-        if wrong:
-            out.append(f'<text x="{LEFT + confident * scale + 8:.1f}" '
-                       f'y="{y + 14}" font-size="11" fill="{WRONG_COLOR}" '
-                       f'font-weight="bold">{wrong} из {confident}</text>')
-        else:
-            out.append(f'<text x="{LEFT + confident * scale + 8:.1f}" '
-                       f'y="{y + 14}" font-size="11" fill="{MUTED}">'
-                       f'0 из {confident}</text>')
+        out.extend(bar(LEFT, y, oc, ow, "было:"))
+        out.extend(bar(LEFT, y + 11, nc, nw, "стало:"))
 
-    total = sum(row[3] for row in rows)
-    bad = sum(row[4] for row in rows)
-    clean = sum(1 for row in rows if row[4] == 0)
-    out.append(f'<text x="24" y="{height - 26}" font-size="12" fill="{INK}">'
-               f'Всего вердиктов вынесено {total}, из них неверных '
-               f'<tspan font-weight="bold" fill="{WRONG_COLOR}">{bad}</tspan>'
-               f' ({100 * bad / max(1, total):.0f}%). '
-               f'Словарей без неверных вердиктов: {clean} из {len(rows)}.</text>')
+    trials = sum(row[3] for row in rows)
+    oc = sum(row[4] for row in rows); ow = sum(row[5] for row in rows)
+    nc = sum(row[6] for row in rows); nw = sum(row[7] for row in rows)
+    bad_dicts = sum(1 for row in rows if row[5] > 0)
+    out.append(
+        f'<text x="24" y="{height - 30}" font-size="12" fill="{INK}">'
+        f'Константа: вынесено {oc} из {trials} ({100 * oc / trials:.0f}%), '
+        f'неверных <tspan font-weight="bold" fill="{WRONG_COLOR}">{ow}</tspan>'
+        f' на {bad_dicts} словарях из {len(rows)}.</text>')
+    out.append(
+        f'<text x="24" y="{height - 12}" font-size="12" fill="{INK}">'
+        f'Окрестность: вынесено {nc} из {trials} ({100 * nc / trials:.0f}%), '
+        f'неверных <tspan font-weight="bold" fill="{RIGHT_COLOR}">{nw}</tspan>'
+        f'. Цена — покрытие; ошибка — ноль.</text>')
     out.append('</svg>')
     return "\n".join(out)
 
@@ -161,9 +195,7 @@ def main() -> int:
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(render(rows, args.neighbours, args.samples),
                       encoding="utf-8")
-    bad = sum(row[4] for row in rows)
-    total = sum(row[3] for row in rows)
-    print(f"{target}: {len(rows)} словарей, {total} вердиктов, {bad} неверных")
+    print(f"{target}: {len(rows)} словарей, было неверных {sum(r[5] for r in rows)}, стало {sum(r[7] for r in rows)}")
     return 0
 
 

@@ -60,6 +60,7 @@ AUDIO_PREFIX = "res:audio/"
 
 _transcriptions: Optional[dict[str, str]] = None
 _audio: Optional[dict[str, str]] = None
+_audio_heads: Optional[dict[str, str]] = None
 
 
 def _read(path: pathlib.Path) -> dict[str, str]:
@@ -101,10 +102,33 @@ def audio_index() -> dict[str, str]:
     return _audio
 
 
+def _audio_by_head() -> dict[str, str]:
+    """
+    Тот же манифест, но ключом — термин без скобочного пояснения.
+
+    Строится один раз рядом с основным: запасной путь `audio_of` иначе
+    перебирал бы весь манифест на каждый промах, а промах — это обычное
+    дело (`coverage` спрашивает про каждый термин словаря).
+
+    Первое вхождение побеждает, и порядок берётся из манифеста: два
+    разных полных написания одного сокращения — случай, которого в
+    поставке нет, а если появится, выбор должен быть предсказуемым, а не
+    зависеть от порядка обхода словаря.
+    """
+    global _audio_heads
+    if _audio_heads is None:
+        _audio_heads = {}
+        for term, resource in audio_index().items():
+            head = _head(term)
+            if head and head != term:
+                _audio_heads.setdefault(head, resource)
+    return _audio_heads
+
+
 def reset_cache() -> None:
     """Сбросить прочитанное. Нужно тестам, подменяющим поставку."""
-    global _transcriptions, _audio
-    _transcriptions = _audio = None
+    global _transcriptions, _audio, _audio_heads
+    _transcriptions = _audio = _audio_heads = None
 
 
 def transcription_of(term: str,
@@ -124,9 +148,33 @@ def transcription_of(term: str,
     return transcriptions().get(term)
 
 
+def _head(term: str) -> str:
+    """Термин без скобочного пояснения: «BIOS (Basic …)» → «BIOS»."""
+    return str(term or "").split("(", 1)[0].strip()
+
+
 def audio_of(term: str) -> Optional[str]:
-    """Идентификатор звука термина; None — звука для него нет."""
-    return audio_index().get(term)
+    """
+    Идентификатор звука термина; None — звука для него нет.
+
+    Запасной путь: термин без скобочного пояснения. В одном словаре
+    сокращение записано как «BIOS», в другом — как «BIOS (Basic
+    Input/Output System)», и манифест адресует термин ПОСИМВОЛЬНО, то
+    есть считает их разными словами. Замер: так теряли звук `BIOS`, `CPU`
+    и `ROM` — при том что файл для них есть.
+
+    Подмена законна не «потому что похоже», а по построению материала:
+    `tools/generate_audio.py` СНИМАЕТ скобочное пояснение перед синтезом,
+    поэтому в файле для «BIOS (Basic Input/Output System)» произнесено
+    ровно «BIOS» (0.57 с — проверено длительностью, а не предположением).
+
+    Обратной подмены нет: у полной записи свой ключ, и искать по ней
+    короткую незачем.
+    """
+    found = audio_index().get(term)
+    if found is not None:
+        return found
+    return _audio_by_head().get(_head(term))
 
 
 def inline_transcriptions(data) -> dict[str, str]:
