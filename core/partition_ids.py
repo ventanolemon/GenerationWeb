@@ -78,9 +78,19 @@ ENGLISH_WORDS = range(1_000_000, 2_000_000)
 #: Multiple-choice по транскрипции — параллельный раздел к тому же словарю.
 ENGLISH_TRANSCRIPTION = range(2_000_000, 3_000_000)
 
+#: Произношение вслух — третий раздел того же словаря.
+#:
+#: Полоса объявлена ОБЕИМИ сторонами, хотя разделы в ней заводит пока
+#: только десктоп: захват звука есть у него. Иначе `next_dynamic_id` на
+#: сервере выдал бы пользовательскому разделу номер, который на десктопе
+#: занят кодом, — то есть ровно тот дефект расхождения установок, ради
+#: которого модуль написан. Полоса — это обещание «сюда не селиться», и
+#: обещание должно быть общим раньше, чем появится первый жилец.
+ENGLISH_PRONUNCIATION = range(3_000_000, 4_000_000)
+
 #: Всё, что выдаёт код. Динамическая выдача обязана это обходить.
 RESERVED: tuple[range, ...] = (
-    MODEL_TASKS, ENGLISH_WORDS, ENGLISH_TRANSCRIPTION,
+    MODEL_TASKS, ENGLISH_WORDS, ENGLISH_TRANSCRIPTION, ENGLISH_PRONUNCIATION,
 )
 
 
@@ -108,6 +118,11 @@ def english_words_id(stem: str) -> int:
 def english_transcription_id(stem: str) -> int:
     """Номер раздела «выбери транскрипцию» для того же файла."""
     return stable_id(stem, ENGLISH_TRANSCRIPTION)
+
+
+def english_pronunciation_id(stem: str) -> int:
+    """Номер раздела «произнесите вслух» для того же файла."""
+    return stable_id(stem, ENGLISH_PRONUNCIATION)
 
 
 def assign(names: Iterable[str], band: range) -> dict[str, int]:

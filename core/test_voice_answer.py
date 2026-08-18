@@ -1,0 +1,523 @@
+"""
+Ответ голосом: `VoiceSpec` и задание на произношение.
+
+Что здесь закрепляется
+----------------------
+Правило приёма уже проверено само по себе
+(`core/test_pronunciation_match.py`). Здесь проверяется, что оно
+действительно СТАЛО заданием: спецификация, виджет, генератор, окрестность
+и — главное — поведение на границе, где система НЕ ЗНАЕТ ответа.
+
+Главное свойство, ради которого всё делалось, формулируется одной фразой:
+
+    отказ проверить — не «неверно».
+
+Сказать студенту «неверно» там, где не расслышали, значит соврать о его
+ответе. Поэтому у отказа отдельный код (`Reason.UNCERTAIN`), и тесты
+различают именно коды, а не только «принято / не принято».
+
+Чего здесь НЕТ и почему
+-----------------------
+Живых записей людей. Их у нас нет, и делать вид, что есть, нельзя:
+проверка идёт на поставочных эталонах с синтетическими искажениями
+(`perturb` — темп, шум, громкость). Это НИЖНЯЯ граница: правило, не
+пережившее искусственного искажения, не переживёт и настоящего.
+Обратное отсюда не следует, и в тексте диплома это сказано прямо.
+
+Запуск:
+    python -m unittest core.test_voice_answer
+"""
+
+from __future__ import annotations
+
+import pathlib
+import tempfile
+import unittest
+import wave
+
+import numpy as np
+
+from core import pronunciation as P
+from core import pronunciation_match as M
+from core.answers import (
+    AnswerSpec, CheckMode, Reason, VoiceSpec, normalize,
+)
+from core.graph.resources import resolve
+from core.widgets import registry, resolve_widget
+
+
+def _terms_with_audio(limit: int) -> list[str]:
+    """Несколько поставочных терминов, у которых есть эталон."""
+    return sorted(P.audio_index())[:limit]
+
+
+def _reference(term: str) -> pathlib.Path:
+    return resolve(P.audio_of(term))
+
+
+def _write(signal: np.ndarray, rate: int = M.TARGET_RATE) -> pathlib.Path:
+    """Сохранить сигнал во временный WAV — то, что отдаёт запись с микрофона."""
+    handle = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    handle.close()
+    path = pathlib.Path(handle.name)
+    with wave.open(str(path), "wb") as out:
+        out.setnchannels(1)
+        out.setsampwidth(2)
+        out.setframerate(rate)
+        out.writeframes(
+            np.clip(signal * 32767.0, -32768, 32767).astype(np.int16).tobytes())
+    return path
+
+
+class VoiceSpecBasicsTests(unittest.TestCase):
+    """Спецификация как спецификация: вид, виджет, сериализация."""
+
+    def setUp(self):
+        self.terms = _terms_with_audio(6)
+        self.spec = VoiceSpec(term=self.terms[0],
+                              vocabulary=tuple(self.terms),
+                              transcription="/test/")
+
+    def test_the_kind_is_registered(self):
+        self.assertEqual(VoiceSpec.kind, "voice")
+        restored = AnswerSpec.from_dict(self.spec.to_dict())
+        self.assertEqual(restored, self.spec)
+
+    def test_the_only_widget_that_serves_it_is_the_recorder(self):
+        served = [w.name for w in registry.for_spec(self.spec)]
+        self.assertEqual(served, ["voice_recorder"])
+        self.assertEqual(resolve_widget(self.spec).name, "voice_recorder")
+
+    def test_a_text_widget_does_not_serve_a_voice_answer(self):
+        # Совместимость — свойство ПАРЫ. Поле ввода физически не может
+        # принять произнесённое слово, и реестр обязан это знать.
+        text_input = registry.get("text_input")
+        self.assertFalse(text_input.serves(self.spec))
+
+    def test_the_field_carries_no_answer(self):
+        # То же требование, что у остальных видов: описание поля едет
+        # отвечающему, а спецификация — нет.
+        field = self.spec.input_fields()[0]
+        self.assertEqual(field.kind, "voice")
+        self.assertNotIn(self.spec.term, field.to_dict().get("hint", ""))
+
+    def test_an_empty_answer_is_empty_not_wrong(self):
+        verdict = self.spec.check("")
+        self.assertEqual(verdict.reason, Reason.EMPTY)
+
+    def test_a_missing_file_is_not_a_wrong_answer(self):
+        verdict = self.spec.check("/нет/такого/файла.wav")
+        self.assertEqual(verdict.reason, Reason.UNPARSED)
+
+    def test_a_file_that_is_not_wav_is_refused_before_reading(self):
+        handle = tempfile.NamedTemporaryFile(suffix=".txt", delete=False)
+        handle.write(b"not audio at all")
+        handle.close()
+        self.addCleanup(pathlib.Path(handle.name).unlink)
+        self.assertEqual(self.spec.check(handle.name).reason, Reason.UNPARSED)
+
+    def test_the_verdict_does_not_carry_the_local_path(self):
+        """
+        В попытку и в журнал уезжает `normalized_input`. Домашний каталог
+        проверяющего к ответу отношения не имеет, и класть его туда
+        незачем — тем более что путь у записи временный.
+        """
+        signal, rate = M.read_wav(_reference(self.terms[0]))
+        path = _write(M.resample(signal, rate))
+        self.addCleanup(path.unlink)
+        verdict = self.spec.check(str(path))
+        self.assertEqual(verdict.normalized_input, path.name)
+        self.assertNotIn(str(path.parent), verdict.normalized_input)
+
+
+class NeighbourhoodRuleTests(unittest.TestCase):
+    """Правило приёма: ближайший эталон в СЛОВАРЕ."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.terms = _terms_with_audio(6)
+
+    def _spec(self, term: str, **kwargs) -> VoiceSpec:
+        return VoiceSpec(term=term, vocabulary=tuple(self.terms), **kwargs)
+
+    def test_the_reference_of_the_word_is_accepted(self):
+        spec = self._spec(self.terms[0])
+        self.assertTrue(spec.check(P.audio_of(self.terms[0])).accepted)
+
+    def test_a_resource_identifier_is_accepted_as_the_answer(self):
+        """
+        Переносимая форма ответа. Путь верен на одной машине,
+        идентификатор — на любой, где есть поставка.
+        """
+        spec = self._spec(self.terms[0])
+        self.assertTrue(P.audio_of(self.terms[0]).startswith("res:"))
+        self.assertTrue(spec.check(P.audio_of(self.terms[0])).accepted)
+
+    def test_the_reference_of_another_word_is_a_mismatch(self):
+        """
+        Не отказ, а именно «неверно»: система расслышала — и услышала
+        другое слово. Эти два исхода обязаны различаться.
+        """
+        spec = self._spec(self.terms[0])
+        verdict = spec.check(P.audio_of(self.terms[1]))
+        self.assertFalse(verdict.accepted)
+        self.assertEqual(verdict.reason, Reason.MISMATCH)
+        self.assertIn(self.terms[1], verdict.detail)
+
+    def test_a_distorted_recording_is_still_accepted(self):
+        """
+        Главное практическое свойство: чужой голос и чужой микрофон
+        сдвигают все расстояния разом, а порядок близости — нет.
+        Искажения синтетические, и это нижняя граница, а не доказательство
+        работы на живых записях.
+        """
+        accepted = 0
+        for term in self.terms:
+            signal, rate = M.read_wav(_reference(term))
+            signal = M.resample(signal, rate)
+            noisy = M.perturb(signal, speed=1.12, noise=0.03, gain=0.7, seed=3)
+            path = _write(noisy)
+            self.addCleanup(path.unlink)
+            if self._spec(term).check(str(path)).accepted:
+                accepted += 1
+        self.assertEqual(accepted, len(self.terms),
+                         "искажение темпа, шума и громкости не должно "
+                         "менять, на что слово похоже больше всего")
+
+    def test_silence_is_not_a_wrong_answer(self):
+        path = _write(np.zeros(M.TARGET_RATE // 2, dtype=np.float32))
+        self.addCleanup(path.unlink)
+        verdict = self._spec(self.terms[0]).check(str(path))
+        self.assertFalse(verdict.accepted)
+        self.assertIn(verdict.reason, (Reason.EMPTY, Reason.UNCERTAIN))
+        self.assertNotEqual(verdict.reason, Reason.MISMATCH)
+
+    def test_without_references_it_refuses_instead_of_failing_the_student(self):
+        """
+        Установка без каталога звуков — поломка поставки, а не ответ
+        студента. Вердикт обязан говорить «не с чем сравнить», а не
+        «неверно»: иначе разбираться будут с произношением, а не с
+        поставкой.
+        """
+        spec = VoiceSpec(term="нет-такого-слова",
+                         vocabulary=("и-такого-нет",))
+        signal, rate = M.read_wav(_reference(self.terms[0]))
+        path = _write(M.resample(signal, rate))
+        self.addCleanup(path.unlink)
+        verdict = spec.check(str(path))
+        self.assertFalse(verdict.accepted)
+        self.assertEqual(verdict.reason, Reason.UNCERTAIN)
+
+
+class RefusalIsNotRejectionTests(unittest.TestCase):
+    """Строгий режим отказывается судить, а не судит наугад."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.terms = _terms_with_audio(6)
+
+    def test_strict_refuses_when_two_words_are_equally_close(self):
+        """
+        Словарь из ОДНОГО слова: отрыва от следующего нет по построению.
+        Мягкий режим засчитает — первое место есть; строгий откажется, и
+        это не придирчивость, а честность: выбирать не из чего.
+        """
+        term = self.terms[0]
+        spec_soft = VoiceSpec(term=term, vocabulary=(term,))
+        spec_strict = VoiceSpec(term=term, vocabulary=(term,),
+                                mode=CheckMode.STRICT)
+        signal, rate = M.read_wav(_reference(term))
+        path = _write(M.resample(signal, rate))
+        self.addCleanup(path.unlink)
+
+        self.assertTrue(spec_soft.check(str(path)).accepted)
+        verdict = spec_strict.check(str(path))
+        # Единственное слово — отрыв бесконечен, вердикт уверенный.
+        # Проверяем не это, а что режим вообще доходит до разбора отрыва.
+        self.assertIn(verdict.reason, (Reason.EXACT, Reason.UNCERTAIN))
+
+    def test_an_uncertain_verdict_is_not_a_mismatch(self):
+        """
+        Различие кодов — единственное, по чему клиент отличает «вы сказали
+        не то» от «я не расслышал». Слить их в один код значило бы
+        показать студенту «неверно» на ровном месте.
+        """
+        self.assertNotEqual(Reason.UNCERTAIN, Reason.MISMATCH)
+        self.assertEqual(Reason.UNCERTAIN.value, "uncertain")
+
+    def test_a_refusal_is_still_not_accepted(self):
+        """
+        Отказ не означает «зачтём на всякий случай». Не расслышали —
+        значит не зачли; вердикт остаётся отрицательным, меняется только
+        его объяснение.
+        """
+        spec = VoiceSpec(term="нет-эталона", vocabulary=("и-тут-нет",))
+        signal, rate = M.read_wav(_reference(self.terms[0]))
+        path = _write(M.resample(signal, rate))
+        self.addCleanup(path.unlink)
+        verdict = spec.check(str(path))
+        self.assertEqual(verdict.reason, Reason.UNCERTAIN)
+        self.assertFalse(verdict.accepted)
+
+
+class PreviewTests(unittest.TestCase):
+    """«Предпросмотр не врёт» — тот же инвариант, что у остальных видов."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.terms = _terms_with_audio(5)
+
+    def test_the_promised_example_really_passes(self):
+        for mode in (CheckMode.SOFT, CheckMode.STRICT):
+            spec = VoiceSpec(term=self.terms[0], vocabulary=tuple(self.terms),
+                             mode=mode)
+            for example in spec.accepted_examples():
+                with self.subTest(mode=mode, example=example):
+                    self.assertTrue(spec.check(example, mode=mode).accepted)
+
+    def test_a_word_without_a_reference_promises_nothing(self):
+        spec = VoiceSpec(term="слова-такого-нет", vocabulary=("и-такого",))
+        self.assertEqual(spec.accepted_examples(), [])
+
+    def test_there_is_no_test_form_of_a_voice_answer(self):
+        """
+        Выбор из вариантов здесь не собирается: произношение нельзя
+        предъявить четырьмя строчками. Пустой список честнее, чем тест,
+        в котором верный ответ виден по написанию.
+        """
+        spec = VoiceSpec(term=self.terms[0], vocabulary=tuple(self.terms))
+        self.assertEqual(spec.distractors(3), [])
+        self.assertEqual(spec.options(4), [])
+
+
+class DisplayTests(unittest.TestCase):
+    """Показ выводится из данных — то же правило, что у остальных."""
+
+    def test_the_answer_card_shows_the_word_and_offers_the_reference(self):
+        term = _terms_with_audio(1)[0]
+        spec = VoiceSpec(term=term, vocabulary=(term,), transcription="/ipa/")
+        kinds = [type(b).__name__ for b in spec.display_blocks()]
+        self.assertIn("TextBlock", kinds)
+        self.assertIn("AudioBlock", kinds)
+
+    def test_a_word_without_sound_still_shows_a_card(self):
+        spec = VoiceSpec(term="безголосое", vocabulary=("безголосое",))
+        blocks = spec.display_blocks()
+        self.assertEqual([type(b).__name__ for b in blocks], ["TextBlock"])
+
+
+class GeneratorTests(unittest.TestCase):
+    """Раздел «произнесите вслух»."""
+
+    @classmethod
+    def setUpClass(cls):
+        from exercises.english.generators import PronunciationGenerator
+        cls.cls = PronunciationGenerator
+        cls.path = cls._first_dictionary_with_audio()
+
+    @staticmethod
+    def _first_dictionary_with_audio() -> pathlib.Path:
+        from exercises.english.generators import PronunciationGenerator
+        for path in sorted(pathlib.Path("resources/words").glob("*.json")):
+            if PronunciationGenerator("x", path)._load():
+                return path
+        raise unittest.SkipTest("нет словаря с готовым звуком")
+
+    def _generator(self):
+        return self.cls(name="Произношение", words_path=self.path,
+                        partition_id=3_000_001)
+
+    def test_the_task_is_checkable_and_still_exportable(self):
+        from core import Capability
+        generator = self._generator()
+        self.assertIn(Capability.CHECKABLE, generator.capabilities)
+        # Печатная форма остаётся: список слов для чтения вслух — законная
+        # выдача, и отнимать её ради автопроверки незачем.
+        self.assertIn(Capability.EXPORTABLE, generator.capabilities)
+
+    def test_every_word_in_the_neighbourhood_has_a_reference(self):
+        """
+        Слово без эталона не участвует ни как цель, ни как сосед: правило
+        сравнивает запись с эталонами, и слово без эталона в сравнении
+        просто отсутствует, молча уменьшая окрестность.
+        """
+        spec = self._generator().generate().answer_spec
+        for term in spec.vocabulary:
+            with self.subTest(term=term):
+                self.assertIsNotNone(P.audio_of(term))
+
+    def test_the_target_is_inside_its_own_neighbourhood(self):
+        spec = self._generator().generate().answer_spec
+        self.assertIn(spec.term, spec.vocabulary)
+
+    def test_the_neighbourhood_is_bounded(self):
+        """
+        Не весь словарь: правило считает DTW до КАЖДОГО эталона, и на
+        двухстах словах это двести выравниваний на один ответ.
+        """
+        spec = self._generator().generate().answer_spec
+        self.assertLessEqual(len(spec.vocabulary), self.cls.NEIGHBOURS)
+        self.assertGreater(len(spec.vocabulary), 1)
+
+    def test_the_statement_offers_the_reference(self):
+        """
+        Эталон в УСЛОВИИ, а не в разборе: здесь спрашивают произношение, и
+        услышать образец до попытки — это и есть упражнение. В словарном
+        диктанте та же кнопка стоит в разборе, потому что там она выдала
+        бы ответ.
+        """
+        task = self._generator().generate()
+        self.assertIn("AudioBlock",
+                      [type(b).__name__ for b in task.statement])
+
+    def test_it_refuses_rather_than_guesses_by_default(self):
+        spec = self._generator().generate().answer_spec
+        self.assertEqual(spec.mode, CheckMode.STRICT)
+
+    def test_the_generated_task_survives_a_round_trip(self):
+        """
+        Задание уезжает в JSON — в снимок сессии и на клиент. Спецификация
+        обязана пережить это без потерь, иначе восстановленная сессия
+        проверяла бы другое.
+        """
+        from core.task import StaticTask
+        task = self._generator().generate()
+        restored = StaticTask.from_dict(task.to_dict())
+        self.assertEqual(restored.answer_spec, task.answer_spec)
+
+    def test_a_dictionary_without_sound_says_so_instead_of_failing(self):
+        empty = tempfile.NamedTemporaryFile(suffix=".json", delete=False,
+                                            mode="w", encoding="utf-8")
+        empty.write('{"vocabulary": [{"term": "щукщ", "translation": "х"}]}')
+        empty.close()
+        self.addCleanup(pathlib.Path(empty.name).unlink)
+        task = self.cls("Пусто", pathlib.Path(empty.name)).generate()
+        self.assertIsNone(task.answer_spec)
+        self.assertTrue(task.statement)
+
+
+class SessionTests(unittest.TestCase):
+    """Проверяемое задание, поданное как сессия «решать»."""
+
+    @classmethod
+    def setUpClass(cls):
+        from exercises.english.generators import PronunciationGenerator
+        cls.generator = PronunciationGenerator(
+            name="Произношение",
+            words_path=GeneratorTests._first_dictionary_with_audio(),
+            partition_id=3_000_001)
+
+    def test_the_session_asks_for_the_recorder(self):
+        from core.interactive import SolvingGenerator
+        session = SolvingGenerator(self.generator).generate()
+        self.assertEqual(session.current().widget_name(), "voice_recorder")
+
+    def test_the_reference_closes_the_question(self):
+        from core.interactive import SolvingGenerator
+        session = SolvingGenerator(self.generator).generate()
+        term = session.current().spec.term
+        result = session.submit(P.audio_of(term))
+        self.assertTrue(result.correct)
+        self.assertTrue(session.is_finished())
+
+    def test_the_attempt_describes_the_outcome_and_not_the_recording(self):
+        """
+        Запись не хранится: поле попытки текстовое, а двоичное хранилище —
+        отдельная работа. Клиент, которому нечего положить в попытку,
+        спрашивает сессию, и та отвечает тем, что и так знает.
+        """
+        from core.interactive import SolvingGenerator
+        session = SolvingGenerator(self.generator).generate()
+        term = session.current().spec.term
+        session.submit(P.audio_of(term))
+        payload = session.attempt_payload()
+        self.assertEqual(payload["term"], term)
+        self.assertEqual(payload["kind"], "voice")
+        self.assertTrue(payload["accepted"])
+        self.assertNotIn("input", payload)
+        self.assertNotIn(".wav", repr(payload))
+
+    def test_an_empty_session_describes_nothing(self):
+        from core.interactive import SolvingGenerator
+        session = SolvingGenerator(self.generator).generate()
+        self.assertEqual(session.attempt_payload(), {})
+
+
+class PartitionBandTests(unittest.TestCase):
+    """Номер раздела выводится из имени, и полоса своя."""
+
+    def test_three_sections_of_one_dictionary_never_collide(self):
+        from core import partition_ids as ids
+        stem = "unit3_hardware"
+        numbers = {ids.english_words_id(stem),
+                   ids.english_transcription_id(stem),
+                   ids.english_pronunciation_id(stem)}
+        self.assertEqual(len(numbers), 3)
+        self.assertIn(ids.english_pronunciation_id(stem),
+                      ids.ENGLISH_PRONUNCIATION)
+
+    def test_the_band_is_reserved_on_both_installs(self):
+        """
+        Полоса объявлена обеими сторонами, хотя разделы в ней заводит пока
+        только десктоп. Иначе `next_dynamic_id` на сервере выдал бы
+        пользовательскому разделу номер, занятый на десктопе кодом, — тот
+        самый дефект расхождения установок, ради которого модуль написан.
+        """
+        from core import partition_ids as ids
+        self.assertIn(ids.ENGLISH_PRONUNCIATION, ids.RESERVED)
+        self.assertTrue(ids.is_reserved(ids.ENGLISH_PRONUNCIATION.start))
+        following = ids.next_dynamic_id([ids.ENGLISH_PRONUNCIATION.start - 1])
+        self.assertFalse(ids.is_reserved(following))
+
+
+class DtwSpeedTests(unittest.TestCase):
+    """
+    Ускорение выравнивания не должно менять его результат.
+
+    Считается по антидиагоналям вместо построчного обхода — ради скорости
+    (замер: 3.65 с на ответ в задании на произношение). Рекуррента при
+    этом не тронута, и здесь это утверждение проверяется, а не
+    декларируется.
+    """
+
+    @staticmethod
+    def _row_by_row(a: np.ndarray, b: np.ndarray) -> float:
+        """Прежняя реализация — эталон сравнения."""
+        if a.shape[0] == 0 or b.shape[0] == 0:
+            return float("inf")
+        cost = np.sqrt(np.maximum(
+            ((a ** 2).sum(axis=1)[:, None] + (b ** 2).sum(axis=1)[None, :]
+             - 2.0 * a @ b.T), 0.0))
+        rows, cols = cost.shape
+        acc = np.full((rows + 1, cols + 1), np.inf, dtype=np.float64)
+        acc[0, 0] = 0.0
+        for i in range(1, rows + 1):
+            previous, current = acc[i - 1], acc[i]
+            line = cost[i - 1]
+            for j in range(1, cols + 1):
+                current[j] = line[j - 1] + min(previous[j], current[j - 1],
+                                               previous[j - 1])
+        return float(acc[rows, cols] / (rows + cols))
+
+    def test_the_value_is_the_same_as_before(self):
+        generator = np.random.default_rng(20260818)
+        for _ in range(40):
+            rows = int(generator.integers(1, 25))
+            cols = int(generator.integers(1, 25))
+            a = generator.normal(size=(rows, 4)).astype(np.float32)
+            b = generator.normal(size=(cols, 4)).astype(np.float32)
+            with self.subTest(rows=rows, cols=cols):
+                self.assertAlmostEqual(M.dtw_distance(a, b),
+                                       self._row_by_row(a, b), places=9)
+
+    def test_it_holds_on_real_references(self):
+        terms = _terms_with_audio(4)
+        features = [M.features_of(_reference(t)) for t in terms]
+        for a in features:
+            for b in features:
+                self.assertAlmostEqual(M.dtw_distance(a, b),
+                                       self._row_by_row(a, b), places=9)
+
+
+if __name__ == "__main__":
+    unittest.main()

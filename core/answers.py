@@ -16,7 +16,17 @@
   * NumberSpec      — число с допуском и размерностью
   * TextSpec        — строка с нормализацией и опечатками
   * ExpressionSpec  — выражение, два режима сравнения
+  * LogicSpec       — булева функция; сравниваются ФУНКЦИИ, а не записи
+  * EquationSpec    — уравнение; сравнивается множество корней
+  * OutputSpec      — вывод программы; строки и их порядок значимы
+  * VoiceSpec       — произнесённое слово; ближайший эталон в словаре
   * SlotsSpec       — набор именованных слотов (линал, «заполни пропуски»)
+
+Семь из восьми текстовые: ответ печатают. `VoiceSpec` — единственная,
+чей ответ порождает не клавиатура, и именно поэтому она обнажает границу
+между ЯДРОМ (правило приёма) и ПЛАТФОРМОЙ (чем ответ снят). Правило
+живёт здесь и одинаково всюду; захват звука — дело клиента, и его здесь
+нет ни в каком виде.
 
 Чего сознательно НЕТ (следующие этапы плана):
   * выбор одного/нескольких, последовательность, пары — §3, вместе с
@@ -102,6 +112,7 @@ class Reason(str, Enum):
     RESTATED = "restated"           # эквивалентно, но повторяет условие (§5)
     UNPARSED = "unparsed"           # ввод не разобран
     EMPTY = "empty"                 # пустой ввод
+    UNCERTAIN = "uncertain"         # система отказалась судить — НЕ «неверно»
 
 
 @dataclass(frozen=True)
@@ -1809,6 +1820,256 @@ class OutputSpec(AnswerSpec):
 
 
 # ======================================================================
+#  Произношение
+# ======================================================================
+
+
+def _recording_path(source: str):
+    """
+    Значение ответа → файл записи на ЭТОЙ машине; None — не разрешается.
+
+    Две допустимых формы, и разница между ними названа честно:
+
+    * `res:audio/<хеш>.wav` — ПЕРЕНОСИМЫЙ идентификатор поставки. Он
+      разрешается относительно `resources/` той машины, которая проверяет,
+      и потому годится где угодно;
+    * обычный путь — МЕСТНАЯ форма. Он верен ровно там, где файл создан.
+
+    Правило «не адресовать файлы путями» (`docs/handbook/05` §4) этим не
+    нарушается: оно про СОДЕРЖИМОЕ задания — граф, который уезжает по
+    синку на другую машину и там исполняется. Здесь путь это ОТВЕТ,
+    который порождён и проверен в одном процессе на одной машине и никуда
+    не уезжает: запись не хранится, в попытку идёт вердикт (см. `VoiceSpec`).
+
+    Отсюда же граница веба: клиент, присылающий путь по сети, называл бы
+    файл на ЧУЖОЙ машине, и принимать такое нельзя. Веб-половине нужен
+    свой способ передать саму запись — поэтому её здесь и нет.
+    """
+    import pathlib
+
+    raw = str(source or "").strip()
+    if not raw:
+        return None
+    if raw.startswith("res:"):
+        try:
+            from .graph.resources import resolve
+            target = pathlib.Path(resolve(raw))
+        except Exception:                              # noqa: BLE001
+            return None
+    else:
+        target = pathlib.Path(raw)
+    if target.suffix.lower() != ".wav" or not target.is_file():
+        return None
+    return target
+
+
+@dataclass
+class VoiceSpec(AnswerSpec):
+    """
+    Ответ — ПРОИЗНЕСЁННОЕ слово. Единственная нетекстовая спецификация.
+
+    Правило приёма
+    --------------
+    То же правило окрестности, что у опечатки и у допуска, только на
+    звуке (`core.pronunciation_match`): запись принимается, если эталон
+    целевого слова оказался к ней БЛИЖЕ, чем эталоны остальных слов
+    словаря. Абсолютного порога нет намеренно — его пришлось бы
+    калибровать под голос и микрофон, а порядок близости общий сдвиг
+    тракта записи не меняет.
+
+    Отсюда обязательное поле `vocabulary`: без окрестности правило не
+    определено. Спецификация с одним словом принимает что угодно, и это
+    не дефект проверки, а отсутствие того, с чем сравнивать.
+
+    Что означают режимы
+    -------------------
+    * мягкий  — достаточно первого места;
+    * строгий — первое место И отрыв от следующего (`Match.confident`).
+
+    Строгий режим здесь не «придирчивее», а осторожнее: он отказывается
+    судить там, где выбор между двумя словами случаен.
+
+    Отказ судить — не «неверно»
+    ---------------------------
+    `Reason.UNCERTAIN` заведён ради этого различия. Сказать студенту
+    «неверно» там, где система просто не расслышала (нет эталонов, отрыв
+    в пределах шума), — значит соврать о его ответе. Вердикт при этом
+    всё равно `accepted = False`: зачесть неразобранное тоже нельзя.
+
+    Чего здесь НЕТ
+    --------------
+    Распознавания речи. Модуль под этим не переводит звук в текст и не
+    оценивает фонетическую правильность — он отвечает, на какое слово
+    СЛОВАРЯ запись похожа больше всего. Для тренажёра этого достаточно,
+    для постановки произношения — нет.
+
+    Сама запись никуда не сохраняется: `check` читает файл, считает
+    признаки и забывает его. Хранение звука потребовало бы двоичного поля
+    в попытке, которого в схеме нет; в попытку идёт вердикт, а не голос.
+    """
+
+    kind: ClassVar[str] = "voice"
+
+    term: str = ""
+    """Слово, которое надо произнести."""
+
+    vocabulary: Tuple[str, ...] = ()
+    """
+    Окрестность: слова, с чьими эталонами сравнивается запись.
+
+    Словарь ЭТОГО задания, а не вся поставка: сравнение с посторонними
+    словами ужало бы допуск ради тех, кого студент сейчас не проходит, —
+    то же соображение, что у `WordsSession._vocabulary`.
+    """
+
+    transcription: str = ""
+    """IPA для показа. К проверке отношения не имеет — только к подсказке."""
+
+    mode: CheckMode = DEFAULT_MODE
+    tuning: dict = field(default_factory=dict)
+
+    # ---------- проверка ----------
+
+    def check(self, user_input: str, *,
+              mode: Optional[CheckMode] = None) -> Verdict:
+        active = self.effective_mode(mode)
+        source = str(user_input or "").strip()
+        shown = source if source.startswith("res:") else _basename(source)
+        if not source:
+            return Verdict(False, active, Reason.EMPTY, "",
+                           "Запись не сделана.")
+
+        path = _recording_path(source)
+        if path is None:
+            return Verdict(False, active, Reason.UNPARSED, shown,
+                           "Записи нет или это не WAV.")
+
+        from . import pronunciation_match as matching
+        try:
+            signal, rate = matching.read_wav(path)
+        except (OSError, ValueError, EOFError) as exc:
+            return Verdict(False, active, Reason.UNPARSED, shown,
+                           f"Запись не прочитана: {exc}")
+        # Тишина отсеивается ДО сопоставления. Правило ближайшего работает
+        # и на ней — какое-то расстояние всегда наименьшее, — но вердикт
+        # «больше похоже на Terabyte» на пустой записи это выдумка.
+        if matching.is_silent(signal):
+            return Verdict(False, active, Reason.EMPTY, shown,
+                           "В записи ничего не слышно — попробуйте ещё раз.")
+        recording = matching.mfcc(matching.resample(signal, rate))
+        if recording.shape[0] == 0:
+            return Verdict(False, active, Reason.EMPTY, shown,
+                           "Запись слишком коротка.")
+
+        references = self._references()
+        if not references:
+            # Не «неверно»: сравнивать не с чем. Такое бывает на установке
+            # без каталога звуков — это поломка поставки, а не ответ
+            # студента, и путать их нельзя.
+            return Verdict(False, active, Reason.UNCERTAIN, shown,
+                           "Не с чем сравнить: эталонов произношения нет.")
+
+        found = matching.match(recording, references)
+        if found is None:
+            return Verdict(False, active, Reason.UNCERTAIN, shown,
+                           "Запись не удалось сопоставить.")
+
+        if found.term != self.term:
+            return Verdict(
+                False, active, Reason.MISMATCH, shown,
+                f"Больше похоже на «{found.term}».")
+
+        if active is CheckMode.STRICT and not found.confident:
+            return Verdict(
+                False, active, Reason.UNCERTAIN, shown,
+                f"Похоже на «{self.term}», но почти так же — на "
+                f"«{found.runner_up}». Повторите отчётливее.")
+
+        return Verdict(True, active, Reason.EXACT, shown)
+
+    # ---------- показ ----------
+
+    def display_blocks(self) -> List[Block]:
+        from .blocks import TextBlock
+        from .dynamic_blocks import AudioBlock
+        from . import pronunciation
+
+        head = f"{self.term} {self.transcription}".strip()
+        blocks: List[Block] = [TextBlock(head)]
+        sound = pronunciation.audio_of(self.term)
+        if sound:
+            blocks.append(AudioBlock(sound, label=f"Эталон «{self.term}»"))
+        return blocks
+
+    def input_fields(self) -> List[InputField]:
+        return [InputField(kind=self.kind, label="Произнесите слово",
+                           hint=self.transcription)]
+
+    @property
+    def preferred_widget(self) -> str:
+        return "voice_recorder"
+
+    def _candidate_examples(self, mode: CheckMode) -> List[str]:
+        """
+        Единственный заведомо принимаемый пример — сам эталон.
+
+        Он же и единственный, который можно НАЗВАТЬ: примеры существуют
+        ради предпросмотра «что примут», а произношение живого человека
+        строкой не запишешь. Зато инвариант «предпросмотр не врёт»
+        проверяется здесь по-настоящему: эталон прогоняется через ту же
+        `check`, что и запись студента, и если правило сломано — например
+        слово неотличимо от соседа по словарю, — пример отсеется сам.
+        """
+        from . import pronunciation
+        sound = pronunciation.audio_of(self.term)
+        return [sound] if sound else []
+
+    # ---------- вспомогательное ----------
+
+    def _references(self) -> dict:
+        """
+        Признаки эталонов окрестности. Считаются один раз на спецификацию.
+
+        Пересчёт на каждую попытку означал бы разбор всего словаря на
+        каждый ответ; данные при этом неизменны — `term` и `vocabulary` у
+        спецификации не меняются.
+        """
+        cached = getattr(self, "_reference_cache", None)
+        if cached is not None:
+            return cached
+        from . import pronunciation, pronunciation_match as matching
+
+        terms = list(dict.fromkeys((self.term, *self.vocabulary)))
+        built = matching.reference_features(
+            [t for t in terms if t],
+            lambda term: _recording_path(pronunciation.audio_of(term) or ""))
+        object.__setattr__(self, "_reference_cache", built)
+        return built
+
+    def _payload(self) -> dict:
+        out: dict = {"term": self.term}
+        if self.vocabulary:
+            out["vocabulary"] = list(self.vocabulary)
+        if self.transcription:
+            out["transcription"] = self.transcription
+        return out
+
+
+def _basename(source: str) -> str:
+    """
+    Имя файла без каталога — то, что попадёт в вердикт.
+
+    Целиком путь класть нельзя: `normalized_input` уезжает в попытку и в
+    журнал, а домашний каталог проверяющего к ответу отношения не имеет.
+    """
+    import pathlib
+    try:
+        return pathlib.Path(source).name
+    except (TypeError, ValueError):
+        return ""
+
+
+# ======================================================================
 #  Набор слотов
 # ======================================================================
 
@@ -2131,6 +2392,14 @@ def _build_output(data: dict) -> OutputSpec:
     return OutputSpec(value=str(data.get("value", "")), **_common(data))
 
 
+def _build_voice(data: dict) -> VoiceSpec:
+    return VoiceSpec(
+        term=str(data.get("term", "")),
+        vocabulary=tuple(data.get("vocabulary") or ()),
+        transcription=str(data.get("transcription", "")),
+        **_common(data))
+
+
 def _build_slots(data: dict) -> SlotsSpec:
     return SlotsSpec(
         slots=tuple(
@@ -2147,6 +2416,7 @@ _REGISTRY = {
     LogicSpec.kind: _build_logic,
     EquationSpec.kind: _build_equation,
     OutputSpec.kind: _build_output,
+    VoiceSpec.kind: _build_voice,
     SlotsSpec.kind: _build_slots,
 }
 
@@ -2155,6 +2425,6 @@ __all__ = [
     "CheckMode", "DEFAULT_MODE", "Reason", "Verdict", "InputField",
     "normalize", "Tolerance", "ToleranceKind",
     "AnswerSpec", "NumberSpec", "TextSpec", "ExpressionSpec", "LogicSpec",
-    "EquationSpec", "OutputSpec", "SlotsSpec",
+    "EquationSpec", "OutputSpec", "VoiceSpec", "SlotsSpec",
     "ExpressionError", "significant_digits",
 ]

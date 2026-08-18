@@ -337,6 +337,31 @@ class SpecSession(InteractiveTask):
 
         return blocks
 
+    def attempt_payload(self) -> dict:
+        """
+        Чем описать последнюю попытку, когда САМ ОТВЕТ хранить нельзя.
+
+        Обычная попытка хранит то, что человек ввёл: строку. У ответа
+        голосом (`VoiceSpec`) вводом служит запись, и в попытке ей взяться
+        не из чего — поле `attempts.payload` текстовое, а двоичное
+        хранилище это отдельная работа (хранение, объём, согласие на
+        запись голоса). Клиент, не умеющий переслать ответ, спрашивает
+        сессию, и та отвечает тем, что и так знает: чем кончилось.
+
+        Пусто, пока ни один вопрос не закрыт.
+        """
+        if not self._outcomes:
+            return {}
+        last = self._outcomes[-1]
+        payload = last.to_dict()
+        if 0 <= last.index < len(self._questions):
+            spec = self._questions[last.index].spec
+            payload["kind"] = spec.kind
+            target = getattr(spec, "term", "")
+            if target:
+                payload["term"] = target
+        return payload
+
     # ---------- Снимок ----------
 
     def state(self) -> dict:

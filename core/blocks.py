@@ -369,10 +369,25 @@ def _image_from_dict(data: dict) -> Block:
     return ImageBlock(payload, caption=data.get("caption", ""))
 
 
+def _audio_from_dict(data: dict) -> Block:
+    """
+    Кнопка «прослушать». Блок динамический, но состоит ЦЕЛИКОМ из данных:
+    идентификатор ресурса и подпись — поэтому обратим, в отличие от
+    соседей по `dynamic_blocks`, которые держат обработчик ответа.
+
+    Импорт ленивый: `dynamic_blocks` тянет Qt по требованию, а разбор
+    задания случается и там, где интерфейса нет вовсе.
+    """
+    from .dynamic_blocks import AudioBlock
+    return AudioBlock(data.get("resource", ""),
+                      label=data.get("label", "Прослушать"))
+
+
 _BLOCK_BUILDERS = {
     "text": lambda d: TextBlock(d.get("content", "")),
     "formula": lambda d: FormulaBlock(d.get("latex", "")),
     "code": lambda d: CodeBlock(d.get("code", ""), d.get("language", "text")),
     "table": lambda d: TableBlock(d.get("rows") or [], d.get("header")),
     "image": _image_from_dict,
+    "audio": _audio_from_dict,
 }

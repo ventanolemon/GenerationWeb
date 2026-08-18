@@ -1,9 +1,15 @@
 """
 Адаптеры модуля английского языка.
 
-Два типа генераторов:
-  WordsTrainerGenerator — INTERACTIVE-тренажёр перевода слов.
-  SentenceFillGenerator — STATIC-задание «вставь пропущенные слова».
+Генераторы модуля:
+  WordsTrainerGenerator      — INTERACTIVE-тренажёр перевода слов.
+  SentenceFillGenerator      — STATIC-задание «вставь пропущенные слова».
+  TranscriptionChoiceGenerator — STATIC-выбор транскрипции термина.
+  PronunciationGenerator     — CHECKABLE «произнесите вслух», ответ голосом.
+
+Три последних работают на ОДНОМ материале — файле словаря — и стоят
+рядом, а не вместо друг друга: слово надо уметь написать, узнать по
+записи звучания и произнести, и это три разных умения.
 
 Тип определяется по содержимому JSON-файла:
   sentences — list с ключом "template" в первом элементе.
@@ -37,6 +43,8 @@ from core import (
     WordCorrectionBlock,
     WordStat, WordStatsStore,
 )
+from core.answers import CheckMode, VoiceSpec
+from core.generator import CHECKABLE_DEFAULT
 
 
 # Тип источника текущего user_id. Возвращает строку логина для авторизованного
@@ -726,6 +734,122 @@ class TranscriptionChoiceGenerator(TaskGenerator):
         return StaticTask(
             statement=[block],
             answer=answer,
+            meta={"partition_id": self.partition_id},
+        )
+
+
+# ---------- PronunciationGenerator (CHECKABLE, ответ голосом) ----------
+
+class PronunciationGenerator(TaskGenerator):
+    """
+    Задание: произнести слово вслух. Проверяет `core.pronunciation_match`.
+
+    Третье упражнение на том же словаре, рядом с диктантом и разбором
+    транскрипции, — и оно закрывает связь, которой у первых двух не было.
+    Диктант учит писать, разбор транскрипции — узнавать запись звучания;
+    ни одно не требует ОТКРЫТЬ РОТ. Слово, выученное глазами, в речи не
+    воспроизводится.
+
+    Почему CHECKABLE, а не INTERACTIVE
+    ----------------------------------
+    У задания есть обе формы, и обе осмысленны. «Смотреть» — карточка:
+    слово, транскрипция, кнопка эталона; её преподаватель выгружает в
+    .docx как список для чтения вслух. «Решать» — запись и проверка;
+    сессию над карточкой собирает общая машинка (`SolvingGenerator`), а не
+    собственный цикл. Объявить INTERACTIVE значило бы отнять у
+    преподавателя печатную форму ради того, что и так получается даром.
+
+    Только слова со звуком
+    ----------------------
+    В окрестность берутся ТОЛЬКО термины, у которых есть эталон: правило
+    приёма сравнивает запись с эталонами, и слово без эталона не участвует
+    ни как цель, ни как сосед. Словарь, где эталонов нет вовсе, честно
+    говорит об этом заданием, а не пустым экраном.
+
+    Строгий режим по умолчанию
+    --------------------------
+    Единственная спецификация, у которой умолчание не мягкое. Причина в
+    том, чем здесь оборачивается мягкость: приняв первое место без
+    отрыва, задание сказало бы «верно» там, где выбор между двумя словами
+    случаен. Для остальных видов ответа дешевле ошибка мягкости — её
+    поправит преподаватель; здесь дешевле отказ — его студент видит сразу
+    и повторяет.
+    """
+
+    capabilities = CHECKABLE_DEFAULT
+
+    #: Сколько соседей брать в окрестность.
+    #:
+    #: Не весь словарь: правило требует посчитать DTW до КАЖДОГО эталона,
+    #: и на словаре в двести слов это двести выравниваний на один ответ.
+    #: Не два-три: при малой окрестности случайное попадание вероятно
+    #: (`pronunciation_match`, «ограничение, которое надо знать»).
+    NEIGHBOURS = 12
+
+    def __init__(self, name: str, words_path, partition_id: int | None = None):
+        self.name = name
+        self.partition_id = partition_id
+        self.words_path = Path(words_path)
+        self._terms: list[str] | None = None
+        self._inline: dict[str, str] = {}
+
+    def _load(self) -> list[str]:
+        """Термины этого словаря, у которых есть эталон произношения."""
+        if self._terms is not None:
+            return self._terms
+        data = _read_json_lenient(self.words_path)
+        words = WordsTrainerGenerator._flatten_words(data)
+        self._inline = pronunciation.inline_transcriptions(data)
+        self._terms = [term for term in words if pronunciation.audio_of(term)]
+        return self._terms
+
+    def _neighbourhood(self, term: str, terms: list[str]) -> list[str]:
+        """
+        Окрестность: цель плюс соседи по словарю.
+
+        Соседи выбираются случайно, а не «самые похожие»: подбор похожих
+        сделал бы задание тем сложнее, чем лучше словарь покрыт звуком, и
+        сложность зависела бы от состава поставки, а не от замысла автора.
+        """
+        others = [t for t in terms if t != term]
+        random.shuffle(others)
+        return [term, *others[:max(0, self.NEIGHBOURS - 1)]]
+
+    def generate(self) -> StaticTask:
+        terms = self._load()
+        if not terms:
+            return StaticTask(
+                statement=[TextBlock(
+                    "В этом словаре нет терминов с готовым произношением. "
+                    "Соберите звук: python tools/generate_audio.py")],
+                answer=[],
+                meta={"partition_id": self.partition_id},
+            )
+
+        term = random.choice(terms)
+        ipa = pronunciation.transcription_of(term, self._inline) or ""
+        statement: list[Block] = [
+            TextBlock("Произнесите слово вслух:"),
+            TextBlock(f"{term} {ipa}".strip()),
+        ]
+        # Эталон — в УСЛОВИИ, а не в разборе: здесь спрашивают
+        # произношение, и услышать образец до попытки это и есть
+        # упражнение. В словарном диктанте та же кнопка стоит в разборе,
+        # потому что там она выдала бы ответ.
+        sound = pronunciation.audio_of(term)
+        if sound:
+            statement.append(AudioBlock(sound, label=f"Эталон «{term}»"))
+
+        spec = VoiceSpec(
+            term=term,
+            vocabulary=tuple(self._neighbourhood(term, terms)),
+            transcription=ipa,
+            mode=CheckMode.STRICT,
+        )
+        return StaticTask(
+            statement=statement,
+            answer=spec.display_blocks(),
+            answer_spec=spec,
             meta={"partition_id": self.partition_id},
         )
 

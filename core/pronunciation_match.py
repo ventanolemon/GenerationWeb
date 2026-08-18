@@ -158,6 +158,31 @@ def resample(signal: np.ndarray, source_rate: int,
     return np.interp(target_points, source_points, signal).astype(np.float32)
 
 
+#: Ниже какой амплитуды запись считается пустой.
+#:
+#: Нужен ИМЕННО абсолютный порог, хотя весь модуль построен на отказе от
+#: абсолютных порогов. Противоречия нет: там порог решал бы, ВЕРНО ли
+#: произнесено слово, — это и требует калибровки под голос; здесь он
+#: решает, есть ли в файле вообще звук, а это свойство самого файла.
+SILENCE_PEAK = 0.01
+
+
+def is_silent(signal: np.ndarray) -> bool:
+    """
+    Есть ли в записи хоть что-нибудь.
+
+    Замер, из-за которого проверка появилась: запись тишины получала
+    вердикт «больше похоже на Terabyte». Правило ближайшего работает и на
+    тишине — расстояния конечны, и какое-то из них наименьшее, — но
+    смысла у такого вердикта нет: сравнивать не с чем со стороны СТУДЕНТА.
+    Тишина обязана давать отказ, а не название случайного слова.
+
+    `trim_silence` эту роль исполнять не может: его порог ОТНОСИТЕЛЬНЫЙ,
+    доля от максимума, и у сплошной тишины он вырождается.
+    """
+    return signal.size == 0 or float(np.max(np.abs(signal))) < SILENCE_PEAK
+
+
 def trim_silence(signal: np.ndarray, threshold: float = 0.02) -> np.ndarray:
     """
     Обрезать тишину по краям.
@@ -273,6 +298,14 @@ def dtw_distance(a: np.ndarray, b: np.ndarray) -> float:
 
     Результат нормирован длиной пути: иначе длинные слова оказывались бы
     «дальше» просто за счёт числа кадров.
+
+    Считается ПО АНТИДИАГОНАЛЯМ, а не построчно. Значение то же самое —
+    рекуррента не тронута, — но зависимости у ячеек одной антидиагонали
+    нет, и вся она считается одним действием numpy. Замер, из-за которого
+    это понадобилось: посимвольный обход стоил 3.65 с на один ответ в
+    задании на произношение (окрестность из 12 эталонов, самый длинный —
+    510 кадров), потому что интерпретатор проходил четверть миллиона
+    ячеек по одной. Ждать столько после каждой записи нельзя.
     """
     if a.shape[0] == 0 or b.shape[0] == 0:
         return float("inf")
@@ -281,15 +314,28 @@ def dtw_distance(a: np.ndarray, b: np.ndarray) -> float:
         ((a ** 2).sum(axis=1)[:, None] + (b ** 2).sum(axis=1)[None, :]
          - 2.0 * a @ b.T), 0.0))
     rows, cols = cost.shape
-    acc = np.full((rows + 1, cols + 1), np.inf, dtype=np.float64)
-    acc[0, 0] = 0.0
-    for i in range(1, rows + 1):
-        previous, current = acc[i - 1], acc[i]
-        line = cost[i - 1]
-        for j in range(1, cols + 1):
-            current[j] = line[j - 1] + min(previous[j], current[j - 1],
-                                           previous[j - 1])
-    return float(acc[rows, cols] / (rows + cols))
+
+    # Диагональ номер d — это ячейки, у которых i + j = d. Каждая зависит
+    # от двух ячеек диагонали d-1 (слева и сверху) и одной диагонали d-2
+    # (наискось), поэтому в памяти держатся ровно две последние.
+    # Индексом внутри диагонали служит i: так соседи находятся сдвигом,
+    # а не пересчётом координат.
+    previous = np.full(rows + 1, np.inf, dtype=np.float64)   # d - 2
+    current = np.full(rows + 1, np.inf, dtype=np.float64)    # d - 1
+    previous[0] = 0.0                                        # acc[0, 0]
+
+    for d in range(2, rows + cols + 1):
+        low, high = max(1, d - cols), min(rows, d - 1)
+        following = np.full(rows + 1, np.inf, dtype=np.float64)
+        if low <= high:
+            i = np.arange(low, high + 1)
+            best = np.minimum(np.minimum(current[i],        # acc[i, j-1]
+                                         current[i - 1]),   # acc[i-1, j]
+                              previous[i - 1])              # acc[i-1, j-1]
+            following[i] = cost[i - 1, d - i - 1] + best
+        previous, current = current, following
+
+    return float(current[rows] / (rows + cols))
 
 
 def match(recording: np.ndarray,

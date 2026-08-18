@@ -137,11 +137,11 @@ python -m scripts.seed_accounts \
 ## Проверки
 
 ```bash
-# сервер: 1592 тестов
+# сервер: 1631 тестов
 cd GenerationWeb
 python -m unittest discover -t . -s . -p "test_*.py"
 
-# десктоп: 2177 тестов
+# десктоп: 2245 тестов
 cd Generator
 QT_QPA_PLATFORM=offscreen python -m unittest discover -t . -s . -p "test_*.py"
 
