@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 426" width="760" height="426" font-family="DejaVu Sans, Arial, sans-serif" font-size="13">
+<rect width="760" height="426" fill="#ffffff"/>
+<text x="20" y="28" font-size="15" font-weight="bold" fill="#1b1c21">Пары слов, неразличимые проверкой</text>
+<text x="20" y="48" font-size="12" fill="#676c7a">красным — правило «расстояние Левенштейна &#8804; 1 (&#8804; 2 для длинных слов)»;</text>
+<text x="20" y="64" font-size="12" fill="#676c7a">зелёным — допуск, ограниченный расстоянием до ближайшего соседа в словаре.</text>
+<text x="20" y="102" fill="#1b1c21">complete_words</text>
+<text x="288" y="102" text-anchor="end" fill="#676c7a">280 слов</text>
+<rect x="300" y="90" width="350.0" height="16" rx="3" fill="#c13a34"/>
+<text x="658.0" y="103" fill="#c13a34" font-weight="bold">18</text>
+<text x="686.0" y="103" fill="#17784a" font-weight="bold">&#8594; 0</text>
+<text x="20" y="136" fill="#1b1c21">complete_vocabulary</text>
+<text x="288" y="136" text-anchor="end" fill="#676c7a">92 слова</text>
+<rect x="300" y="124" width="194.4" height="16" rx="3" fill="#c13a34"/>
+<text x="502.4" y="137" fill="#c13a34" font-weight="bold">10</text>
+<text x="530.4" y="137" fill="#17784a" font-weight="bold">&#8594; 0</text>
+<text x="20" y="170" fill="#1b1c21">term_4_complete_vocabulary</text>
+<text x="288" y="170" text-anchor="end" fill="#676c7a">143 слова</text>
+<rect x="300" y="158" width="136.1" height="16" rx="3" fill="#c13a34"/>
+<text x="444.1" y="171" fill="#c13a34" font-weight="bold">7</text>
+<text x="472.1" y="171" fill="#17784a" font-weight="bold">&#8594; 0</text>
+<text x="20" y="204" fill="#1b1c21">term_4_unit1_internet</text>
+<text x="288" y="204" text-anchor="end" fill="#676c7a">20 слов</text>
+<rect x="300" y="192" width="116.7" height="16" rx="3" fill="#c13a34"/>
+<text x="424.7" y="205" fill="#c13a34" font-weight="bold">6</text>
+<text x="452.7" y="205" fill="#17784a" font-weight="bold">&#8594; 0</text>
+<text x="20" y="238" fill="#1b1c21">complete_abbreveations</text>
+<text x="288" y="238" text-anchor="end" fill="#676c7a">98 слов</text>
+<rect x="300" y="226" width="38.9" height="16" rx="3" fill="#c13a34"/>
+<text x="346.9" y="239" fill="#c13a34" font-weight="bold">2</text>
+<text x="374.9" y="239" fill="#17784a" font-weight="bold">&#8594; 0</text>
+<text x="20" y="272" fill="#1b1c21">unit3_hardware</text>
+<text x="288" y="272" text-anchor="end" fill="#676c7a">26 слов</text>
+<rect x="300" y="260" width="38.9" height="16" rx="3" fill="#c13a34"/>
+<text x="346.9" y="273" fill="#c13a34" font-weight="bold">2</text>
+<text x="374.9" y="273" fill="#17784a" font-weight="bold">&#8594; 0</text>
+<text x="20" y="306" fill="#1b1c21">unit5_secondary_storage</text>
+<text x="288" y="306" text-anchor="end" fill="#676c7a">23 слова</text>
+<rect x="300" y="294" width="38.9" height="16" rx="3" fill="#c13a34"/>
+<text x="346.9" y="307" fill="#c13a34" font-weight="bold">2</text>
+<text x="374.9" y="307" fill="#17784a" font-weight="bold">&#8594; 0</text>
+<text x="20" y="340" fill="#1b1c21">term_4_unit5_malware_cybercrime</text>
+<text x="288" y="340" text-anchor="end" fill="#676c7a">21 слово</text>
+<rect x="300" y="328" width="19.4" height="16" rx="3" fill="#c13a34"/>
+<text x="327.4" y="341" fill="#c13a34" font-weight="bold">1</text>
+<text x="355.4" y="341" fill="#17784a" font-weight="bold">&#8594; 0</text>
+<line x1="20" y1="364" x2="740" y2="364" stroke="#d6d8e0"/>
+<text x="20" y="386" font-weight="bold" fill="#1b1c21">Всего: 48 пар на 830 словах &#8594; 0</text>
+<text x="20" y="406" font-size="12" fill="#676c7a">Цена: из 128 проверенных опечаток принимаются 121 (94,5%) вместо 128 (100%).</text>
+</svg>
