@@ -141,7 +141,7 @@ python -m scripts.seed_accounts \
 cd GenerationWeb
 python -m unittest discover -t . -s . -p "test_*.py"
 
-# десктоп: 2254 тестов
+# десктоп: 2274 тестов
 cd Generator
 QT_QPA_PLATFORM=offscreen python -m unittest discover -t . -s . -p "test_*.py"
 
