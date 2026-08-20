@@ -49,6 +49,7 @@ from .routers import groups as groups_router
 from .routers import export as export_router
 from .routers import generate as generate_router
 from .routers import grants as grants_router
+from .routers import guide as guide_router
 from .routers import organizations as organizations_router
 from .routers import graph as graph_router
 from .routers import interactive as interactive_router
@@ -226,6 +227,7 @@ app.include_router(export_router.router)
 app.include_router(partitions_router.router)
 app.include_router(stats_router.router)
 app.include_router(meta_router.router)
+app.include_router(guide_router.router)
 app.include_router(graph_router.router)
 app.include_router(sync_router.router)
 app.include_router(updates_router.router)

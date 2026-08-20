@@ -38,5 +38,11 @@
   "admin/grants",
   "admin/roles",
   "admin/deployment",
-  "admin/try-on"
+  "admin/try-on",
+  "export",
+  "export/tasks-and-variants",
+  "export/answers",
+  "export/waiting",
+  "export/desktop",
+  "export/limits"
 ]

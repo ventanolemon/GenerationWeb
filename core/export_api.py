@@ -16,11 +16,29 @@
 Здесь и то, и другое. Модуль headless (как sync_api, grants_api): строит
 документ из готовых заданий и ничего не знает ни про HTTP, ни про реестр
 генераторов — поэтому раскладку можно проверить тестом, а не глазами.
+
+Почему модуль ОБЩИЙ для сервера и десктопа
+------------------------------------------
+Раскладка ответов — понятие предметной области, а не деталь одного
+клиента: «ключ отрывается вместе с концом варианта» значит одно и то же
+всюду. Разложенное по вызывающим правило живёт до второго вызывающего, а
+их здесь три — веб-служба и два бэкенда настольного приложения (через
+python-docx и через Word по COM).
+
+Три копии раскладки означали бы, что «в конце варианта» на десктопе и на
+вебе однажды разойдутся, и разойдутся молча — тот же класс, что у
+номеров разделов и у переключателя «Смотреть/Решать».
+
+Что при этом РАЗНОЕ, и потому вынесено за скобки: механика письма.
+python-docx умеет `add_heading`, у Word по COM есть `Selection`, и общего
+у них нет ничего. Поэтому раскладка обращается не к документу, а к
+**писцу** (`DocumentWriter`) — трём действиям, которые умеет каждая из
+платформ: заголовок, разрыв страницы, блоки содержания.
 """
 
 from __future__ import annotations
 
-from typing import Iterable, Sequence
+from typing import Iterable, Protocol, Sequence
 
 from .task import StaticTask
 
@@ -39,13 +57,41 @@ class ExportError(ValueError):
     """Недопустимые параметры экспорта — роутер превращает в 400."""
 
 
-def _heading(doc, text: str, level: int) -> None:
-    doc.add_heading(text, level=level)
+class DocumentWriter(Protocol):
+    """
+    Три действия, которыми выражается любая раскладка.
+
+    Меньше нельзя: без заголовков документ нечитаем, без разрыва страницы
+    ключ не отрывается, без блоков нечего печатать. Больше не нужно —
+    и это существенно: чем уже протокол, тем меньше платформа может
+    просочиться в раскладку.
+    """
+
+    def heading(self, text: str, level: int) -> None: ...
+
+    def page_break(self) -> None: ...
+
+    def blocks(self, blocks: Iterable) -> None: ...
 
 
-def _render(doc, blocks: Iterable) -> None:
-    for block in blocks:
-        block.render_docx(doc)
+class PythonDocxWriter:
+    """
+    Писец поверх `python-docx`. Им пользуются веб-служба и настольный
+    кросс-платформенный бэкенд — документ у них одинаковый.
+    """
+
+    def __init__(self, doc):
+        self.doc = doc
+
+    def heading(self, text: str, level: int) -> None:
+        self.doc.add_heading(text, level=level)
+
+    def page_break(self) -> None:
+        self.doc.add_page_break()
+
+    def blocks(self, blocks: Iterable) -> None:
+        for block in blocks:
+            block.render_docx(self.doc)
 
 
 def build_document(
@@ -56,9 +102,24 @@ def build_document(
     answers: str = "under",
 ) -> None:
     """
-    Наполнить `doc` вариантами. Документ создаёт вызывающий — так модуль
-    не зависит от python-docx на уровне импорта и остаётся проверяемым
-    подделкой.
+    Наполнить документ `python-docx` вариантами.
+
+    Тонкая обёртка над `build_with`: документ создаёт вызывающий — так
+    модуль не зависит от python-docx на уровне импорта и остаётся
+    проверяемым подделкой.
+    """
+    build_with(PythonDocxWriter(doc), variants, title=title, answers=answers)
+
+
+def build_with(
+    writer: DocumentWriter,
+    variants: Sequence[Sequence[StaticTask]],
+    *,
+    title: str,
+    answers: str = "under",
+) -> None:
+    """
+    Раскладка вариантов и ответов. Единственное место, где она описана.
 
     `variants` — список вариантов, каждый список заданий. Один вариант —
     обычный случай, и тогда заголовок «Вариант 1» не печатается: он
@@ -71,7 +132,7 @@ def build_document(
     if not variants or not any(variants):
         raise ExportError("Нечего экспортировать: заданий нет.")
 
-    _heading(doc, title, 0)
+    writer.heading(title, 0)
     many = len(variants) > 1
     # Ответы для «в конце файла» копятся здесь: (подпись, блоки).
     tail: list[tuple[str, Sequence]] = []
@@ -79,17 +140,17 @@ def build_document(
     for v_index, tasks in enumerate(variants, start=1):
         if many:
             if v_index > 1:
-                doc.add_page_break()
-            _heading(doc, f"Вариант {v_index}", 1)
+                writer.page_break()
+            writer.heading(f"Вариант {v_index}", 1)
 
         for t_index, task in enumerate(tasks, start=1):
             label = f"Задание {t_index}"
-            _heading(doc, label, 2)
-            _render(doc, task.statement)
+            writer.heading(label, 2)
+            writer.blocks(task.statement)
 
             if answers == "under":
-                _heading(doc, f"Ответ {t_index}", 3)
-                _render(doc, task.answer)
+                writer.heading(f"Ответ {t_index}", 3)
+                writer.blocks(task.answer)
             elif answers == "variant_end":
                 pass                      # соберём ниже, после всех заданий
             elif answers == "file_end":
@@ -100,21 +161,21 @@ def build_document(
             # Разрыв между заданиями — только когда вариант один: внутри
             # варианта задания идут подряд, иначе лист на задание.
             if not many and t_index < len(tasks):
-                doc.add_page_break()
+                writer.page_break()
 
         if answers == "variant_end":
-            doc.add_page_break()
-            _heading(doc, _PLACEMENT_TITLES["variant_end"], 2)
+            writer.page_break()
+            writer.heading(_PLACEMENT_TITLES["variant_end"], 2)
             for t_index, task in enumerate(tasks, start=1):
-                _heading(doc, f"Задание {t_index}", 3)
-                _render(doc, task.answer)
+                writer.heading(f"Задание {t_index}", 3)
+                writer.blocks(task.answer)
 
     if answers == "file_end" and tail:
-        doc.add_page_break()
-        _heading(doc, _PLACEMENT_TITLES["file_end"], 1)
+        writer.page_break()
+        writer.heading(_PLACEMENT_TITLES["file_end"], 1)
         for caption, blocks in tail:
-            _heading(doc, caption, 3)
-            _render(doc, blocks)
+            writer.heading(caption, 3)
+            writer.blocks(blocks)
 
 
 def normalise_placement(answers: str | None, with_answers: bool | None) -> str:
@@ -136,5 +197,6 @@ def normalise_placement(answers: str | None, with_answers: bool | None) -> str:
     return "under"
 
 
-__all__ = ["ANSWER_PLACEMENTS", "ExportError", "build_document",
+__all__ = ["ANSWER_PLACEMENTS", "ExportError", "DocumentWriter",
+           "PythonDocxWriter", "build_document", "build_with",
            "normalise_placement"]

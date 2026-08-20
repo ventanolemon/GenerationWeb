@@ -115,6 +115,127 @@
   opacity: 0.65;
 }
 
+/* ─── Правка страницы (администратор, разработчик) ──────────────────── */
+/* Цвета берутся из переменных темы, а не задаются здесь: второй набор
+   констант разошёлся бы с темой при первой её правке — это уже случалось
+   с холстом графов. */
+
+.articleHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+.articleHead h1 { margin-bottom: 0; }
+
+.editBtn {
+  flex: none;
+  padding: 5px 12px;
+  border-radius: 7px;
+  border: 1px solid var(--border, rgba(128, 128, 128, 0.35));
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 13px;
+  opacity: 0.75;
+}
+.editBtn:hover { opacity: 1; }
+
+.editedNote {
+  margin: 4px 0 18px;
+  font-size: 12.5px;
+  opacity: 0.6;
+}
+
+.editor { display: flex; flex-direction: column; gap: 14px; }
+.editorHead {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.editorHead h1 { margin: 0; }
+.editorId {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  opacity: 0.55;
+}
+
+.editorLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  opacity: 0.85;
+}
+.editorInput,
+.editorArea {
+  width: 100%;
+  padding: 9px 11px;
+  border-radius: 8px;
+  border: 1px solid var(--border, rgba(128, 128, 128, 0.35));
+  background: var(--surface, transparent);
+  color: inherit;
+  font-size: 14px;
+}
+.editorArea {
+  min-height: 55vh;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+}
+
+.cheatsheet {
+  border: 1px solid var(--border, rgba(128, 128, 128, 0.3));
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+}
+.cheatsheet summary { cursor: pointer; opacity: 0.8; }
+.cheatsheet dl { margin: 10px 0 0; }
+.cheatsheet dl > div {
+  display: grid;
+  grid-template-columns: minmax(190px, auto) 1fr;
+  gap: 8px 16px;
+  margin-bottom: 5px;
+}
+.cheatsheet dt { margin: 0; }
+.cheatsheet dd { margin: 0; opacity: 0.7; }
+.cheatsheet p { margin: 12px 0 0; opacity: 0.7; }
+
+.editorError {
+  padding: 10px 13px;
+  border-radius: 8px;
+  border: 1px solid rgba(179, 38, 30, 0.5);
+  background: rgba(179, 38, 30, 0.09);
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+
+.editorActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.editorActions button {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border, rgba(128, 128, 128, 0.35));
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 13.5px;
+}
+.editorActions button:disabled { opacity: 0.45; cursor: default; }
+.editorSave {
+  border-color: transparent !important;
+  background: var(--accent, #4f9dde) !important;
+  color: #fff !important;
+}
+
 @media (max-width: 860px) {
   .guide { grid-template-columns: 1fr; }
   .toc { position: static; }

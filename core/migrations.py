@@ -897,6 +897,47 @@ def _english_stem(name: str) -> str | None:
     return stem.strip() or None
 
 
+def _m016_guide_pages(conn: sqlite3.Connection) -> None:
+    """
+    Правки страниц базы знаний, наложенные ПОВЕРХ поставки.
+
+    Развилка, записанная в `docs/handbook/04-stubs.md` §7, и пройдена она
+    именно так: страница из сборки остаётся умолчанием, а таблица хранит
+    только ИЗМЕНЁННЫЕ. Причина — то самое свойство, ради которого база
+    знаний и вкомпилирована в сборку: она обязана открываться у гостя и
+    без сети. Перенеси мы страницы в базу целиком — документация
+    перестала бы открываться ровно тогда, когда она нужнее всего, то есть
+    когда что-то не работает.
+
+    Поэтому здесь НЕТ страниц поставки. Пустая таблица означает «правок
+    нет», и клиент показывает то, что собрано в `content.json`.
+
+    `body` хранится markdown-исходником, а не разобранным видом: разбор —
+    производное, а производное не хранится (то же основание, что у ветки
+    «условие/ответ» в графе). Разбирает клиент тем же кодом, что и
+    страницы поставки.
+
+    `deleted` вместо удаления строки: снятая правка должна отличаться от
+    «правки не было» — иначе по журналу нельзя сказать, что произошло.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS guide_pages (
+            page_id     TEXT PRIMARY KEY,
+            title       TEXT NOT NULL,
+            body        TEXT NOT NULL,
+            updated_at  TEXT NOT NULL,
+            updated_by  TEXT NOT NULL,
+            deleted     INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_guide_pages_updated "
+        "ON guide_pages(updated_at)"
+    )
+
+
 def _m015_stable_english_partition_ids(conn: sqlite3.Connection) -> None:
     """
     Перевести словари английского с номера ПО МЕСТУ файла на номер ПО ИМЕНИ.
@@ -998,6 +1039,7 @@ MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = [
     (13, "auth_sessions", _m013_auth_sessions),
     (14, "organizations", _m014_organizations),
     (15, "stable_english_partition_ids", _m015_stable_english_partition_ids),
+    (16, "guide_pages", _m016_guide_pages),
 ]
 
 

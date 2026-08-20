@@ -137,11 +137,11 @@ python -m scripts.seed_accounts \
 ## Проверки
 
 ```bash
-# сервер: 1640 тестов
+# сервер: 1665 тестов
 cd GenerationWeb
 python -m unittest discover -t . -s . -p "test_*.py"
 
-# десктоп: 2274 тестов
+# десктоп: 2313 тестов
 cd Generator
 QT_QPA_PLATFORM=offscreen python -m unittest discover -t . -s . -p "test_*.py"
 
@@ -168,6 +168,7 @@ python -m scripts.core_drift ../Generator
 
 ```bash
 # база знаний: markdown → JSON для фронта
+# (после правки docs/guide/*.md — иначе фронт покажет старое)
 python -m scripts.guide_export
 
 # снимки для базы знаний

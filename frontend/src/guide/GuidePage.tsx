@@ -10,9 +10,12 @@
 // проверками формата (core/test_guide.py): абзац, список, врезка кода,
 // жирный, `код`, ссылка `guide:` и картинка `shot:`.
 
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import content from "./content.json";
+import { api } from "../api/client";
+import { useOptionalSession } from "../session";
+import GuideEditor from "./GuideEditor";
 import styles from "../styles/guide.module.css";
 
 interface Section { id: string; title: string; level: number }
@@ -22,9 +25,13 @@ interface Page {
   order: number;
   body: string;
   sections: Section[];
+  /** Страница правлена поверх поставки — приходит только от службы. */
+  edited?: boolean;
+  updated_at?: string;
+  updated_by?: string;
 }
 
-const PAGES = content.pages as Page[];
+const BUNDLED = content.pages as Page[];
 
 /** `**жирный**`, `` `код` ``, `[текст](guide:адрес)` — по одному проходу. */
 function inline(text: string, key: string): React.ReactNode[] {
@@ -164,7 +171,37 @@ function renderBody(body: string, pageId: string): React.ReactNode[] {
 export default function GuidePage() {
   const { pageId, sectionId } = useParams();
   const navigate = useNavigate();
-  const page = PAGES.find((p) => p.id === pageId) ?? PAGES[0];
+  const session = useOptionalSession();
+  const identity = session?.identity ?? null;
+
+  // Страницы поставки — НАЧАЛЬНОЕ значение, а не запасное на случай
+  // ошибки. Разница видна на первом кадре: документация показывается
+  // сразу, а правки, если служба ответит, накладываются поверх. Обратный
+  // порядок («сначала спросим, потом покажем») отнял бы у базы знаний то
+  // единственное свойство, ради которого она вкомпилирована, — открываться
+  // без сети.
+  const [pages, setPages] = useState<Page[]>(BUNDLED);
+  const [canEdit, setCanEdit] = useState(false);
+  const [editing, setEditing] = useState(false);
+
+  const reload = useCallback(() => {
+    api
+      .guide(identity ?? undefined)
+      .then((data) => {
+        if (data.pages?.length) setPages(data.pages as Page[]);
+        setCanEdit(Boolean(data.can_edit));
+      })
+      .catch(() => {
+        // Молча: служба недоступна — читатель остаётся на поставочной
+        // версии. Показывать здесь ошибку значило бы пугать человека
+        // тем, что его не касается: страница перед ним и так открыта.
+        setCanEdit(false);
+      });
+  }, [identity]);
+
+  useEffect(reload, [reload]);
+
+  const page = pages.find((p) => p.id === pageId) ?? pages[0];
 
   // Прокрутка к разделу делается кодом, а не браузером: адрес раздела
   // лежит в пути, а не во фрагменте (см. комментарий про HashRouter
@@ -176,7 +213,12 @@ export default function GuidePage() {
     }
     const target = document.getElementById(sectionId);
     if (target) target.scrollIntoView({ block: "start" });
-  }, [pageId, sectionId]);
+  }, [pageId, sectionId, pages]);
+
+  // Правка закрывается при переходе на другую страницу: оставленный
+  // открытым редактор чужой страницы — верный способ сохранить текст не
+  // туда.
+  useEffect(() => setEditing(false), [pageId]);
 
   if (!page) return null;
 
@@ -184,7 +226,7 @@ export default function GuidePage() {
     <div className={styles.guide}>
       <nav className={styles.toc} aria-label="Разделы базы знаний">
         <div className={styles.tocTitle}>База знаний</div>
-        {PAGES.map((p) => (
+        {pages.map((p) => (
           <div key={p.id}>
             <button
               className={p.id === page.id ? styles.tocActive : styles.tocItem}
@@ -209,8 +251,39 @@ export default function GuidePage() {
         ))}
       </nav>
       <article className={styles.article}>
-        <h1>{page.title}</h1>
-        {renderBody(page.body, page.id)}
+        {editing && identity ? (
+          <GuideEditor
+            page={page}
+            identity={identity}
+            onDone={() => {
+              setEditing(false);
+              reload();
+            }}
+          />
+        ) : (
+          <>
+            <div className={styles.articleHead}>
+              <h1>{page.title}</h1>
+              {canEdit && (
+                <button
+                  type="button"
+                  className={styles.editBtn}
+                  onClick={() => setEditing(true)}
+                >
+                  Править
+                </button>
+              )}
+            </div>
+            {page.edited && (
+              <p className={styles.editedNote}>
+                Страница правлена в приложении
+                {page.updated_by ? ` — ${page.updated_by}` : ""}
+                {page.updated_at ? `, ${page.updated_at.slice(0, 10)}` : ""}.
+              </p>
+            )}
+            {renderBody(page.body, page.id)}
+          </>
+        )}
       </article>
     </div>
   );
