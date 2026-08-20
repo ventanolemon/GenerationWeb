@@ -89,14 +89,25 @@ cd frontend && npm run dev          # http://localhost:5173
 ```mermaid
 flowchart LR
     B["Браузер<br/>:5173"] --> V["Vite dev-сервер"]
-    V -->|"/api/*"| WL["web_layer<br/>:5000"]
-    V -->|"/api/graph/*"| GS["generator_service<br/>:8000"]
-    WL --> GS
+    V -->|"весь /api/*"| WL["web_layer<br/>:5000"]
+    WL --> GS["generator_service<br/>:8000"]
     WL --> CS["contour_service<br/>:8001"]
 ```
 
-`/api/graph` идёт мимо `web_layer` намеренно: graph-роутер живёт в
-`generator_service` — см.
+**Весь `/api` идёт через `web_layer` — и в разработке, и в бою.** Это
+важно и стоило дефекта: `/api/graph` раньше отправлялся Vite напрямую в
+`generator_service`, и в разработке всё работало. Но Vite есть только в
+разработке; в развёртывании запрос приходит в `web_layer`, где для этого
+префикса не было ни одного маршрута — **редактор графов разворачивался
+только вместе с dev-сервером**. То же ждало правку базы знаний.
+
+Релеи добавлены (`web_layer/GraphEndpoints.cs`, `GuideEndpoints.cs`), а
+особые правила Vite убраны намеренно: пока путь разработки отличался от
+боевого, сломанный релей нельзя было заметить раньше продакшена.
+
+Решение про ЛОГИКУ при этом не изменилось: graph-роутер и роутер базы
+знаний живут в `generator_service`, потому что там импортированы движок
+графов и формат страниц — см.
 [`graph_editor_api_contract.md`](../architecture/graph_editor_api_contract.md) §2.
 
 Адреса сервисов для `web_layer` — в `web_layer/appsettings.json`
