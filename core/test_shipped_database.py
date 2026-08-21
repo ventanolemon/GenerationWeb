@@ -32,14 +32,13 @@ is malformed» у нас уже есть (десктоп).
 
 from __future__ import annotations
 
-import os
 import shutil
 import sqlite3
-import tempfile
 import unittest
 from pathlib import Path
 
-from const import DB_PATH
+from const import DB_TEMPLATE as DB_PATH
+from core.tmpdb import temp_path
 
 
 class DatabaseFileTests(unittest.TestCase):
@@ -49,10 +48,8 @@ class DatabaseFileTests(unittest.TestCase):
             self.skipTest("базы нет в этой сборке")
         # Работаем с КОПИЕЙ: проверка не имеет права стать ещё одним
         # писателем в файл, который сама и защищает.
-        self.copy = tempfile.mktemp(suffix=".db")
+        self.copy = temp_path()
         shutil.copyfile(DB_PATH, self.copy)
-        self.addCleanup(
-            lambda: os.path.exists(self.copy) and os.unlink(self.copy))
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.copy)

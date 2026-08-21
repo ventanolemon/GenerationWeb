@@ -52,7 +52,6 @@ import os
 import re
 import shutil
 import sys
-import tempfile
 import warnings
 from collections import Counter, defaultdict
 
@@ -67,13 +66,15 @@ def _collect(variants: int) -> list[dict]:
     """Прогнать все генераторы и собрать записи по каждой спецификации."""
     from core import Repository
     import bootstrap
-    from const import DB_PATH, WORDS_DIR
+    from const import DB_TEMPLATE as DB_PATH, WORDS_DIR
 
     # Работаем с КОПИЕЙ поставочной БД: Repository при открытии заводит
     # служебные таблицы и переводит журнал, то есть МЕНЯЕТ ресурс
     # поставки. Замер не имеет права оставлять следов в том, что уезжает
     # пользователю.
-    copy = tempfile.mktemp(suffix=".db")
+    from core.tmpdb import temp_path
+
+    copy = temp_path()
     shutil.copyfile(DB_PATH, copy)
     repo = Repository(copy)
     registry = bootstrap.build_registry(repo, WORDS_DIR)

@@ -39,6 +39,9 @@ router = APIRouter(tags=["organizations"])
 
 class CreateOrganizationRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
+    #: Поле оставлено НАРОЧНО, хотя значение и отвергается (400): убрать
+    #: его отсюда значило бы, что присланный родитель молча пропадёт —
+    #: pydantic лишние ключи не замечает. Отказ громче тишины.
     parent_id: Optional[int] = Field(default=None)
     owner_login: Optional[str] = Field(default=None)
 

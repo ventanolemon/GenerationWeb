@@ -24,7 +24,6 @@ from __future__ import annotations
 import os
 import sqlite3
 import sys
-import tempfile
 import traceback
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -34,12 +33,11 @@ if _ROOT not in sys.path:
 from core.repository import Repository, ROLES  # noqa: E402
 from core.passwords import hash_password, verify_password, _legacy_sha256  # noqa: E402
 from core.migrations import run_migrations, applied_versions  # noqa: E402
+from core.tmpdb import temp_path  # noqa: E402
 
 
 def _tmp_db() -> str:
-    fd, path = tempfile.mkstemp(suffix=".db")
-    os.close(fd)
-    os.unlink(path)  # Repository создаст заново
+    path = temp_path(suffix=".db")
     return path
 
 

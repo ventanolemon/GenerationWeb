@@ -19,7 +19,6 @@ from __future__ import annotations
 import os
 import sys
 import re
-import tempfile
 import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -40,6 +39,7 @@ from generator_service.routers import answers as answers_router  # noqa: E402
 from generator_service.routers import generate as generate_router  # noqa: E402
 from generator_service.routers import interactive as interactive_router  # noqa: E402
 from generator_service.session_store import SessionStore  # noqa: E402
+from core.tmpdb import temp_path  # noqa: E402
 
 CHECKABLE_PARTITION = 1
 PLAIN_PARTITION = 2
@@ -88,9 +88,7 @@ class _Registry:
 class InteractiveApiTestBase(unittest.TestCase):
 
     def setUp(self):
-        fd, self.db_path = tempfile.mkstemp(suffix=".db")
-        os.close(fd)
-        os.unlink(self.db_path)
+        self.db_path = temp_path(suffix=".db")
         self.repo = Repository(self.db_path)
 
         app = FastAPI()
@@ -501,9 +499,7 @@ class EndToEndOnAGraphTests(unittest.TestCase):
     def setUp(self):
         from exercises.graph.generators import (EXAMPLE_GRAPH,
                                                 GraphConstructorGenerator)
-        fd, self.db_path = tempfile.mkstemp(suffix=".db")
-        os.close(fd)
-        os.unlink(self.db_path)
+        self.db_path = temp_path(suffix=".db")
         self.repo = Repository(self.db_path)
 
         generator = GraphConstructorGenerator(7, "Путь", EXAMPLE_GRAPH)

@@ -19,17 +19,17 @@
 from __future__ import annotations
 
 import shutil
-import tempfile
 import unittest
 
 from core import Repository, guide_store as store
+from core.tmpdb import temp_path
 
 
 def _repo() -> Repository:
-    from const import DB_PATH
+    from const import DB_TEMPLATE as DB_PATH
 
     # Поставочную БД открываем на КОПИИ (docs/handbook/05 §10).
-    copy = tempfile.mktemp(suffix=".db")
+    copy = temp_path()
     shutil.copyfile(DB_PATH, copy)
     return Repository(copy)
 

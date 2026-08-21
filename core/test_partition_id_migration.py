@@ -21,12 +21,12 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
-import tempfile
 import unittest
 
 from core import partition_ids
 from core.migrations import run_migrations
 from core.repository import Repository
+from core.tmpdb import temp_path  # noqa: E402
 
 
 def _database() -> sqlite3.Connection:
@@ -37,9 +37,7 @@ def _database() -> sqlite3.Connection:
     отдельные миграции опираются на базовые таблицы и на голом соединении
     не поднимутся.
     """
-    fd, path = tempfile.mkstemp(suffix=".db")
-    os.close(fd)
-    os.unlink(path)
+    path = temp_path(suffix=".db")
     Repository(path)
     conn = sqlite3.connect(path)
     conn.execute(

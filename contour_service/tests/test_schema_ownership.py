@@ -21,7 +21,6 @@ from __future__ import annotations
 import os
 import sqlite3
 import sys
-import tempfile
 import traceback
 from pathlib import Path
 
@@ -33,6 +32,7 @@ from core.repository import Repository  # noqa: E402
 from core.migrations import run_migrations  # noqa: E402
 from contour_service.db import connect_sqlite, apply_migrations  # noqa: E402
 from contour_service.queue import SqliteJobQueue, QUEUED  # noqa: E402
+from core.tmpdb import temp_path  # noqa: E402
 
 # Колонки канонического DDL (contour_service/migrations/001_contour.sql),
 # которых не было в скелетной копии ядра.
@@ -43,9 +43,7 @@ _CANON_COLS = {
 
 
 def _tmp_db() -> str:
-    fd, path = tempfile.mkstemp(suffix=".db")
-    os.close(fd)
-    os.unlink(path)          # Repository создаст заново
+    path = temp_path(suffix=".db")
     return path
 
 

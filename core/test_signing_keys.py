@@ -24,7 +24,6 @@ import base64
 import json
 import os
 import sys
-import tempfile
 import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -34,6 +33,7 @@ if _MONOREPO not in sys.path:
 
 from core import signing_keys, updates  # noqa: E402
 from core.repository import Repository  # noqa: E402
+from core.tmpdb import temp_path  # noqa: E402
 
 try:
     from cryptography.hazmat.primitives import serialization
@@ -47,9 +47,7 @@ except ImportError:                                  # pragma: no cover
 @unittest.skipUnless(HAS_CRYPTO, "нужна библиотека cryptography")
 class KeyRotationTestBase(unittest.TestCase):
     def setUp(self):
-        fd, self.db_path = tempfile.mkstemp(suffix=".db")
-        os.close(fd)
-        os.unlink(self.db_path)
+        self.db_path = temp_path(suffix=".db")
         self.repo = Repository(self.db_path)
         self.k1, self.pub1 = self._keypair()
         self.k2, self.pub2 = self._keypair()
@@ -110,9 +108,7 @@ class BootstrapTests(KeyRotationTestBase):
             signing_keys.bootstrap(self.repo, self.pub2)
 
     def test_garbage_key_refused(self):
-        fd, path = tempfile.mkstemp(suffix=".db")
-        os.close(fd)
-        os.unlink(path)
+        path = temp_path(suffix=".db")
         repo = Repository(path)
         try:
             with self.assertRaises(signing_keys.KeyRotationError):
@@ -215,9 +211,7 @@ class RotationDoesNotBreakReleasesTests(KeyRotationTestBase):
                          signing_keys.key_fingerprint(self.pub2))
 
     def test_publish_without_any_key_set_is_refused(self):
-        fd, path = tempfile.mkstemp(suffix=".db")
-        os.close(fd)
-        os.unlink(path)
+        path = temp_path(suffix=".db")
         repo = Repository(path)
         try:
             release = {"version": "1.0.0", "channel": "stable",
@@ -238,9 +232,7 @@ class BootstrapFromEnvTests(KeyRotationTestBase):
     def test_legacy_env_key_seeds_the_first_set(self):
         # Совместимость: до ротации ключ жил только в RELEASE_PUBLIC_KEY, и
         # сервер обязан продолжать работать с тем же значением.
-        fd, path = tempfile.mkstemp(suffix=".db")
-        os.close(fd)
-        os.unlink(path)
+        path = temp_path(suffix=".db")
         repo = Repository(path)
         try:
             self.assertIsNone(signing_keys.current_keyset(repo))

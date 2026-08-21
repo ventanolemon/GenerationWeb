@@ -140,8 +140,10 @@ def main() -> int:
     if args.db:
         db_path = pathlib.Path(args.db)
     else:
-        from const import DB_PATH
-        db_path = DB_PATH
+        from const import DB_PATH, ensure_data_dir
+        # Заводить учётные записи имеет смысл в РАБОЧЕЙ базе, а не в
+        # шаблоне поставки: шаблон раздаётся всем, и пароль из него — тоже.
+        db_path = ensure_data_dir()
 
     repo = Repository(db_path)
     result = seed(repo, dev_password=args.dev_password,

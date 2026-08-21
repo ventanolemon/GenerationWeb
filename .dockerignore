@@ -1,0 +1,33 @@
+# Что НЕ уезжает в контекст сборки.
+#
+# Контекст — корень монорепо целиком (Python-образу нужны `core/`,
+# `exercises/`, `resources/`, `docs/guide`, клиенту — `frontend/`), и без
+# этого списка в демона поехали бы сотни мегабайт `node_modules` и `.git`
+# на каждую сборку.
+
+.git/
+.github/
+**/__pycache__/
+**/*.py[cod]
+.venv/
+venv/
+
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+**/*.tsbuildinfo
+
+web_layer/bin/
+web_layer/obj/
+
+# Данные ОДНОЙ установки. В образ они не едут никогда: том наполняется из
+# шаблона поставки при первом запуске.
+data/
+*.db-wal
+*.db-shm
+*.db-journal
+
+.env
+.env.local
+.claude/
+.DS_Store

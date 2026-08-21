@@ -12,7 +12,6 @@ API-тест полного цикла через FastAPI TestClient (реаль
 from __future__ import annotations
 import json
 import os
-import tempfile
 import unittest
 
 from .helpers import make_env  # noqa: F401  (sys.path монорепо)
@@ -23,6 +22,7 @@ from contour_service import main as contour_main
 from contour_service.providers import MockProvider, TASK_CRITIC, TASK_GENERATE
 from contour_service.providers.mock import graph_response
 from core import auth_sessions
+from core.tmpdb import temp_path
 from contour_service.worker import process_one
 from exercises.graph_examples import EXAMPLES
 
@@ -46,9 +46,8 @@ class IdentityIsVerifiedTests(unittest.TestCase):
     """
 
     def setUp(self):
-        self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
-        self._tmp.close()
-        os.environ["CONTOUR_DB_PATH"] = self._tmp.name
+        self._db = temp_path()
+        os.environ["CONTOUR_DB_PATH"] = self._db
         os.environ["CONTOUR_WORKER_DISABLED"] = "1"
         os.environ["CONTOUR_PROVIDER"] = "mock"
         os.environ.pop("GEN_TRUST_IDENTITY_HEADERS", None)
@@ -59,7 +58,6 @@ class IdentityIsVerifiedTests(unittest.TestCase):
 
     def tearDown(self):
         self.client.__exit__(None, None, None)
-        os.unlink(self._tmp.name)
 
     def test_claimed_role_is_refused(self):
         r = self.client.get("/contour/jobs",
@@ -80,9 +78,8 @@ class ApiFullCycleTests(unittest.TestCase):
     """S6-флоу поверх реального приложения (lifespan, изолированная БД)."""
 
     def setUp(self):
-        self._tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
-        self._tmp.close()
-        os.environ["CONTOUR_DB_PATH"] = self._tmp.name
+        self._db = temp_path()
+        os.environ["CONTOUR_DB_PATH"] = self._db
         os.environ["CONTOUR_WORKER_DISABLED"] = "1"
         os.environ["CONTOUR_PROVIDER"] = "mock"
         self.client = TestClient(contour_main.app)
@@ -114,7 +111,6 @@ class ApiFullCycleTests(unittest.TestCase):
         for var in ("CONTOUR_DB_PATH", "CONTOUR_WORKER_DISABLED",
                     "CONTOUR_PROVIDER"):
             os.environ.pop(var, None)
-        os.unlink(self._tmp.name)
 
     def _run_worker(self):
         app = contour_main.app

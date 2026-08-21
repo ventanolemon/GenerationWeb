@@ -34,7 +34,7 @@ if str(_ROOT) not in sys.path:
 
 from fastapi import FastAPI
 
-from const import DB_PATH
+from const import DB_PATH, ensure_data_dir
 from core import Repository
 
 from .config import ContourConfig
@@ -72,6 +72,10 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing contour service…")
     cfg = ContourConfig.from_env()
 
+    # Та же рабочая база, что у generator_service, и создаётся она так же:
+    # копированием шаблона поставки при первом запуске. Порядок старта
+    # служб при этом не важен — вызов идемпотентен.
+    ensure_data_dir()
     if cfg.pg_dsn:
         queue: "SqliteJobQueue | PostgresJobQueue" = PostgresJobQueue(cfg.pg_dsn)
         conn = queue.conn

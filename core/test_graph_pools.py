@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
 import unittest
 
 from core.graph.errors import GraphError, GraphValidationError
@@ -27,6 +26,7 @@ from core.graph.nodes import DEFAULT_REGISTRY
 from core.graph.nodes.pools import parse_columns, parse_rows
 from core.graph.spec import GraphSpec
 from core.interactive import session_from_task
+from core.tmpdb import temp_path  # noqa: E402
 
 
 РУССКИЙ = ["Пр_баутка|Прибаутка", "Беспр_кословный|Беспрекословный",
@@ -92,8 +92,7 @@ class PoolSourceTests(unittest.TestCase):
             DEFAULT_REGISTRY.create("pool", "п", {"columns": ["a"]})
 
     def test_file_with_lines(self):
-        fd, path = tempfile.mkstemp(suffix=".txt")
-        os.close(fd)
+        path = temp_path(suffix=".txt")
         with open(path, "w", encoding="utf-8") as fh:
             fh.write("а|раз\nб|два\n")
         self.addCleanup(lambda: os.unlink(path))
@@ -105,8 +104,7 @@ class PoolSourceTests(unittest.TestCase):
         Словари английского уже лежат объектом, и переделывать их ради
         пула незачем — словарь это таблица из двух столбцов.
         """
-        fd, path = tempfile.mkstemp(suffix=".json")
-        os.close(fd)
+        path = temp_path(suffix=".json")
         with open(path, "w", encoding="utf-8") as fh:
             json.dump({"chip": "микросхема", "silicon": "кремний"}, fh,
                       ensure_ascii=False)

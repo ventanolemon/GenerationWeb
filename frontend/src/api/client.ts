@@ -437,15 +437,15 @@ export const api = {
     });
   },
 
-  adminCreateOrganization(
-    id: Identity,
-    name: string,
-    parentId: number | null = null,
-  ): Promise<Organization> {
+  // Родителя здесь нет и параметра под него тоже: сервер вложенные
+  // организации отвергает (400), пока не реализовано наследование прав и
+  // содержимого. Держать параметр, который гарантированно приведёт к
+  // отказу, — это предложить вызывающему то, чего нет.
+  adminCreateOrganization(id: Identity, name: string): Promise<Organization> {
     return request("/api/admin/organizations", {
       method: "POST",
       headers: idHeaders(id),
-      body: JSON.stringify({ name, parent_id: parentId }),
+      body: JSON.stringify({ name }),
     });
   },
 

@@ -31,7 +31,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from bootstrap import build_registry, sync_database
-from const import DB_PATH, WORDS_DIR
+from const import DB_PATH, WORDS_DIR, ensure_data_dir
 from core import (InteractiveTask, Repository, WordStatsStore,
                   session_from_task)
 from core import organizations_api
@@ -71,6 +71,11 @@ logger = logging.getLogger("generator_service")
 async def lifespan(app: FastAPI):
     """Готовим Repository и Registry при старте — один раз на жизнь процесса."""
     logger.info("Initializing generator service…")
+    # Рабочая база живёт ОТДЕЛЬНО от поставки и создаётся при первом
+    # запуске копированием шаблона. Без этого служба писала бы прямо в
+    # `resources/` — то есть в файл, который раздаётся пользователям.
+    ensure_data_dir()
+    logger.info("Database: %s", DB_PATH)
     repo = Repository(DB_PATH)
     sync_database(repo, WORDS_DIR)
     # Организация по умолчанию и администратор развёртывания. Миграция 014
