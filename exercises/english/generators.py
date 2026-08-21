@@ -1,9 +1,15 @@
 """
 Адаптеры модуля английского языка.
 
-Два типа генераторов:
-  WordsTrainerGenerator — INTERACTIVE-тренажёр перевода слов.
-  SentenceFillGenerator — STATIC-задание «вставь пропущенные слова».
+Генераторы модуля:
+  WordsTrainerGenerator      — INTERACTIVE-тренажёр перевода слов.
+  SentenceFillGenerator      — STATIC-задание «вставь пропущенные слова».
+  TranscriptionChoiceGenerator — STATIC-выбор транскрипции термина.
+  PronunciationGenerator     — CHECKABLE «произнесите вслух», ответ голосом.
+
+Три последних работают на ОДНОМ материале — файле словаря — и стоят
+рядом, а не вместо друг друга: слово надо уметь написать, узнать по
+записи звучания и произнести, и это три разных умения.
 
 Тип определяется по содержимому JSON-файла:
   sentences — list с ключом "template" в первом элементе.
@@ -29,13 +35,16 @@ import time
 from pathlib import Path
 from typing import Callable, List, Optional
 
-from core import word_tolerance
+from core import pronunciation, word_tolerance
 from core import (
     TaskGenerator, InteractiveTask, TurnResult, Capability,
     Block, TextBlock, StaticTask, STATIC_DEFAULT,
-    FillInTheBlankBlock, WordCorrectionBlock,
+    AudioBlock, FillInTheBlankBlock, TranscriptionChoiceBlock,
+    WordCorrectionBlock,
     WordStat, WordStatsStore,
 )
+from core.answers import CheckMode, VoiceSpec
+from core.generator import CHECKABLE_DEFAULT
 
 
 # Тип источника текущего user_id. Возвращает строку логина для авторизованного
@@ -149,6 +158,7 @@ class WordsSession(InteractiveTask):
         stats_store: WordStatsStore | None = None,
         user_id: str | None = None,
         priority_recent_wrong: float = DEFAULT_PRIORITY_RECENT_WRONG,
+        inline_transcriptions: dict[str, str] | None = None,
     ):
         # _remaining: {english: russian}
         self._remaining: dict[str, str] = dict(words_dict)
@@ -157,6 +167,11 @@ class WordsSession(InteractiveTask):
         # один и тот же ответ принимался бы или отвергался в зависимости
         # от того, когда его дали.
         self._vocabulary_words: tuple[str, ...] = tuple(words_dict)
+        # Транскрипции, выверенные автором В САМОМ словаре. Общая таблица
+        # поставки накладывается ниже, в core.pronunciation: правило
+        # «своё важнее общего» живёт там, а не размазано по вызывающим.
+        self._inline_transcriptions: dict[str, str] = dict(
+            inline_transcriptions or {})
         self._total: int = len(self._remaining)
         self._current: str | None = None
 
@@ -382,8 +397,17 @@ class WordsSession(InteractiveTask):
                 expected=expected,
                 correct=ok,
                 tolerant_accept=tolerant_accept,
+                transcription=pronunciation.transcription_of(
+                    expected, self._inline_transcriptions),
             )
         ]
+
+        # Кнопка «прослушать» — в РАЗБОРЕ, а не в задании: озвученное
+        # английское слово было бы подсказкой к переводу, который и
+        # спрашивают. Нет звука для слова — нет и кнопки.
+        sound = pronunciation.audio_of(expected)
+        if sound:
+            feedback.append(AudioBlock(sound, label=f"Прослушать «{expected}»"))
 
         # Обновляем межсессионную статистику (и снимок в памяти, и store).
         self._record_stat(expected, ok)
@@ -459,6 +483,10 @@ class WordsTrainerGenerator(TaskGenerator):
         if self._cache is None:
             data = _read_json_lenient(self.words_path)
             self._cache = self._flatten_words(data)
+            # Транскрипции, прописанные автором в самом файле. Общая
+            # таблица поставки накладывается в core.pronunciation.
+            self._inline_transcriptions = pronunciation.inline_transcriptions(
+                data)
             # Если имя генератора не задано явно — берём заголовок из JSON
             extracted = self._extract_title(data)
             if extracted and self.name.startswith("Английский:"):
@@ -551,6 +579,7 @@ class WordsTrainerGenerator(TaskGenerator):
             stats_store=self.stats_store,
             user_id=user_id,
             priority_recent_wrong=self.priority_recent_wrong,
+            inline_transcriptions=getattr(self, "_inline_transcriptions", None),
         )
 
 
@@ -607,6 +636,220 @@ class SentenceFillGenerator(TaskGenerator):
         ]
         return StaticTask(
             statement=statement, answer=answer,
+            meta={"partition_id": self.partition_id},
+        )
+
+
+# ---------- TranscriptionChoiceGenerator (STATIC, выбор варианта) ----------
+
+class TranscriptionChoiceGenerator(TaskGenerator):
+    """
+    Задание: выбрать правильную транскрипцию термина из словаря.
+
+    Зачем отдельное упражнение. Словарный диктант учит писать слово; как
+    оно звучит, из английской орфографии не следует. Это упражнение
+    тренирует вторую связь — «как выглядит ↔ как звучит», — и делает это
+    выбором, а не вводом: набрать IPA с клавиатуры нельзя.
+
+    Обычный STATIC-генератор, а не что-то особое: значит, попадает в
+    табличный вид, выгружается в docx (с пометкой правильного варианта) и
+    включается в группу или тест наравне с любым другим заданием.
+
+    Отвлекающие варианты берутся из общего пула транскрипций и
+    отфильтровываются по близкой ДЛИНЕ строки. Без фильтра правильный
+    ответ угадывался бы по виду: короткое слово с длинной транскрипцией
+    среди трёх коротких видно, не читая.
+
+    В словаре нет ни одного термина с транскрипцией — задание честно
+    говорит об этом, а не падает: словарь без транскрипций — норма.
+    """
+
+    capabilities = STATIC_DEFAULT
+
+    #: Всего вариантов на экране, включая правильный.
+    OPTIONS = 4
+    #: Насколько длина отвлекающего может отличаться от правильного.
+    LENGTH_TOLERANCE = 0.35
+
+    def __init__(self, name: str, words_path, partition_id: int | None = None):
+        self.name = name
+        self.partition_id = partition_id
+        self.words_path = Path(words_path)
+        self._terms: list[str] | None = None
+        self._inline: dict[str, str] = {}
+
+    def _load(self) -> list[str]:
+        """Термины этого словаря, у которых транскрипция есть."""
+        if self._terms is not None:
+            return self._terms
+        data = _read_json_lenient(self.words_path)
+        words = WordsTrainerGenerator._flatten_words(data)
+        self._inline = pronunciation.inline_transcriptions(data)
+        self._terms = [
+            term for term in words
+            if pronunciation.transcription_of(term, self._inline)
+        ]
+        return self._terms
+
+    def _distractors(self, correct: str, exclude: str, count: int) -> list[str]:
+        """Ложные варианты: сперва похожие по длине, потом любые."""
+        target = len(correct)
+        low, high = target * (1 - self.LENGTH_TOLERANCE), \
+            target * (1 + self.LENGTH_TOLERANCE)
+        seen = {correct}
+        similar: list[str] = []
+        rest: list[str] = []
+        for term, ipa in pronunciation.transcriptions().items():
+            if term == exclude or ipa in seen:
+                continue
+            seen.add(ipa)
+            (similar if low <= len(ipa) <= high else rest).append(ipa)
+        random.shuffle(similar)
+        chosen = similar[:count]
+        if len(chosen) < count:
+            random.shuffle(rest)
+            chosen.extend(rest[:count - len(chosen)])
+        return chosen[:count]
+
+    def generate(self) -> StaticTask:
+        terms = self._load()
+        if not terms:
+            return StaticTask(
+                statement=[TextBlock(
+                    "В этом словаре нет терминов с известной транскрипцией. "
+                    "Соберите их: python tools/generate_transcriptions.py")],
+                answer=[],
+                meta={"partition_id": self.partition_id},
+            )
+        term = random.choice(terms)
+        correct = pronunciation.transcription_of(term, self._inline) or ""
+        block = TranscriptionChoiceBlock(
+            term=term, correct=correct,
+            distractors=self._distractors(correct, term, self.OPTIONS - 1),
+        )
+        answer: list[Block] = [TextBlock(f"{term} — {correct}")]
+        sound = pronunciation.audio_of(term)
+        if sound:
+            answer.append(AudioBlock(sound, label=f"Прослушать «{term}»"))
+        return StaticTask(
+            statement=[block],
+            answer=answer,
+            meta={"partition_id": self.partition_id},
+        )
+
+
+# ---------- PronunciationGenerator (CHECKABLE, ответ голосом) ----------
+
+class PronunciationGenerator(TaskGenerator):
+    """
+    Задание: произнести слово вслух. Проверяет `core.pronunciation_match`.
+
+    Третье упражнение на том же словаре, рядом с диктантом и разбором
+    транскрипции, — и оно закрывает связь, которой у первых двух не было.
+    Диктант учит писать, разбор транскрипции — узнавать запись звучания;
+    ни одно не требует ОТКРЫТЬ РОТ. Слово, выученное глазами, в речи не
+    воспроизводится.
+
+    Почему CHECKABLE, а не INTERACTIVE
+    ----------------------------------
+    У задания есть обе формы, и обе осмысленны. «Смотреть» — карточка:
+    слово, транскрипция, кнопка эталона; её преподаватель выгружает в
+    .docx как список для чтения вслух. «Решать» — запись и проверка;
+    сессию над карточкой собирает общая машинка (`SolvingGenerator`), а не
+    собственный цикл. Объявить INTERACTIVE значило бы отнять у
+    преподавателя печатную форму ради того, что и так получается даром.
+
+    Только слова со звуком
+    ----------------------
+    В окрестность берутся ТОЛЬКО термины, у которых есть эталон: правило
+    приёма сравнивает запись с эталонами, и слово без эталона не участвует
+    ни как цель, ни как сосед. Словарь, где эталонов нет вовсе, честно
+    говорит об этом заданием, а не пустым экраном.
+
+    Строгий режим по умолчанию
+    --------------------------
+    Единственная спецификация, у которой умолчание не мягкое. Причина в
+    том, чем здесь оборачивается мягкость: приняв первое место без
+    отрыва, задание сказало бы «верно» там, где выбор между двумя словами
+    случаен. Для остальных видов ответа дешевле ошибка мягкости — её
+    поправит преподаватель; здесь дешевле отказ — его студент видит сразу
+    и повторяет.
+    """
+
+    capabilities = CHECKABLE_DEFAULT
+
+    #: Сколько соседей брать в окрестность.
+    #:
+    #: Не весь словарь: правило требует посчитать DTW до КАЖДОГО эталона,
+    #: и на словаре в двести слов это двести выравниваний на один ответ.
+    #: Не два-три: при малой окрестности случайное попадание вероятно
+    #: (`pronunciation_match`, «ограничение, которое надо знать»).
+    NEIGHBOURS = 12
+
+    def __init__(self, name: str, words_path, partition_id: int | None = None):
+        self.name = name
+        self.partition_id = partition_id
+        self.words_path = Path(words_path)
+        self._terms: list[str] | None = None
+        self._inline: dict[str, str] = {}
+
+    def _load(self) -> list[str]:
+        """Термины этого словаря, у которых есть эталон произношения."""
+        if self._terms is not None:
+            return self._terms
+        data = _read_json_lenient(self.words_path)
+        words = WordsTrainerGenerator._flatten_words(data)
+        self._inline = pronunciation.inline_transcriptions(data)
+        self._terms = [term for term in words if pronunciation.audio_of(term)]
+        return self._terms
+
+    def _neighbourhood(self, term: str, terms: list[str]) -> list[str]:
+        """
+        Окрестность: цель плюс соседи по словарю.
+
+        Соседи выбираются случайно, а не «самые похожие»: подбор похожих
+        сделал бы задание тем сложнее, чем лучше словарь покрыт звуком, и
+        сложность зависела бы от состава поставки, а не от замысла автора.
+        """
+        others = [t for t in terms if t != term]
+        random.shuffle(others)
+        return [term, *others[:max(0, self.NEIGHBOURS - 1)]]
+
+    def generate(self) -> StaticTask:
+        terms = self._load()
+        if not terms:
+            return StaticTask(
+                statement=[TextBlock(
+                    "В этом словаре нет терминов с готовым произношением. "
+                    "Соберите звук: python tools/generate_audio.py")],
+                answer=[],
+                meta={"partition_id": self.partition_id},
+            )
+
+        term = random.choice(terms)
+        ipa = pronunciation.transcription_of(term, self._inline) or ""
+        statement: list[Block] = [
+            TextBlock("Произнесите слово вслух:"),
+            TextBlock(f"{term} {ipa}".strip()),
+        ]
+        # Эталон — в УСЛОВИИ, а не в разборе: здесь спрашивают
+        # произношение, и услышать образец до попытки это и есть
+        # упражнение. В словарном диктанте та же кнопка стоит в разборе,
+        # потому что там она выдала бы ответ.
+        sound = pronunciation.audio_of(term)
+        if sound:
+            statement.append(AudioBlock(sound, label=f"Эталон «{term}»"))
+
+        spec = VoiceSpec(
+            term=term,
+            vocabulary=tuple(self._neighbourhood(term, terms)),
+            transcription=ipa,
+            mode=CheckMode.STRICT,
+        )
+        return StaticTask(
+            statement=statement,
+            answer=spec.display_blocks(),
+            answer_spec=spec,
             meta={"partition_id": self.partition_id},
         )
 

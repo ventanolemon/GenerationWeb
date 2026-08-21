@@ -18,6 +18,7 @@ matplotlib==3.11.0
 pillow==12.3.0
 sympy==1.14.0
 python-docx==1.2.0               # generator_service/routers/export.py
+numpy>=1.24.0                    # core/pronunciation_match.py: MFCC и DTW
 
 # ── Опционально ──────────────────────────────────────────────────────────────
 # Боевой LLM-провайдер контура (без него CONTOUR_PROVIDER=mock — так гоняются

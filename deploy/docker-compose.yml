@@ -1,0 +1,117 @@
+# Пример развёртывания: четыре контейнера, одна дверь наружу.
+#
+#     cd deploy
+#     cp .env.example .env      # и ОБЯЗАТЕЛЬНО отредактировать
+#     docker compose up --build
+#
+# Открывается на http://localhost:${PUBLIC_PORT:-8080}.
+#
+# Контекст сборки — корень монорепо (`..`), потому что Python-образ берёт
+# `core/`, `exercises/`, `resources/` и `docs/guide`, а клиент — `frontend/`
+# и ту же базу знаний.
+
+name: generation
+
+services:
+
+  # ── Ядро: генерация, база знаний, учётные записи, синхронизация ─────────
+  generator:
+    build:
+      context: ..
+      dockerfile: deploy/python.Dockerfile
+    image: generation/python
+    restart: unless-stopped
+    environment:
+      GEN_DATA_DIR: /data
+      # Переходный режим доверия заголовкам личности. Выключен: роль в них
+      # не заверена. Включать — только вместе с правкой nginx (см. там).
+      GEN_TRUST_IDENTITY_HEADERS: "${GEN_TRUST_IDENTITY_HEADERS:-0}"
+    volumes:
+      - generation-data:/data
+    # Портов НАРУЖУ нет намеренно: служба принимает личность заголовками от
+    # web_layer, и прямой доступ из браузера обессмыслил бы роли.
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health').read()"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 120s
+
+  # ── Контур: очередь заданий к нейросети, петля S0–S6 ────────────────────
+  contour:
+    build:
+      context: ..
+      dockerfile: deploy/python.Dockerfile
+    image: generation/python
+    restart: unless-stopped
+    command:
+      - uvicorn
+      - contour_service.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8001"
+    environment:
+      GEN_DATA_DIR: /data
+      # mock — предсказуемый провайдер без сети и без денег; на нём гоняются
+      # тесты и живёт демо. anthropic требует ANTHROPIC_API_KEY.
+      CONTOUR_PROVIDER: "${CONTOUR_PROVIDER:-mock}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      # Очередь на той же SQLite, что и всё остальное. Для нагрузки выше
+      # демонстрационной — Postgres, см. README §«Куда это не годится».
+      CONTOUR_PG_DSN: "${CONTOUR_PG_DSN:-}"
+    volumes:
+      - generation-data:/data
+    expose:
+      - "8001"
+    depends_on:
+      generator:
+        condition: service_healthy
+
+  # ── Web Layer: единственный, кто разбирает сессию и назначает роль ──────
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/web_layer.Dockerfile
+    image: generation/web
+    restart: unless-stopped
+    environment:
+      Generator__BaseUrl: http://generator:8000
+      Generator__TimeoutSeconds: "60"
+      Contour__BaseUrl: http://contour:8001
+      Contour__TimeoutSeconds: "300"
+      # Клиент приходит с того же origin, что и API, — их сводит nginx,
+      # и межсайтовых запросов в этой схеме нет вовсе. Origin всё равно
+      # указан явно: иначе остался бы дефолт из `appsettings.json` — Vite
+      # на localhost:5173, то есть дев-машина в списке разрешённых.
+      Cors__AllowedOrigins__0: "${PUBLIC_ORIGIN:-http://localhost:8080}"
+    expose:
+      - "8080"
+    depends_on:
+      generator:
+        condition: service_healthy
+
+  # ── nginx: статика клиента и единственный путь к API ────────────────────
+  nginx:
+    build:
+      context: ..
+      dockerfile: deploy/frontend.Dockerfile
+    image: generation/frontend
+    restart: unless-stopped
+    ports:
+      - "${PUBLIC_PORT:-8080}:80"
+    depends_on:
+      - web
+
+volumes:
+  # Рабочая база. Живёт ОТДЕЛЬНО от образа: слой образа доступен только на
+  # чтение, а `resources/users_database.db` внутри него — шаблон, с которого
+  # том наполняется при первом запуске (`const.ensure_data_dir`).
+  #
+  # Том переживает `docker compose down`. Снести данные целиком —
+  # `docker compose down --volumes`, и это единственный способ: обновление
+  # образа накопленное не трогает.
+  generation-data:

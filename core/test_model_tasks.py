@@ -23,7 +23,6 @@ import os
 import shutil
 import sqlite3
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 
@@ -37,6 +36,7 @@ from core import Repository  # noqa: E402
 from core.graph.executor import GraphExecutor  # noqa: E402
 from core.graph.spec import GraphSpec  # noqa: E402
 from core.interactive import session_from_task  # noqa: E402
+from core.tmpdb import temp_path  # noqa: E402
 from exercises.model_tasks import TASKS  # noqa: E402
 
 WORDS = Path(_ROOT) / "resources" / "words"
@@ -165,7 +165,7 @@ class BootstrapTests(unittest.TestCase):
     """Разделы заводятся при старте и переживают повторный запуск."""
 
     def setUp(self):
-        self.db = tempfile.mktemp(suffix=".db")
+        self.db = temp_path()
         # Копия ПОСТАВЛЯЕМОЙ базы, а не пустой файл. Во-первых, схема по
         # разные стороны синка заводится по-разному (сервер создаёт
         # таблицы сам, десктоп полагается на этот файл), и на пустом
@@ -176,9 +176,6 @@ class BootstrapTests(unittest.TestCase):
         self.repo = Repository(self.db)
         bootstrap.sync_database(self.repo, WORDS)
 
-    def tearDown(self):
-        if os.path.exists(self.db):
-            os.unlink(self.db)
 
     def _partitions(self) -> dict[int, object]:
         out = {}

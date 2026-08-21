@@ -21,7 +21,6 @@ from __future__ import annotations
 import os
 import sqlite3
 import sys
-import tempfile
 import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -34,6 +33,7 @@ from core.blocks import TextBlock  # noqa: E402
 from core.repository import Repository  # noqa: E402
 from exercises.english.generators import WordsSession  # noqa: E402
 from generator_service.session_store import SessionStore  # noqa: E402
+from core.tmpdb import temp_path  # noqa: E402
 
 WORDS = {"cat": "кот", "dog": "собака", "fox": "лиса", "owl": "сова"}
 
@@ -53,9 +53,7 @@ class _OpaqueTask(InteractiveTask):
 
 class PersistenceTestBase(unittest.TestCase):
     def setUp(self):
-        fd, self.db_path = tempfile.mkstemp(suffix=".db")
-        os.close(fd)
-        os.unlink(self.db_path)
+        self.db_path = temp_path(suffix=".db")
         self.repo = Repository(self.db_path)
         self.built = 0
 

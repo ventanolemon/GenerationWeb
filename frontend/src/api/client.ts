@@ -36,6 +36,7 @@ import type {
   UpsertPartitionRequest,
   UserInfo,
   UserStats,
+  GuidePage,
 } from "./types";
 
 // Идентичность для RBAC-эндпоинтов (/analytics, /admin, /assignments,
@@ -336,6 +337,35 @@ export const api = {
 
   // ─── Администрирование (RBAC — admin) ────────────────────────────────────
 
+  // ─── База знаний ────────────────────────────────────────────────────
+  // Правки НАКЛАДЫВАЮТСЯ поверх вкомпилированного content.json, а не
+  // заменяют его. Отсюда и обработка отказа у вызывающего: служба
+  // недоступна — читатель видит поставочную версию, а не пустой экран.
+  // Это то самое свойство, ради которого база знаний вкомпилирована.
+
+  guide(id?: Identity): Promise<{ pages: GuidePage[]; can_edit: boolean }> {
+    return request("/api/guide", id ? { headers: idHeaders(id) } : undefined);
+  },
+
+  saveGuidePage(
+    id: Identity,
+    pageId: string,
+    body: { title: string; body: string },
+  ): Promise<GuidePage> {
+    return request(`/api/guide/${encodeURIComponent(pageId)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...idHeaders(id) },
+      body: JSON.stringify(body),
+    });
+  },
+
+  resetGuidePage(id: Identity, pageId: string): Promise<{ reset: boolean }> {
+    return request(`/api/guide/${encodeURIComponent(pageId)}`, {
+      method: "DELETE",
+      headers: idHeaders(id),
+    });
+  },
+
   adminListUsers(id: Identity): Promise<{ users: AdminUser[] }> {
     return request<{ users: AdminUser[] }>("/api/admin/users", {
       headers: idHeaders(id),
@@ -407,15 +437,15 @@ export const api = {
     });
   },
 
-  adminCreateOrganization(
-    id: Identity,
-    name: string,
-    parentId: number | null = null,
-  ): Promise<Organization> {
+  // Родителя здесь нет и параметра под него тоже: сервер вложенные
+  // организации отвергает (400), пока не реализовано наследование прав и
+  // содержимого. Держать параметр, который гарантированно приведёт к
+  // отказу, — это предложить вызывающему то, чего нет.
+  adminCreateOrganization(id: Identity, name: string): Promise<Organization> {
     return request("/api/admin/organizations", {
       method: "POST",
       headers: idHeaders(id),
-      body: JSON.stringify({ name, parent_id: parentId }),
+      body: JSON.stringify({ name }),
     });
   },
 

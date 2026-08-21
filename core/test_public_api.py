@@ -22,7 +22,6 @@ from __future__ import annotations
 import os
 import sqlite3
 import sys
-import tempfile
 import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -43,6 +42,7 @@ from generator_service import errors  # noqa: E402
 from generator_service.routers import admin_clients as admin_router  # noqa: E402
 from generator_service.routers import public_v1  # noqa: E402
 from generator_service.session_store import SessionStore  # noqa: E402
+from core.tmpdb import temp_path  # noqa: E402
 
 
 class _StaticGen:
@@ -75,9 +75,7 @@ class _FakeRegistry:
 
 class PublicApiTestBase(unittest.TestCase):
     def setUp(self):
-        fd, self.db_path = tempfile.mkstemp(suffix=".db")
-        os.close(fd)
-        os.unlink(self.db_path)
+        self.db_path = temp_path(suffix=".db")
         self.repo = Repository(self.db_path)
         self.repo.create_user("root", "p", "Админ", "", role="admin")
         # Тот же шаг, что делает сервис при старте: развёртыванию нужен
@@ -274,9 +272,7 @@ class PublicIdTests(PublicApiTestBase):
 
     def test_migration_backfills_rows_that_predate_it(self):
         """Апгрейд боевой БД: строки, лежавшие там до миграции, получают id."""
-        fd, path = tempfile.mkstemp(suffix=".db")
-        os.close(fd)
-        os.unlink(path)
+        path = temp_path(suffix=".db")
         try:
             with sqlite3.connect(path) as conn:
                 conn.executescript(

@@ -31,6 +31,7 @@ from core.blocks import TextBlock
 from core.graph.executor import GraphExecutor
 from core.graph.spec import GraphSpec
 from core.interactive import Question, option_blocks, session_from_task
+from core.tmpdb import temp_path  # noqa: E402
 
 
 WORDS = {"vacuum tube": "электронная лампа",
@@ -303,8 +304,7 @@ def _sentences_file() -> str:
     import json
     import os
     import tempfile
-    fd, path = tempfile.mkstemp(suffix=".json")
-    os.close(fd)
+    path = temp_path(suffix=".json")
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(SENTENCES, fh, ensure_ascii=False)
     return path

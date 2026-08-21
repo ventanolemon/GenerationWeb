@@ -7,18 +7,16 @@ admin-CRUD с guardrail'ами, teacher read-view, HTTP-роутер.
 
 from __future__ import annotations
 import os
-import tempfile
 import unittest
 
 from core import groups_api
 from core import auth_sessions  # noqa: E402
 from core.repository import Repository
+from core.tmpdb import temp_path  # noqa: E402
 
 
 def _tmp_db() -> str:
-    fd, path = tempfile.mkstemp(suffix=".db")
-    os.close(fd)
-    os.unlink(path)
+    path = temp_path(suffix=".db")
     return path
 
 

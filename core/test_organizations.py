@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import os
 import sys
-import tempfile
 import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -31,6 +30,7 @@ from core.repository import Repository  # noqa: E402
 from generator_service import errors  # noqa: E402
 from generator_service.routers import organizations as orgs_router  # noqa: E402
 from generator_service.routers import packages as packages_router  # noqa: E402
+from core.tmpdb import temp_path  # noqa: E402
 
 
 class OrgTestBase(unittest.TestCase):
@@ -44,9 +44,7 @@ class OrgTestBase(unittest.TestCase):
     """
 
     def setUp(self):
-        fd, self.db_path = tempfile.mkstemp(suffix=".db")
-        os.close(fd)
-        os.unlink(self.db_path)
+        self.db_path = temp_path(suffix=".db")
         self.repo = Repository(self.db_path)
 
         self.repo.create_user("root", "p", "Админ", "", role="admin")
@@ -101,9 +99,7 @@ class MigrationPreservesBehaviourTests(unittest.TestCase):
         остаться и админом своей организации, и администратором
         развёртывания.
         """
-        fd, path = tempfile.mkstemp(suffix=".db")
-        os.close(fd)
-        os.unlink(path)
+        path = temp_path(suffix=".db")
         try:
             repo = Repository(path)
             repo.create_user("root", "p", "Админ", "", role="admin")
@@ -124,9 +120,7 @@ class MigrationPreservesBehaviourTests(unittest.TestCase):
 
     def test_new_user_lands_in_the_default_organization(self):
         # Иначе зарегистрироваться можно, а пользоваться нельзя.
-        fd, path = tempfile.mkstemp(suffix=".db")
-        os.close(fd)
-        os.unlink(path)
+        path = temp_path(suffix=".db")
         try:
             repo = Repository(path)
             repo.create_user("nova", "p", "Новенький", "")
@@ -169,6 +163,60 @@ class TwoKindsOfAdminTests(OrgTestBase):
         r = self.client.get(f"/admin/organizations/{self.chem}",
                             headers=self._h("clara", "teacher"))
         self.assertEqual(r.status_code, 403)
+
+
+# ---------- Вложенность: формы нет, пока нет смысла ----------
+
+class NestingIsRefusedTests(OrgTestBase):
+    """
+    Колонка `organizations.parent_id` в схеме есть (миграция 014 §8.3), а
+    наследования нет: выдача с уровня университета не каскадирует на
+    кафедры, руководитель института не видит их содержимое. Это
+    продуктовые решения, и они не приняты.
+
+    Пока они не приняты, значение принимать НЕЛЬЗЯ. Записанный родитель,
+    на которого никто не смотрит, — та самая «форма без семантики», про
+    которую в `models_on_july.md` сказано, что она хуже отсутствия:
+    администратор построил бы структуру университета, увидел бы её в
+    ответе и узнал бы правду не здесь, а когда кафедра не увидит курс.
+
+    Проверяется поэтому не «родитель игнорируется», а «в ответ приходит
+    отказ, и он объясняет причину».
+    """
+
+    def test_a_parent_is_refused(self):
+        r = self.client.post(
+            "/admin/organizations",
+            json={"name": "Кафедра", "parent_id": self.phys},
+            headers=self._h("root", "admin"))
+        self.assertEqual(r.status_code, 400, r.text)
+
+    def test_the_refusal_says_why(self):
+        r = self.client.post(
+            "/admin/organizations",
+            json={"name": "Кафедра", "parent_id": self.phys},
+            headers=self._h("root", "admin"))
+        detail = r.json()["detail"].lower()
+        self.assertIn("наследование", detail)
+        self.assertNotIn("traceback", detail)
+
+    def test_nothing_is_created_on_refusal(self):
+        """Отказ до записи: половины организации в базе остаться не должно."""
+        before = len(organizations_api.list_organizations(
+            self.repo)["organizations"])
+        self.client.post("/admin/organizations",
+                         json={"name": "Кафедра", "parent_id": self.phys},
+                         headers=self._h("root", "admin"))
+        after = organizations_api.list_organizations(self.repo)["organizations"]
+        self.assertEqual(len(after), before)
+        self.assertNotIn("Кафедра", [o["name"] for o in after])
+
+    def test_without_a_parent_it_works(self):
+        """Отказ адресный: обычное создание он задеть не должен."""
+        r = self.client.post("/admin/organizations", json={"name": "Кафедра"},
+                             headers=self._h("root", "admin"))
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertIsNone(r.json()["parent_id"])
 
 
 # ---------- Граница контейнера ----------

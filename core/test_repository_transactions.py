@@ -20,7 +20,6 @@ from __future__ import annotations
 import os
 import sqlite3
 import sys
-import tempfile
 import threading
 import unittest
 
@@ -31,13 +30,12 @@ if _MONOREPO not in sys.path:
 
 from core import admin_api  # noqa: E402
 from core.repository import Repository  # noqa: E402
+from core.tmpdb import temp_path  # noqa: E402
 
 
 class TransactionTestBase(unittest.TestCase):
     def setUp(self):
-        fd, self.db_path = tempfile.mkstemp(suffix=".db")
-        os.close(fd)
-        os.unlink(self.db_path)
+        self.db_path = temp_path(suffix=".db")
         self.repo = Repository(self.db_path)
 
     def tearDown(self):

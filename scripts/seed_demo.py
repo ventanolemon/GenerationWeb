@@ -29,7 +29,7 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from const import DB_PATH  # noqa: E402
+from const import DB_PATH, ensure_data_dir  # noqa: E402
 from core import Repository  # noqa: E402
 
 DAY = 86400.0
@@ -58,6 +58,9 @@ TASKS = [
 
 
 def seed_main() -> None:
+    # В РАБОЧУЮ базу, а не в шаблон поставки: демо-данные — свойство
+    # конкретной установки, и раздавать их всем вместе с шаблоном незачем.
+    ensure_data_dir()
     repo = Repository(DB_PATH)
 
     # 1. Пользователи + роли (create_user авто-заводит группу по метке).

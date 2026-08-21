@@ -124,12 +124,21 @@
   transform: translateY(1px);
 }
 .ctaSecondary {
+  /* Класс носят и <button>, и <a>: ссылка на базу знаний обязана быть
+     ссылкой (открывается в новой вкладке, копируется, индексируется), а
+     выглядеть должна так же. Отсюда inline-flex и снятие подчёркивания —
+     у кнопки они ничего не меняют, у ссылки решают всё. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 0.75rem 1.6rem;
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   font-size: 1rem;
+  line-height: 1.2;
+  text-decoration: none;
   cursor: pointer;
 }
 .ctaSecondary:hover {
@@ -166,11 +175,15 @@
 
 /* ── Фичи ────────────────────────────────────────────────────── */
 .features {
+  /* Карточек шесть, и минимум по ширине подобран так, чтобы на широком
+     экране вышло 3 × 2, а не 4 + 2: неполный второй ряд читается как
+     «что-то не поместилось», хотя помещается всё. На узком экране
+     auto-fit сам сложит в два столбца и в один. */
   max-width: 1080px;
   margin: 0 auto;
-  padding: 1rem 1.5rem 4rem;
+  padding: 1rem 1.5rem 1.5rem;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 1.1rem;
 }
 .card {
@@ -276,3 +289,128 @@
     display: none;
   }
 }
+
+/* ── Ссылка в навигации ──────────────────────────────────────── */
+.navLink {
+  padding: 0.45rem 0.7rem;
+  color: var(--text-muted, var(--text));
+  text-decoration: none;
+  font-size: 0.9rem;
+  border-radius: var(--radius-sm);
+  opacity: 0.85;
+}
+.navLink:hover {
+  opacity: 1;
+  background: var(--surface);
+}
+
+/* ── Проверка по смыслу ──────────────────────────────────────── */
+/* Раздел с примерами: два столбца «одно и то же» / «разное». Цвет
+   здесь несёт ЗНАЧЕНИЕ (принято / не принято), поэтому тон сохраняется
+   в обеих темах, а подстраивается только светлота — то же правило, что
+   у холста графов. */
+.equality {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 1rem;
+  text-align: center;
+}
+.equalityGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+  margin-top: 2rem;
+  text-align: left;
+}
+.equalityCard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.2rem 1.3rem;
+}
+.equalityKind {
+  margin: 0 0 0.9rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+.equalityLine {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: 0 0 0.6rem;
+}
+.same,
+.diff {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.same {
+  color: #17784a;
+  background: rgba(23, 120, 74, 0.13);
+}
+.diff {
+  color: #b3261e;
+  background: rgba(179, 38, 30, 0.13);
+}
+:global(html[data-theme="dark"]) .same { color: #6ddaa4; }
+:global(html[data-theme="dark"]) .diff { color: #f2a49e; }
+.sample {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.86rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 5px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+.equalityNote {
+  margin: 0.8rem 0 0;
+  font-size: 0.85rem;
+  color: var(--text-muted, inherit);
+  opacity: 0.75;
+  line-height: 1.5;
+}
+
+/* ── Кому что ────────────────────────────────────────────────── */
+.audience {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 3.5rem 1.5rem 1rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1rem;
+}
+.audienceCard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.4rem 1.5rem;
+}
+.audienceWho {
+  margin: 0 0 0.9rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+.audienceList {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.93rem;
+  line-height: 1.5;
+  opacity: 0.85;
+}
+
+/* ── Призыв в конце ──────────────────────────────────────────── */
+.finalCta {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 4rem 1.5rem 3rem;
+  text-align: center;
+}
+.finalCta .ctaRow { justify-content: center; }

@@ -21,7 +21,6 @@ from __future__ import annotations
 import os
 import sqlite3
 import sys
-import tempfile
 import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -37,13 +36,12 @@ from core import (api_clients, auth_sessions, content_api,  # noqa: E402
 from core.repository import Repository  # noqa: E402
 from generator_service import errors  # noqa: E402
 from generator_service.routers import admin_content  # noqa: E402
+from core.tmpdb import temp_path  # noqa: E402
 
 
 class StorageTestBase(unittest.TestCase):
     def setUp(self):
-        fd, self.db_path = tempfile.mkstemp(suffix=".db")
-        os.close(fd)
-        os.unlink(self.db_path)
+        self.db_path = temp_path(suffix=".db")
         self.repo = Repository(self.db_path)
         self.repo.create_user("root", "p", "Админ", "", role="admin")
         # Тот же шаг, что делает сервис при старте: развёртыванию нужен

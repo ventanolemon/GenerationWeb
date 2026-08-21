@@ -65,10 +65,15 @@ SHARED_DIRS = ("graph", "models")
 # Список устаревает громко: если серверный модуль законно становится
 # общим, проверка падает и его убирают отсюда осознанно. Это та же
 # дисциплина, что у EXPECTED.
+#
+# Так и случилось с `export_api.py`: раскладка ответов в документе —
+# понятие предметной области, а не деталь веб-службы, и её потребителей
+# трое (служба и два бэкенда десктопа). Модуль убран отсюда осознанно и
+# теперь зеркалится.
 SERVER_ONLY = {
     "admin_api.py", "analytics_api.py", "api_clients.py",
     "assignments_api.py", "auth_sessions.py", "content_api.py",
-    "content_authz.py", "export_api.py", "grants_api.py",
+    "content_authz.py", "grants_api.py",
     "graph/isolation.py", "graph/worker.py", "graph_api.py",
     "graph_probe.py", "groups_api.py", "migrations.py", "node_packages.py",
     "organizations_api.py", "passwords.py", "public_api.py", "signing.py",

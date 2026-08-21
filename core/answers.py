@@ -16,7 +16,17 @@
   * NumberSpec      — число с допуском и размерностью
   * TextSpec        — строка с нормализацией и опечатками
   * ExpressionSpec  — выражение, два режима сравнения
+  * LogicSpec       — булева функция; сравниваются ФУНКЦИИ, а не записи
+  * EquationSpec    — уравнение; сравнивается множество корней
+  * OutputSpec      — вывод программы; строки и их порядок значимы
+  * VoiceSpec       — произнесённое слово; ближайший эталон в словаре
   * SlotsSpec       — набор именованных слотов (линал, «заполни пропуски»)
+
+Семь из восьми текстовые: ответ печатают. `VoiceSpec` — единственная,
+чей ответ порождает не клавиатура, и именно поэтому она обнажает границу
+между ЯДРОМ (правило приёма) и ПЛАТФОРМОЙ (чем ответ снят). Правило
+живёт здесь и одинаково всюду; захват звука — дело клиента, и его здесь
+нет ни в каком виде.
 
 Чего сознательно НЕТ (следующие этапы плана):
   * выбор одного/нескольких, последовательность, пары — §3, вместе с
@@ -102,6 +112,7 @@ class Reason(str, Enum):
     RESTATED = "restated"           # эквивалентно, но повторяет условие (§5)
     UNPARSED = "unparsed"           # ввод не разобран
     EMPTY = "empty"                 # пустой ввод
+    UNCERTAIN = "uncertain"         # система отказалась судить — НЕ «неверно»
 
 
 @dataclass(frozen=True)
@@ -1809,6 +1820,331 @@ class OutputSpec(AnswerSpec):
 
 
 # ======================================================================
+#  Произношение
+# ======================================================================
+
+
+#: Приставка встроенной записи. Всё, что после запятой, — base64 от WAV.
+INLINE_PREFIX = "data:audio/wav;base64,"
+
+#: Предел на встроенную запись, в байтах ПОСЛЕ раскодирования.
+#:
+#: Две секунды моно-WAV 16 бит на 11 025 Гц — примерно 44 КБ, так что
+#: 4 МБ хватает на полторы минуты. Предел не про удобство: поле ответа —
+#: не загрузка файла, и без него клиент (или тот, кто им притворился) мог
+#: бы прислать в него что угодно. Отказ здесь дешевле, чем чтение
+#: гигабайта в память ради вердикта, который всё равно не состоится.
+INLINE_LIMIT_BYTES = 4 * 1024 * 1024
+
+
+def _recording_source(source: str):
+    """
+    Значение ответа → то, из чего читается WAV; None — не разрешается.
+
+    Три допустимых формы, и разница между ними названа честно:
+
+    * `res:audio/<хеш>.wav` — ПЕРЕНОСИМЫЙ идентификатор поставки. Он
+      разрешается относительно `resources/` той машины, которая проверяет,
+      и потому годится где угодно;
+    * обычный путь — МЕСТНАЯ форма. Он верен ровно там, где файл создан;
+    * `data:audio/wav;base64,…` — САМА ЗАПИСЬ. Не адрес, а данные.
+
+    Третья форма и есть ответ на границу веба. Клиент, присылающий путь
+    по сети, называл бы файл на ЧУЖОЙ машине, и принимать такое нельзя —
+    поэтому браузер присылает не имя, а содержимое. Хранить его негде и
+    незачем: вердикт считается на месте, в попытку идёт результат, и
+    поток закрывается вместе с запросом (см. `VoiceSpec`).
+
+    Почему WAV, а не то, что даёт браузер: `MediaRecorder` отдаёт webm с
+    opus внутри, а разбор opus потребовал бы внешней библиотеки — той
+    самой зависимости, которой у автономной установки может не быть.
+    Раскодировать запись обратно в PCM умеет сам браузер (Web Audio), и
+    делать это там правильнее: у него декодер уже есть.
+
+    Правило «не адресовать файлы путями» (`docs/handbook/05` §4) второй
+    формой не нарушается: оно про СОДЕРЖИМОЕ задания — граф, который
+    уезжает по синку на другую машину и там исполняется. Здесь путь это
+    ОТВЕТ, порождённый и проверенный в одном процессе на одной машине.
+    """
+    import base64
+    import binascii
+    import io
+    import pathlib
+
+    raw = str(source or "").strip()
+    if not raw:
+        return None
+
+    if raw.startswith(INLINE_PREFIX):
+        payload = raw[len(INLINE_PREFIX):]
+        # Проверяем ДО раскодирования: base64 распухает ровно на треть,
+        # так что предел на исходной строке — это тот же предел, только
+        # без выделения памяти под заведомо отвергаемое.
+        if len(payload) > (INLINE_LIMIT_BYTES // 3) * 4 + 4:
+            return None
+        try:
+            data = base64.b64decode(payload, validate=True)
+        except (binascii.Error, ValueError):
+            return None
+        if not data or len(data) > INLINE_LIMIT_BYTES:
+            return None
+        return io.BytesIO(data)
+
+    if raw.startswith("res:"):
+        try:
+            from .graph.resources import resolve
+            target = pathlib.Path(resolve(raw))
+        except Exception:                              # noqa: BLE001
+            return None
+    else:
+        target = pathlib.Path(raw)
+    if target.suffix.lower() != ".wav" or not target.is_file():
+        return None
+    return target
+
+
+@dataclass
+class VoiceSpec(AnswerSpec):
+    """
+    Ответ — ПРОИЗНЕСЁННОЕ слово. Единственная нетекстовая спецификация.
+
+    Правило приёма
+    --------------
+    То же правило окрестности, что у опечатки и у допуска, только на
+    звуке (`core.pronunciation_match`): запись принимается, если эталон
+    целевого слова оказался к ней БЛИЖЕ, чем эталоны остальных слов
+    словаря. Абсолютного порога нет намеренно — его пришлось бы
+    калибровать под голос и микрофон, а порядок близости общий сдвиг
+    тракта записи не меняет.
+
+    Отсюда обязательное поле `vocabulary`: без окрестности правило не
+    определено. Спецификация с одним словом принимает что угодно, и это
+    не дефект проверки, а отсутствие того, с чем сравнивать.
+
+    Что означают режимы
+    -------------------
+    * мягкий  — достаточно первого места;
+    * строгий — первое место И отрыв от следующего (`Match.confident`).
+
+    Строгий режим здесь не «придирчивее», а осторожнее: он отказывается
+    судить там, где выбор между двумя словами случаен.
+
+    Отказ судить — не «неверно»
+    ---------------------------
+    `Reason.UNCERTAIN` заведён ради этого различия. Сказать студенту
+    «неверно» там, где система просто не расслышала (нет эталонов, отрыв
+    в пределах шума), — значит соврать о его ответе. Вердикт при этом
+    всё равно `accepted = False`: зачесть неразобранное тоже нельзя.
+
+    Чего здесь НЕТ
+    --------------
+    Распознавания речи. Модуль под этим не переводит звук в текст и не
+    оценивает фонетическую правильность — он отвечает, на какое слово
+    СЛОВАРЯ запись похожа больше всего. Для тренажёра этого достаточно,
+    для постановки произношения — нет.
+
+    Сама запись никуда не сохраняется: `check` читает файл, считает
+    признаки и забывает его. Хранение звука потребовало бы двоичного поля
+    в попытке, которого в схеме нет; в попытку идёт вердикт, а не голос.
+    """
+
+    kind: ClassVar[str] = "voice"
+
+    term: str = ""
+    """Слово, которое надо произнести."""
+
+    vocabulary: Tuple[str, ...] = ()
+    """
+    Окрестность: слова, с чьими эталонами сравнивается запись.
+
+    Словарь ЭТОГО задания, а не вся поставка: сравнение с посторонними
+    словами ужало бы допуск ради тех, кого студент сейчас не проходит, —
+    то же соображение, что у `WordsSession._vocabulary`.
+    """
+
+    transcription: str = ""
+    """IPA для показа. К проверке отношения не имеет — только к подсказке."""
+
+    mode: CheckMode = DEFAULT_MODE
+    tuning: dict = field(default_factory=dict)
+
+    # ---------- проверка ----------
+
+    def check(self, user_input: str, *,
+              mode: Optional[CheckMode] = None) -> Verdict:
+        active = self.effective_mode(mode)
+        source = str(user_input or "").strip()
+        shown = _shown_recording(source)
+        if not source:
+            return Verdict(False, active, Reason.EMPTY, "",
+                           "Запись не сделана.")
+
+        origin = _recording_source(source)
+        if origin is None:
+            return Verdict(False, active, Reason.UNPARSED, shown,
+                           "Записи нет или это не WAV.")
+
+        import wave
+
+        from . import pronunciation_match as matching
+        try:
+            signal, rate = matching.read_wav(origin)
+        except (OSError, ValueError, EOFError, wave.Error) as exc:
+            # `wave.Error` здесь не для полноты списка: со встроенной
+            # записью в разбор впервые попадают байты, пришедшие по сети,
+            # и «не WAV» становится обычным случаем, а не поломкой
+            # поставки. Без этой ветки испорченная запись давала бы 500
+            # вместо вердикта — то есть выглядела бы отказом сервиса.
+            return Verdict(False, active, Reason.UNPARSED, shown,
+                           f"Запись не прочитана: {exc}")
+        # Тишина отсеивается ДО сопоставления. Правило ближайшего работает
+        # и на ней — какое-то расстояние всегда наименьшее, — но вердикт
+        # «больше похоже на Terabyte» на пустой записи это выдумка.
+        if matching.is_silent(signal):
+            return Verdict(False, active, Reason.EMPTY, shown,
+                           "В записи ничего не слышно — попробуйте ещё раз.")
+        recording = matching.mfcc(matching.resample(signal, rate))
+        if recording.shape[0] == 0:
+            return Verdict(False, active, Reason.EMPTY, shown,
+                           "Запись слишком коротка.")
+
+        references, gaps = self._references()
+        if not references:
+            # Не «неверно»: сравнивать не с чем. Такое бывает на установке
+            # без каталога звуков — это поломка поставки, а не ответ
+            # студента, и путать их нельзя.
+            return Verdict(False, active, Reason.UNCERTAIN, shown,
+                           "Не с чем сравнить: эталонов произношения нет.")
+
+        found = matching.match(recording, references, gaps=gaps)
+        if found is None:
+            return Verdict(False, active, Reason.UNCERTAIN, shown,
+                           "Запись не удалось сопоставить.")
+
+        if found.term != self.term:
+            return Verdict(
+                False, active, Reason.MISMATCH, shown,
+                f"Больше похоже на «{found.term}».")
+
+        if active is CheckMode.STRICT and not found.confident:
+            return Verdict(
+                False, active, Reason.UNCERTAIN, shown,
+                f"Похоже на «{self.term}», но почти так же — на "
+                f"«{found.runner_up}». Повторите отчётливее.")
+
+        return Verdict(True, active, Reason.EXACT, shown)
+
+    # ---------- показ ----------
+
+    def display_blocks(self) -> List[Block]:
+        from .blocks import TextBlock
+        from .dynamic_blocks import AudioBlock
+        from . import pronunciation
+
+        head = f"{self.term} {self.transcription}".strip()
+        blocks: List[Block] = [TextBlock(head)]
+        sound = pronunciation.audio_of(self.term)
+        if sound:
+            blocks.append(AudioBlock(sound, label=f"Эталон «{self.term}»"))
+        return blocks
+
+    def input_fields(self) -> List[InputField]:
+        return [InputField(kind=self.kind, label="Произнесите слово",
+                           hint=self.transcription)]
+
+    @property
+    def preferred_widget(self) -> str:
+        return "voice_recorder"
+
+    def _candidate_examples(self, mode: CheckMode) -> List[str]:
+        """
+        Единственный заведомо принимаемый пример — сам эталон.
+
+        Он же и единственный, который можно НАЗВАТЬ: примеры существуют
+        ради предпросмотра «что примут», а произношение живого человека
+        строкой не запишешь. Зато инвариант «предпросмотр не врёт»
+        проверяется здесь по-настоящему: эталон прогоняется через ту же
+        `check`, что и запись студента, и если правило сломано — например
+        слово неотличимо от соседа по словарю, — пример отсеется сам.
+        """
+        from . import pronunciation
+        sound = pronunciation.audio_of(self.term)
+        return [sound] if sound else []
+
+    # ---------- вспомогательное ----------
+
+    def _references(self) -> tuple:
+        """
+        Признаки эталонов окрестности и расстояния МЕЖДУ ними.
+
+        Считаются один раз на спецификацию. Пересчёт на каждую попытку
+        означал бы разбор всего словаря на каждый ответ; данные при этом
+        неизменны — `term` и `vocabulary` у спецификации не меняются.
+
+        Второй элемент — накопитель межэталонных расстояний, масштаба
+        уверенности. Он отдаётся ПУСТЫМ и заполняется по мере надобности:
+        за попытку нужен масштаб одного слова-победителя, а не всей
+        таблицы. Заполненное переживает попытку, поэтому повтор с тем же
+        победителем — бесплатен.
+        """
+        cached = getattr(self, "_reference_cache", None)
+        if cached is not None:
+            return cached
+        from . import pronunciation, pronunciation_match as matching
+
+        terms = list(dict.fromkeys((self.term, *self.vocabulary)))
+        built = matching.reference_features(
+            [t for t in terms if t],
+            lambda term: _recording_source(pronunciation.audio_of(term) or ""))
+        # Именно ЭТОТ словарь, а не его копия: в него пишет `match`, и
+        # возврат нового каждый раз молча выбрасывал бы накопленное.
+        prepared = (built, {})
+        object.__setattr__(self, "_reference_cache", prepared)
+        return prepared
+
+    def _payload(self) -> dict:
+        out: dict = {"term": self.term}
+        if self.vocabulary:
+            out["vocabulary"] = list(self.vocabulary)
+        if self.transcription:
+            out["transcription"] = self.transcription
+        return out
+
+
+def _basename(source: str) -> str:
+    """
+    Имя файла без каталога — то, что попадёт в вердикт.
+
+    Целиком путь класть нельзя: `normalized_input` уезжает в попытку и в
+    журнал, а домашний каталог проверяющего к ответу отношения не имеет.
+    """
+    import pathlib
+    try:
+        return pathlib.Path(source).name
+    except (TypeError, ValueError):
+        return ""
+
+
+def _shown_recording(source: str) -> str:
+    """
+    Чем запись названа в вердикте, попытке и журнале.
+
+    Форма ответа сюда не годится ни в одном из трёх случаев, и по разным
+    причинам. Путь выдал бы каталог проверяющего. Встроенная запись —
+    это мегабайт base64: положить его в поле попытки значило бы завести
+    хранение голоса случайно, обойдя и объём, и квоты, и согласие на
+    запись (`docs/handbook/04-stubs.md` §6). Остаётся поставочный
+    идентификатор: он короток, переносим и ничего лишнего не выдаёт.
+    """
+    raw = str(source or "").strip()
+    if raw.startswith(INLINE_PREFIX):
+        return "запись из браузера"
+    if raw.startswith("res:"):
+        return raw
+    return _basename(raw)
+
+
+# ======================================================================
 #  Набор слотов
 # ======================================================================
 
@@ -2131,6 +2467,14 @@ def _build_output(data: dict) -> OutputSpec:
     return OutputSpec(value=str(data.get("value", "")), **_common(data))
 
 
+def _build_voice(data: dict) -> VoiceSpec:
+    return VoiceSpec(
+        term=str(data.get("term", "")),
+        vocabulary=tuple(data.get("vocabulary") or ()),
+        transcription=str(data.get("transcription", "")),
+        **_common(data))
+
+
 def _build_slots(data: dict) -> SlotsSpec:
     return SlotsSpec(
         slots=tuple(
@@ -2147,6 +2491,7 @@ _REGISTRY = {
     LogicSpec.kind: _build_logic,
     EquationSpec.kind: _build_equation,
     OutputSpec.kind: _build_output,
+    VoiceSpec.kind: _build_voice,
     SlotsSpec.kind: _build_slots,
 }
 
@@ -2155,6 +2500,6 @@ __all__ = [
     "CheckMode", "DEFAULT_MODE", "Reason", "Verdict", "InputField",
     "normalize", "Tolerance", "ToleranceKind",
     "AnswerSpec", "NumberSpec", "TextSpec", "ExpressionSpec", "LogicSpec",
-    "EquationSpec", "OutputSpec", "SlotsSpec",
+    "EquationSpec", "OutputSpec", "VoiceSpec", "SlotsSpec",
     "ExpressionError", "significant_digits",
 ]

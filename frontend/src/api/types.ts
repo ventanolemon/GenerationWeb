@@ -660,3 +660,22 @@ export interface CorpusListResponse {
 export interface CorpusRecordDetail extends CorpusRecordSummary {
   record: unknown; // полный training_example (target_graph, provenance, …)
 }
+
+/**
+ * Страница базы знаний в том виде, в каком её отдаёт служба.
+ *
+ * Совпадает по форме со страницей из вкомпилированного `content.json` —
+ * так клиент может подставить одну вместо другой, не разбирая заново.
+ * Отличия — только служебные поля правки.
+ */
+export interface GuidePage {
+  id: string;
+  title: string;
+  order: number;
+  body: string;
+  sections: { id: string; title: string; level: number }[];
+  /** Страница правлена поверх поставки. */
+  edited?: boolean;
+  updated_at?: string;
+  updated_by?: string;
+}

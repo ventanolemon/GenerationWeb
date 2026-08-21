@@ -27,6 +27,7 @@ from core.auth_sessions import (
     ROLE_ORDER, AuthError, Identity, try_on_role,
 )
 from core.scenarios import Scenario, SessionMode
+from core.tmpdb import temp_path  # noqa: E402
 
 
 def _dev(role: str = "admin") -> Identity:
@@ -178,9 +179,7 @@ class OverHttpTests(unittest.TestCase):
         import os
         import tempfile
         from core.repository import Repository
-        fd, self.db = tempfile.mkstemp(suffix=".db")
-        os.close(fd)
-        os.unlink(self.db)
+        self.db = temp_path(suffix=".db")
         self.repo = Repository(self.db)
         self.repo.create_user("dev", "p", "Разработчик", "", role="admin")
         self.repo.create_user("alla", "p", "Алла", "", role="teacher")

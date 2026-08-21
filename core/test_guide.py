@@ -166,6 +166,32 @@ class LinkTests(unittest.TestCase):
                     self.assertIn(target, known)
 
 
+    def test_a_link_with_an_impossible_address_is_refused(self):
+        """
+        Замер, из-за которого проверка появилась: `[текст](guide:нет-такой)`
+        с кириллицей проходил НАСКВОЗЬ. Под запрет «ссылки не через
+        guide:» он не попадал — приставка на месте; в список ссылок не
+        извлекался — адрес не подошёл под шаблон; и оставался на странице
+        сырым текстом со скобками.
+
+        Ровно тот случай, ради которого набор разметки объявлен закрытым:
+        неизвестное — ошибка разбора, а не «покажем как есть».
+        """
+        for address in ("нет-такой", "Start", "с пробелом", "стр/Раздел"):
+            with self.subTest(address=address):
+                with self.assertRaises(guide.GuideError) as caught:
+                    guide.parse_text(
+                        "---\nid: p\ntitle: T\norder: 1\n---\n\n"
+                        f"[текст](guide:{address})\n", "проба")
+                self.assertIn("адрес", str(caught.exception).lower())
+
+    def test_a_well_formed_link_is_accepted(self):
+        page = guide.parse_text(
+            "---\nid: p\ntitle: T\norder: 1\n---\n\n"
+            "[раз](guide:start) и [два](guide:start/roles)\n", "проба")
+        self.assertEqual(page.links, ["start", "start/roles"])
+
+
 class ShotTests(unittest.TestCase):
     """Снимки: сгенерированы, на месте, и никто не подложил своих."""
 

@@ -31,7 +31,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from bootstrap import build_registry, sync_database
-from const import DB_PATH, WORDS_DIR
+from const import DB_PATH, WORDS_DIR, ensure_data_dir
 from core import (InteractiveTask, Repository, WordStatsStore,
                   session_from_task)
 from core import organizations_api
@@ -49,6 +49,7 @@ from .routers import groups as groups_router
 from .routers import export as export_router
 from .routers import generate as generate_router
 from .routers import grants as grants_router
+from .routers import guide as guide_router
 from .routers import organizations as organizations_router
 from .routers import graph as graph_router
 from .routers import interactive as interactive_router
@@ -70,6 +71,11 @@ logger = logging.getLogger("generator_service")
 async def lifespan(app: FastAPI):
     """Готовим Repository и Registry при старте — один раз на жизнь процесса."""
     logger.info("Initializing generator service…")
+    # Рабочая база живёт ОТДЕЛЬНО от поставки и создаётся при первом
+    # запуске копированием шаблона. Без этого служба писала бы прямо в
+    # `resources/` — то есть в файл, который раздаётся пользователям.
+    ensure_data_dir()
+    logger.info("Database: %s", DB_PATH)
     repo = Repository(DB_PATH)
     sync_database(repo, WORDS_DIR)
     # Организация по умолчанию и администратор развёртывания. Миграция 014
@@ -226,6 +232,7 @@ app.include_router(export_router.router)
 app.include_router(partitions_router.router)
 app.include_router(stats_router.router)
 app.include_router(meta_router.router)
+app.include_router(guide_router.router)
 app.include_router(graph_router.router)
 app.include_router(sync_router.router)
 app.include_router(updates_router.router)

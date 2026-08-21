@@ -205,6 +205,27 @@ SLOT_INLINE = Widget(
     hint="Поля прямо в условии, на месте пропусков.",
 )
 
+VOICE_RECORDER = Widget(
+    name="voice_recorder",
+    title="Запись голоса",
+    kinds=frozenset({"voice"}),
+    hint="Кнопка записи вместо поля ввода. Реализована там, где есть "
+         "микрофон и звуковой модуль платформы; где их нет, задание "
+         "остаётся карточкой с эталоном.",
+)
+"""
+Единственный виджет, чей ответ не набирают.
+
+Он же — проверка того, ради чего реестр и заведён: «новый формат ввода
+это запись в реестре, ядро не трогается». Ядро здесь действительно не
+тронуто — заявлено имя, а `QAudioSource` живёт в десктопе, потому что
+захват звука это платформа, а не предметная область.
+
+У вида ответа `voice` совместимый виджет ровно один, поэтому умолчание
+реестра и без того верное; `preferred_widget` у спецификации назван
+явно, чтобы порядок регистрации на это не влиял.
+"""
+
 
 def _register_builtin(registry: "WidgetRegistry") -> "WidgetRegistry":
     # Порядок значим: первый совместимый становится умолчанием. Холст
@@ -212,7 +233,8 @@ def _register_builtin(registry: "WidgetRegistry") -> "WidgetRegistry":
     # написать формулу, и навязывать это всем заданиям неправильно. Холст
     # включается автором явно (`widget: circuit_canvas` у узла задания).
     for widget in (TEXT_INPUT, FORMULA_INPUT, CHOICE_ONE, TEXT_AREA,
-                   CIRCUIT_CANVAS, SLOT_FIELDS, GRID_FIELDS, SLOT_INLINE):
+                   CIRCUIT_CANVAS, SLOT_FIELDS, GRID_FIELDS, SLOT_INLINE,
+                   VOICE_RECORDER):
         registry.register(widget)
     return registry
 
@@ -234,5 +256,5 @@ def resolve_widget(spec: AnswerSpec, name: str = "") -> Optional[Widget]:
 __all__ = [
     "Widget", "WidgetRegistry", "registry", "widgets_for", "resolve_widget",
     "TEXT_INPUT", "FORMULA_INPUT", "CHOICE_ONE", "SLOT_FIELDS", "GRID_FIELDS",
-    "SLOT_INLINE",
+    "SLOT_INLINE", "VOICE_RECORDER",
 ]

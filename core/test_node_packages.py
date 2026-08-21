@@ -20,7 +20,6 @@ from __future__ import annotations
 import base64
 import os
 import sys
-import tempfile
 import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -36,6 +35,7 @@ from core import auth_sessions  # noqa: E402
 from core.repository import Repository  # noqa: E402
 from generator_service import errors  # noqa: E402
 from generator_service.routers import packages as packages_router  # noqa: E402
+from core.tmpdb import temp_path  # noqa: E402
 
 try:
     from cryptography.hazmat.primitives import serialization
@@ -51,9 +51,7 @@ SHA = "c" * 64
 @unittest.skipUnless(HAS_CRYPTO, "нужна библиотека cryptography")
 class PackageTestBase(unittest.TestCase):
     def setUp(self):
-        fd, self.db_path = tempfile.mkstemp(suffix=".db")
-        os.close(fd)
-        os.unlink(self.db_path)
+        self.db_path = temp_path(suffix=".db")
         self.repo = Repository(self.db_path)
         self.repo.create_user("root", "p", "Админ", "", role="admin")
         # Тот же шаг, что делает сервис при старте: развёртыванию нужен

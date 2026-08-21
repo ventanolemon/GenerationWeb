@@ -8,20 +8,18 @@
 from __future__ import annotations
 import os
 import sqlite3
-import tempfile
 import time
 import unittest
 
 from core import analytics_api, auth_sessions
 from core.repository import Repository
+from core.tmpdb import temp_path  # noqa: E402
 
 DAY = 86400.0
 
 
 def _tmp_db() -> str:
-    fd, path = tempfile.mkstemp(suffix=".db")
-    os.close(fd)
-    os.unlink(path)
+    path = temp_path(suffix=".db")
     return path
 
 

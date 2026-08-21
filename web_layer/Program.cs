@@ -135,6 +135,13 @@ app.MapPartitionEndpoints();
 app.MapStatsEndpoints();
 app.MapMetaEndpoints();
 app.MapDashboardEndpoints();
+// Редактор графов и база знаний. Их роутеры живут в generator_service
+// (там импортирован движок графов и формат базы знаний), и в разработке
+// Vite ходит туда напрямую. В настоящем развёртывании Vite нет —
+// запросы приходят сюда, и без этих двух строк редактор графов и правка
+// вики работали только вместе с dev-сервером.
+app.MapGraphEndpoints();
+app.MapGuideEndpoints();
 app.MapContourEndpoints();
 app.MapCorpusEndpoints();
 // Канал доставки кода на десктопы (обновления, пакеты узлов). Без

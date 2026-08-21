@@ -16,7 +16,6 @@ from __future__ import annotations
 import os
 import sqlite3
 import sys
-import tempfile
 import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -26,6 +25,7 @@ if _MONOREPO not in sys.path:
 
 from core import organizations_api, sync_api  # noqa: E402
 from core.repository import Repository  # noqa: E402
+from core.tmpdb import temp_path  # noqa: E402
 
 
 # Правка авторского контента требует опознанного teacher/admin
@@ -51,9 +51,7 @@ def _pull_all(repo, device_id, cursors=None, limit=200, user_id=None):
 
 class SyncTestBase(unittest.TestCase):
     def setUp(self):
-        fd, self.db_path = tempfile.mkstemp(suffix=".db")
-        os.close(fd)
-        os.unlink(self.db_path)          # Repository создаст заново
+        self.db_path = temp_path(suffix=".db")
         self.repo = Repository(self.db_path)
         self.subject_id = self.repo.ensure_subject(3, "Физика")
 
