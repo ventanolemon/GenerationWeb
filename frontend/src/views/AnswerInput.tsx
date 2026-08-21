@@ -4,6 +4,7 @@ import BlockRenderer from "../blocks/BlockRenderer";
 import CircuitCanvas from "../circuit/CircuitCanvas";
 import FormulaInput from "../formula/FormulaInput";
 import { hasHoles } from "../formula/fields";
+import VoiceRecorder from "../voice/VoiceRecorder";
 import styles from "../styles/views.module.css";
 
 /** Чем ядро помечает пропуск в тексте условия. */
@@ -211,6 +212,38 @@ export default function AnswerInput({
           type="button"
           onClick={submit}
           disabled={disabled || !(values[key] ?? "").trim()}
+        >
+          Ответить
+        </button>
+      </div>
+    );
+  }
+
+  // Запись голоса. Единственный виджет, чей ответ не набирают.
+  //
+  // Ответом уезжает САМА ЗАПИСЬ (`data:audio/wav;base64,…`), а не путь:
+  // путь назвал бы файл на машине студента, и сервер прочитал бы что-то
+  // своё. Проверяет её та же спецификация, что на десктопе, тем же
+  // правилом окрестности — веб получает не свою проверку, а тот же
+  // вердикт.
+  //
+  // `filled` здесь работает как у всех: значение непусто ровно тогда,
+  // когда запись сделана, поэтому отдельного признака готовности не
+  // нужно.
+  if (widget === "voice_recorder" && list.length === 1) {
+    const key = list[0].name ?? "";
+    return (
+      <div className={styles.answerForm}>
+        <VoiceRecorder
+          hint={list[0].hint}
+          disabled={disabled}
+          resetKey={resetKey}
+          onRecorded={(answer) => set(key, answer)}
+        />
+        <button
+          type="button"
+          onClick={submit}
+          disabled={disabled || !(values[key] ?? "")}
         >
           Ответить
         </button>

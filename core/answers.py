@@ -1824,32 +1824,72 @@ class OutputSpec(AnswerSpec):
 # ======================================================================
 
 
-def _recording_path(source: str):
-    """
-    Значение ответа → файл записи на ЭТОЙ машине; None — не разрешается.
+#: Приставка встроенной записи. Всё, что после запятой, — base64 от WAV.
+INLINE_PREFIX = "data:audio/wav;base64,"
 
-    Две допустимых формы, и разница между ними названа честно:
+#: Предел на встроенную запись, в байтах ПОСЛЕ раскодирования.
+#:
+#: Две секунды моно-WAV 16 бит на 11 025 Гц — примерно 44 КБ, так что
+#: 4 МБ хватает на полторы минуты. Предел не про удобство: поле ответа —
+#: не загрузка файла, и без него клиент (или тот, кто им притворился) мог
+#: бы прислать в него что угодно. Отказ здесь дешевле, чем чтение
+#: гигабайта в память ради вердикта, который всё равно не состоится.
+INLINE_LIMIT_BYTES = 4 * 1024 * 1024
+
+
+def _recording_source(source: str):
+    """
+    Значение ответа → то, из чего читается WAV; None — не разрешается.
+
+    Три допустимых формы, и разница между ними названа честно:
 
     * `res:audio/<хеш>.wav` — ПЕРЕНОСИМЫЙ идентификатор поставки. Он
       разрешается относительно `resources/` той машины, которая проверяет,
       и потому годится где угодно;
-    * обычный путь — МЕСТНАЯ форма. Он верен ровно там, где файл создан.
+    * обычный путь — МЕСТНАЯ форма. Он верен ровно там, где файл создан;
+    * `data:audio/wav;base64,…` — САМА ЗАПИСЬ. Не адрес, а данные.
 
-    Правило «не адресовать файлы путями» (`docs/handbook/05` §4) этим не
-    нарушается: оно про СОДЕРЖИМОЕ задания — граф, который уезжает по
-    синку на другую машину и там исполняется. Здесь путь это ОТВЕТ,
-    который порождён и проверен в одном процессе на одной машине и никуда
-    не уезжает: запись не хранится, в попытку идёт вердикт (см. `VoiceSpec`).
+    Третья форма и есть ответ на границу веба. Клиент, присылающий путь
+    по сети, называл бы файл на ЧУЖОЙ машине, и принимать такое нельзя —
+    поэтому браузер присылает не имя, а содержимое. Хранить его негде и
+    незачем: вердикт считается на месте, в попытку идёт результат, и
+    поток закрывается вместе с запросом (см. `VoiceSpec`).
 
-    Отсюда же граница веба: клиент, присылающий путь по сети, называл бы
-    файл на ЧУЖОЙ машине, и принимать такое нельзя. Веб-половине нужен
-    свой способ передать саму запись — поэтому её здесь и нет.
+    Почему WAV, а не то, что даёт браузер: `MediaRecorder` отдаёт webm с
+    opus внутри, а разбор opus потребовал бы внешней библиотеки — той
+    самой зависимости, которой у автономной установки может не быть.
+    Раскодировать запись обратно в PCM умеет сам браузер (Web Audio), и
+    делать это там правильнее: у него декодер уже есть.
+
+    Правило «не адресовать файлы путями» (`docs/handbook/05` §4) второй
+    формой не нарушается: оно про СОДЕРЖИМОЕ задания — граф, который
+    уезжает по синку на другую машину и там исполняется. Здесь путь это
+    ОТВЕТ, порождённый и проверенный в одном процессе на одной машине.
     """
+    import base64
+    import binascii
+    import io
     import pathlib
 
     raw = str(source or "").strip()
     if not raw:
         return None
+
+    if raw.startswith(INLINE_PREFIX):
+        payload = raw[len(INLINE_PREFIX):]
+        # Проверяем ДО раскодирования: base64 распухает ровно на треть,
+        # так что предел на исходной строке — это тот же предел, только
+        # без выделения памяти под заведомо отвергаемое.
+        if len(payload) > (INLINE_LIMIT_BYTES // 3) * 4 + 4:
+            return None
+        try:
+            data = base64.b64decode(payload, validate=True)
+        except (binascii.Error, ValueError):
+            return None
+        if not data or len(data) > INLINE_LIMIT_BYTES:
+            return None
+        return io.BytesIO(data)
+
     if raw.startswith("res:"):
         try:
             from .graph.resources import resolve
@@ -1934,20 +1974,27 @@ class VoiceSpec(AnswerSpec):
               mode: Optional[CheckMode] = None) -> Verdict:
         active = self.effective_mode(mode)
         source = str(user_input or "").strip()
-        shown = source if source.startswith("res:") else _basename(source)
+        shown = _shown_recording(source)
         if not source:
             return Verdict(False, active, Reason.EMPTY, "",
                            "Запись не сделана.")
 
-        path = _recording_path(source)
-        if path is None:
+        origin = _recording_source(source)
+        if origin is None:
             return Verdict(False, active, Reason.UNPARSED, shown,
                            "Записи нет или это не WAV.")
 
+        import wave
+
         from . import pronunciation_match as matching
         try:
-            signal, rate = matching.read_wav(path)
-        except (OSError, ValueError, EOFError) as exc:
+            signal, rate = matching.read_wav(origin)
+        except (OSError, ValueError, EOFError, wave.Error) as exc:
+            # `wave.Error` здесь не для полноты списка: со встроенной
+            # записью в разбор впервые попадают байты, пришедшие по сети,
+            # и «не WAV» становится обычным случаем, а не поломкой
+            # поставки. Без этой ветки испорченная запись давала бы 500
+            # вместо вердикта — то есть выглядела бы отказом сервиса.
             return Verdict(False, active, Reason.UNPARSED, shown,
                            f"Запись не прочитана: {exc}")
         # Тишина отсеивается ДО сопоставления. Правило ближайшего работает
@@ -2048,7 +2095,7 @@ class VoiceSpec(AnswerSpec):
         terms = list(dict.fromkeys((self.term, *self.vocabulary)))
         built = matching.reference_features(
             [t for t in terms if t],
-            lambda term: _recording_path(pronunciation.audio_of(term) or ""))
+            lambda term: _recording_source(pronunciation.audio_of(term) or ""))
         # Именно ЭТОТ словарь, а не его копия: в него пишет `match`, и
         # возврат нового каждый раз молча выбрасывал бы накопленное.
         prepared = (built, {})
@@ -2076,6 +2123,25 @@ def _basename(source: str) -> str:
         return pathlib.Path(source).name
     except (TypeError, ValueError):
         return ""
+
+
+def _shown_recording(source: str) -> str:
+    """
+    Чем запись названа в вердикте, попытке и журнале.
+
+    Форма ответа сюда не годится ни в одном из трёх случаев, и по разным
+    причинам. Путь выдал бы каталог проверяющего. Встроенная запись —
+    это мегабайт base64: положить его в поле попытки значило бы завести
+    хранение голоса случайно, обойдя и объём, и квоты, и согласие на
+    запись (`docs/handbook/04-stubs.md` §6). Остаётся поставочный
+    идентификатор: он короток, переносим и ничего лишнего не выдаёт.
+    """
+    raw = str(source or "").strip()
+    if raw.startswith(INLINE_PREFIX):
+        return "запись из браузера"
+    if raw.startswith("res:"):
+        return raw
+    return _basename(raw)
 
 
 # ======================================================================

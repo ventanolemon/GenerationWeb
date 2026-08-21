@@ -40,6 +40,7 @@ import numpy as np
 from core import pronunciation as P
 from core import pronunciation_match as M
 from core.answers import (
+    INLINE_LIMIT_BYTES, INLINE_PREFIX,
     AnswerSpec, CheckMode, Reason, VoiceSpec, normalize,
 )
 from core.graph.resources import resolve
@@ -207,6 +208,136 @@ class NeighbourhoodRuleTests(unittest.TestCase):
         verdict = spec.check(str(path))
         self.assertFalse(verdict.accepted)
         self.assertEqual(verdict.reason, Reason.UNCERTAIN)
+
+
+class InlineRecordingTests(unittest.TestCase):
+    """
+    Третья форма ответа: САМА ЗАПИСЬ, а не адрес.
+
+    Ради чего она и существует
+    --------------------------
+    Первые две формы — путь и поставочный идентификатор — годятся, пока
+    записывает и проверяет одна машина. У веба это не так: путь,
+    присланный по сети, называл бы файл на ЧУЖОЙ машине, и принимать
+    такое нельзя ни при каких условиях. Значит, браузер обязан прислать
+    не имя, а содержимое.
+
+    Проверяется поэтому не «работает ли base64», а то, что встроенная
+    запись проходит РОВНО ТОТ ЖЕ путь, что файл: то же правило
+    окрестности, тот же отказ на тишине, те же коды вердикта. Разойдись
+    они — и одно и то же произношение получало бы разный ответ на разных
+    клиентах, причём молча.
+
+    И отдельно — что чужие байты не роняют проверку. Со встроенной формой
+    в разбор впервые попадает то, что пришло по сети: не WAV, обрезанный
+    WAV, мегабайт мусора. Каждый из этих случаев обязан быть вердиктом, а
+    не отказом сервиса.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.terms = _terms_with_audio(6)
+
+    def _spec(self, term: str, **kwargs) -> VoiceSpec:
+        return VoiceSpec(term=term, vocabulary=tuple(self.terms), **kwargs)
+
+    @staticmethod
+    def _inline(raw: bytes) -> str:
+        import base64
+        return INLINE_PREFIX + base64.b64encode(raw).decode("ascii")
+
+    def _inline_reference(self, term: str) -> str:
+        return self._inline(_reference(term).read_bytes())
+
+    def test_the_reference_sent_as_data_is_accepted(self):
+        term = self.terms[0]
+        self.assertTrue(self._spec(term).check(self._inline_reference(term))
+                        .accepted)
+
+    def test_it_agrees_with_the_very_same_file(self):
+        """
+        Главное свойство: форма передачи на вердикт не влияет. Иначе
+        студент получал бы разный ответ в браузере и в приложении.
+        """
+        for term in self.terms[:3]:
+            with self.subTest(term=term):
+                spec = self._spec(term)
+                by_path = spec.check(str(_reference(term)))
+                by_data = spec.check(self._inline_reference(term))
+                self.assertEqual((by_path.accepted, by_path.reason),
+                                 (by_data.accepted, by_data.reason))
+
+    def test_another_word_sent_as_data_is_a_mismatch(self):
+        verdict = self._spec(self.terms[0]).check(
+            self._inline_reference(self.terms[1]))
+        self.assertFalse(verdict.accepted)
+        self.assertEqual(verdict.reason, Reason.MISMATCH)
+
+    def test_silence_sent_as_data_is_not_a_wrong_answer(self):
+        path = _write(np.zeros(M.TARGET_RATE // 2, dtype=np.float32))
+        self.addCleanup(path.unlink)
+        verdict = self._spec(self.terms[0]).check(
+            self._inline(path.read_bytes()))
+        self.assertFalse(verdict.accepted)
+        self.assertIn(verdict.reason, (Reason.EMPTY, Reason.UNCERTAIN))
+
+    def test_the_verdict_does_not_carry_the_recording(self):
+        """
+        `normalized_input` уезжает в попытку и в журнал. Положить туда
+        мегабайт base64 значило бы завести хранение голоса случайно —
+        мимо объёма, квот и согласия на запись. Поле обязано остаться
+        коротким.
+        """
+        verdict = self._spec(self.terms[0]).check(
+            self._inline_reference(self.terms[0]))
+        self.assertLess(len(verdict.normalized_input), 60)
+        self.assertNotIn("base64", verdict.normalized_input)
+
+    def test_bytes_that_are_not_wav_give_a_verdict_not_a_crash(self):
+        verdict = self._spec(self.terms[0]).check(
+            self._inline("это совсем не звук".encode("utf-8")))
+        self.assertFalse(verdict.accepted)
+        self.assertEqual(verdict.reason, Reason.UNPARSED)
+
+    def test_a_truncated_wav_gives_a_verdict_not_a_crash(self):
+        raw = _reference(self.terms[0]).read_bytes()
+        verdict = self._spec(self.terms[0]).check(self._inline(raw[:40]))
+        self.assertFalse(verdict.accepted)
+        self.assertEqual(verdict.reason, Reason.UNPARSED)
+
+    def test_broken_base64_is_refused(self):
+        verdict = self._spec(self.terms[0]).check(INLINE_PREFIX + "!!!!не64!!!")
+        self.assertFalse(verdict.accepted)
+        self.assertEqual(verdict.reason, Reason.UNPARSED)
+
+    def test_an_oversized_recording_is_refused_without_decoding_it(self):
+        """
+        Поле ответа — не загрузка файла. Предел стоит на РАСКОДИРОВАННОМ
+        размере, а проверяется по длине строки: раскодировать гигабайт
+        ради того, чтобы его отвергнуть, незачем.
+        """
+        huge = INLINE_PREFIX + "A" * (INLINE_LIMIT_BYTES * 2)
+        verdict = self._spec(self.terms[0]).check(huge)
+        self.assertFalse(verdict.accepted)
+        self.assertEqual(verdict.reason, Reason.UNPARSED)
+
+    def test_an_empty_payload_is_refused(self):
+        verdict = self._spec(self.terms[0]).check(INLINE_PREFIX)
+        self.assertFalse(verdict.accepted)
+        self.assertNotEqual(verdict.reason, Reason.EXACT)
+
+    def test_the_recording_is_not_written_anywhere(self):
+        """
+        Запись не хранится — это записано в `VoiceSpec` и должно
+        оставаться правдой. Проверяется тем, что после проверки во
+        временном каталоге не прибавилось ни одного WAV.
+        """
+        import tempfile as tf
+
+        before = set(pathlib.Path(tf.gettempdir()).glob("*.wav"))
+        self._spec(self.terms[0]).check(self._inline_reference(self.terms[0]))
+        after = set(pathlib.Path(tf.gettempdir()).glob("*.wav"))
+        self.assertEqual(after - before, set())
 
 
 class RefusalIsNotRejectionTests(unittest.TestCase):
@@ -577,6 +708,123 @@ class DtwSpeedTests(unittest.TestCase):
             for b in features:
                 self.assertAlmostEqual(M.dtw_distance(a, b),
                                        self._row_by_row(a, b), places=9)
+
+
+class ItIsReachableAtAllTests(unittest.TestCase):
+    """
+    Раздел заводится при старте — иначе упражнения просто нет.
+
+    Класс дефекта, ради которого проверка написана: генератор
+    `PronunciationGenerator` существовал, тестами покрывался и НЕ БЫЛ
+    подключён к `bootstrap` на сервере. Разделы «Английский: …
+    (произношение)» заводил только десктоп; на вебе упражнение было
+    недостижимо, и ни один тест этого не видел — все они брали генератор
+    напрямую, минуя реестр.
+
+    Это тот же класс, что «Смотреть/Решать» и число вариантов: **два
+    клиента расходятся молча**. Поэтому проверяется не генератор, а то,
+    что до него можно ДОЙТИ — через реестр, собранный обычным путём.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        import shutil
+
+        import bootstrap
+        from const import DB_TEMPLATE, WORDS_DIR
+        from core import Repository
+        from core.tmpdb import temp_path
+
+        if not pathlib.Path(DB_TEMPLATE).exists():
+            raise unittest.SkipTest("базы нет в этой сборке")
+        # На КОПИИ: поставку прогон не трогает (docs/handbook/06 §7).
+        copy = temp_path()
+        shutil.copyfile(DB_TEMPLATE, copy)
+        cls.repo = Repository(copy)
+        bootstrap.sync_database(cls.repo, WORDS_DIR)
+        cls.registry = bootstrap.build_registry(cls.repo, WORDS_DIR)
+        cls.words_dir = WORDS_DIR
+
+    @staticmethod
+    def _has_audio(path: pathlib.Path) -> bool:
+        """
+        Есть ли в словаре хоть один термин с эталоном.
+
+        Считается ЗДЕСЬ, а не берётся из `bootstrap`, намеренно. Проверка
+        должна падать словами «раздела нет», а не «нет такой функции»:
+        первое называет дефект, второе — только его признак, и на старом
+        коде вся эта группа падала бы `AttributeError`, ничего не сказав
+        про недостижимое упражнение.
+        """
+        from core import pronunciation
+        from exercises.english.generators import (
+            WordsTrainerGenerator, _read_json_lenient,
+        )
+        try:
+            words = WordsTrainerGenerator._flatten_words(
+                _read_json_lenient(path))
+        except Exception:                       # noqa: BLE001
+            return False
+        return any(pronunciation.audio_of(term) for term in words)
+
+    def _dictionaries_with_audio(self) -> list[pathlib.Path]:
+        from exercises.english.generators import _detect_kind
+        return [p for p in sorted(self.words_dir.glob("*.json"))
+                if _detect_kind(p) == "words" and self._has_audio(p)]
+
+    def test_a_dictionary_with_sound_gets_its_partition(self):
+        from core import partition_ids
+
+        wanted = self._dictionaries_with_audio()
+        if not wanted:
+            self.skipTest("в поставке нет словарей со звуком")
+        known = {p.id for p in self.repo.list_partitions_for_subject(2)}
+        missing = [p.stem for p in wanted
+                   if partition_ids.english_pronunciation_id(p.stem)
+                   not in known]
+        self.assertEqual(missing, [])
+
+    def test_the_partition_has_a_generator_behind_it(self):
+        """
+        Раздел без генератора хуже отсутствующего: он стоит в списке
+        наравне с рабочими, а клик по нему даёт отказ.
+        """
+        from core import partition_ids
+
+        wanted = self._dictionaries_with_audio()
+        if not wanted:
+            self.skipTest("в поставке нет словарей со звуком")
+        unserved = [p.stem for p in wanted
+                    if not self.registry.has(
+                        partition_ids.english_pronunciation_id(p.stem))]
+        self.assertEqual(unserved, [])
+
+    def test_a_dictionary_without_sound_gets_no_partition(self):
+        """
+        Обратная сторона: раздел, который на первом же клике скажет
+        «здесь ничего нет», заводить нельзя.
+        """
+        from core import partition_ids
+        from exercises.english.generators import _detect_kind
+
+        silent = [p for p in sorted(self.words_dir.glob("*.json"))
+                  if _detect_kind(p) == "words" and not self._has_audio(p)]
+        if not silent:
+            self.skipTest("все словари поставки со звуком")
+        known = {p.id for p in self.repo.list_partitions_for_subject(2)}
+        extra = [p.stem for p in silent
+                 if partition_ids.english_pronunciation_id(p.stem) in known]
+        self.assertEqual(extra, [])
+
+    def test_the_task_it_serves_asks_for_the_recorder(self):
+        from core import partition_ids
+
+        wanted = self._dictionaries_with_audio()
+        if not wanted:
+            self.skipTest("в поставке нет словарей со звуком")
+        pid = partition_ids.english_pronunciation_id(wanted[0].stem)
+        task = self.registry.get(pid).generate()
+        self.assertEqual(task.answer_spec.preferred_widget, "voice_recorder")
 
 
 if __name__ == "__main__":

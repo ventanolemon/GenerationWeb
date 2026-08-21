@@ -127,11 +127,46 @@ def sync_database(repo: Repository, words_dir: Path) -> None:
                     subject_id=2,
                     name=_english_transcription_name(path),
                 )
+            # Произношение — ТРЕТИЙ раздел того же файла. Заводится только
+            # там, где есть звук: правило приёма сравнивает запись с
+            # эталонами, и раздел без них обещал бы проверку, которой нет.
+            if _detect_kind(path) == "words" and _has_audio(path):
+                repo.ensure_code_partition(
+                    partition_id=partition_ids.english_pronunciation_id(
+                        path.stem),
+                    subject_id=2,
+                    name=_english_pronunciation_name(path),
+                )
 
 
 def _english_transcription_name(path: Path) -> str:
     """Имя раздела «выбери транскрипцию» для этого словаря."""
     return f"Английский: {path.stem} (транскрипция)"
+
+
+def _english_pronunciation_name(path: Path) -> str:
+    """Имя раздела «произнесите вслух» для этого словаря."""
+    return f"Английский: {path.stem} (произношение)"
+
+
+def _has_audio(path: Path) -> bool:
+    """
+    Есть ли в словаре хоть один термин с готовым эталоном произношения.
+
+    Проверка того же рода, что `_has_transcriptions`, и по той же причине:
+    раздел, который на первом же клике говорит «здесь ничего нет», хуже
+    отсутствующего раздела.
+    """
+    from exercises.english.generators import (
+        WordsTrainerGenerator, _read_json_lenient,
+    )
+    from core import pronunciation
+    try:
+        data = _read_json_lenient(path)
+        words = WordsTrainerGenerator._flatten_words(data)
+    except Exception:                       # noqa: BLE001
+        return False
+    return any(pronunciation.audio_of(term) for term in words)
 
 
 def _has_transcriptions(path: Path) -> bool:
@@ -244,7 +279,7 @@ def build_registry(
     # 2. Английские словари
     if words_dir.exists():
         from exercises.english.generators import (
-            TranscriptionChoiceGenerator, _detect_kind,
+            PronunciationGenerator, TranscriptionChoiceGenerator, _detect_kind,
         )
         for path in sorted(words_dir.glob("*.json")):
             pid = partition_ids.english_words_id(path.stem)
@@ -261,6 +296,13 @@ def build_registry(
                     name=_english_transcription_name(path),
                     words_path=path,
                     partition_id=partition_ids.english_transcription_id(
+                        path.stem),
+                ))
+            if _detect_kind(path) == "words" and _has_audio(path):
+                registry.register(PronunciationGenerator(
+                    name=_english_pronunciation_name(path),
+                    words_path=path,
+                    partition_id=partition_ids.english_pronunciation_id(
                         path.stem),
                 ))
 

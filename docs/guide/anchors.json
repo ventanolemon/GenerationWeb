@@ -24,6 +24,7 @@
   "checking/answer-is-data",
   "checking/modes",
   "checking/equality",
+  "checking/voice",
   "checking/slots",
   "checking/verify",
   "offline",

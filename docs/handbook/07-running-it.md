@@ -182,15 +182,15 @@ python -m scripts.seed_accounts \
 ## Проверки
 
 ```bash
-# сервер: 1669 тестов
+# сервер: 1684 теста
 cd GenerationWeb
 python -m unittest discover -t . -s . -p "test_*.py"
 
-# десктоп: 2313 тестов
+# десктоп: 2328 тестов
 cd Generator
 QT_QPA_PLATFORM=offscreen python -m unittest discover -t . -s . -p "test_*.py"
 
-# фронт: 71 тест + сборка с проверкой типов
+# фронт: 86 тестов + сборка с проверкой типов
 cd GenerationWeb/frontend
 npm test
 npm run build

@@ -336,3 +336,36 @@
   font: inherit;
   vertical-align: baseline;
 }
+
+/* ─── Запись голоса ──────────────────────────────────────────────────── */
+/* Ширина у блока своя, а не «сколько поместится»: рядом с ним в форме
+   стоит кнопка «Ответить», и без ограничения строка состояния растягивала
+   бы её на другой край экрана. */
+
+.voiceRecorder {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 1 1 22rem;
+  min-width: 0;
+}
+.voiceRow {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+.voiceButton {
+  min-width: 9rem;
+  cursor: pointer;
+}
+.voiceStatus {
+  font-size: 0.9em;
+  color: var(--text-muted);
+  /* Текст состояния меняется на каждом шаге («Идёт запись…», «Записано,
+     1.4 с»), и без переноса длинная причина отказа уехала бы за край. */
+  overflow-wrap: anywhere;
+}
+.voicePreview {
+  width: 100%;
+  max-width: 22rem;
+}

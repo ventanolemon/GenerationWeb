@@ -211,8 +211,14 @@ def read_wav(path) -> tuple[np.ndarray, int]:
     браузерная запись. Сжатые форматы не поддерживаются намеренно: их
     разбор потребовал бы внешней библиотеки, а с ней — зависимости,
     которой у автономной установки может не быть.
+
+    Принимается путь ИЛИ открытый двоичный поток. Второе — ради веба:
+    запись оттуда приходит самими данными, а не именем файла на чужой
+    машине, и заводить ради неё временный файл значило бы писать на диск
+    то, что не хранится (см. `answers.VoiceSpec`).
     """
-    with wave.open(str(path), "rb") as handle:
+    source = path if hasattr(path, "read") else str(path)
+    with wave.open(source, "rb") as handle:
         channels = handle.getnchannels()
         width = handle.getsampwidth()
         rate = handle.getframerate()
@@ -535,8 +541,9 @@ def reference_features(terms: Iterable[str],
     """
     Посчитать признаки эталонов для набора слов.
 
-    `resolve(term)` возвращает путь к WAV или None. Слова без эталона
-    молча пропускаются: словарь без звука — норма, а не поломка.
+    `resolve(term)` возвращает путь к WAV (или открытый поток) либо None.
+    Слова без эталона молча пропускаются: словарь без звука — норма, а не
+    поломка.
     """
     out: dict[str, np.ndarray] = {}
     for term in terms:
@@ -545,7 +552,7 @@ def reference_features(terms: Iterable[str],
             continue
         try:
             features = features_of(path)
-        except (OSError, ValueError):
+        except (OSError, ValueError, EOFError, wave.Error):
             continue
         if features.shape[0]:
             out[term] = features
